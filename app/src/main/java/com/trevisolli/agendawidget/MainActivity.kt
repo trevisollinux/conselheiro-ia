@@ -13,6 +13,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -73,6 +75,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(ExperimentalLayoutApi::class)
     @Composable
     private fun SettingsScreen() {
         val settings = remember { Settings(this) }
@@ -119,7 +122,7 @@ class MainActivity : ComponentActivity() {
                     refresh()
                 }
             } catch (e: Exception) {
-                tasksMessage = "Não autorizado: ${e.message}"
+                tasksMessage = googleError(e)
             }
         }
 
@@ -138,7 +141,7 @@ class MainActivity : ComponentActivity() {
                         refresh()
                     }
                 } catch (e: Exception) {
-                    tasksMessage = "Falhou: ${e.message}. Confira o cliente OAuth no Google Cloud (veja o README)."
+                    tasksMessage = googleError(e)
                 }
             }
         }
@@ -212,7 +215,7 @@ class MainActivity : ComponentActivity() {
             }
 
             Section("Período") {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(3, 7, 14, 30).forEach { d ->
                         FilterChip(
                             selected = days == d,
@@ -246,6 +249,16 @@ class MainActivity : ComponentActivity() {
             }
 
             Preview(snapshot)
+        }
+    }
+
+    private fun googleError(e: Exception): String {
+        val msg = e.message.orEmpty()
+        return if ("UNREGISTERED_ON_API_CONSOLE" in msg) {
+            "App ainda não registrado no Google Cloud. Crie o ID do cliente OAuth Android " +
+                "(pacote com.trevisolli.agendawidget + SHA-1 do README) e tente de novo em alguns minutos."
+        } else {
+            "Não autorizado: $msg"
         }
     }
 

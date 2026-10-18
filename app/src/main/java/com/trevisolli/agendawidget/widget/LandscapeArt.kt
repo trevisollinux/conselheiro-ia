@@ -89,10 +89,9 @@ object LandscapeArt {
     fun sceneFor(seed: Long): Scene = Scene.entries[Random(seed).nextInt(Scene.entries.size)]
 
     /** Desenha a cena inteira. Retorna se o resultado é escuro (texto claro por cima). */
-    fun draw(p: Painter, seed: Long, hour: Int): Boolean {
+    fun draw(p: Painter, seed: Long, hour: Int, scene: Scene = sceneFor(seed)): Boolean {
         val rnd = Random(seed * 31 + 7)
         val sky = skyFor(hour)
-        val scene = sceneFor(seed)
         val w = p.width.toFloat()
         val h = p.height.toFloat()
         val unit = min(w, h)

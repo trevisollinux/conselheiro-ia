@@ -168,27 +168,21 @@ private fun Content(snapshot: Snapshot) {
     val context = LocalContext.current
     val size = LocalSize.current
     val settings = Settings(context)
-    val opacity = settings.widgetOpacity / 100f
     Box(modifier = GlanceModifier.fillMaxSize().cornerRadius(24.dp)) {
-        if (settings.artBackground) {
-            // Paisagem nova a cada atualização (semente = meia hora corrente); céu conforme a hora do dia.
-            val density = context.resources.displayMetrics.density
-            val scale = (720f / (size.width.value * density)).coerceAtMost(1f)
-            val w = (size.width.value * density * scale).toInt()
-            val h = (size.height.value * density * scale).toInt()
-            val seed = System.currentTimeMillis() / 1_800_000L + snapshot.updatedAt / 1_800_000L
-            val art = LandscapeRenderer.render(w, h, seed, java.time.LocalTime.now().hour, opacity, 24 * density * scale)
-            Image(
-                provider = ImageProvider(art.bitmap),
-                contentDescription = null,
-                contentScale = ContentScale.FillBounds,
-                modifier = GlanceModifier.fillMaxSize(),
-            )
-            Body(snapshot, if (art.dark) LIGHT_INK else DARK_INK, "🍃 " + art.label)
-        } else {
-            Box(modifier = GlanceModifier.fillMaxSize().background(BACKGROUND.copy(alpha = opacity))) {}
-            Body(snapshot, LIGHT_INK, null)
-        }
+        // Fundo do tema escolhido; a paisagem muda a cada atualização (semente = meia hora corrente).
+        val density = context.resources.displayMetrics.density
+        val scale = (720f / (size.width.value * density)).coerceAtMost(1f)
+        val w = (size.width.value * density * scale).toInt()
+        val h = (size.height.value * density * scale).toInt()
+        val seed = System.currentTimeMillis() / 1_800_000L + snapshot.updatedAt / 1_800_000L
+        val art = Backgrounds.render(settings, w, h, seed, java.time.LocalTime.now().hour, 24 * density * scale)
+        Image(
+            provider = ImageProvider(art.bitmap),
+            contentDescription = null,
+            contentScale = ContentScale.FillBounds,
+            modifier = GlanceModifier.fillMaxSize(),
+        )
+        Body(snapshot, if (art.dark) LIGHT_INK else DARK_INK, null)
     }
 }
 

@@ -14,14 +14,22 @@ object LandscapeRenderer {
 
     data class Result(val bitmap: Bitmap, val dark: Boolean, val label: String)
 
-    fun render(width: Int, height: Int, seed: Long, hour: Int, opacity: Float, cornerPx: Float): Result {
+    fun render(
+        width: Int,
+        height: Int,
+        seed: Long,
+        hour: Int,
+        opacity: Float,
+        cornerPx: Float,
+        scene: LandscapeArt.Scene = LandscapeArt.sceneFor(seed),
+    ): Result {
         val w = width.coerceAtLeast(64)
         val h = height.coerceAtLeast(64)
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         canvas.clipPath(Path().apply { addRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), cornerPx, cornerPx, Path.Direction.CW) })
         canvas.saveLayerAlpha(0f, 0f, w.toFloat(), h.toFloat(), (opacity.coerceIn(0f, 1f) * 255).toInt())
-        val dark = LandscapeArt.draw(AndroidPainter(canvas, w, h), seed, hour)
+        val dark = LandscapeArt.draw(AndroidPainter(canvas, w, h), seed, hour, scene)
         // Véu suave atrás do texto (mais forte em cima, onde ficam título e lista).
         val veil = if (dark) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
         val paint = Paint().apply {
@@ -33,7 +41,7 @@ object LandscapeRenderer {
         }
         canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
         canvas.restore()
-        val label = "${LandscapeArt.sceneFor(seed).label} · ${LandscapeArt.skyFor(hour).name}"
+        val label = "${scene.label} · ${LandscapeArt.skyFor(hour).name}"
         return Result(bmp, dark, label)
     }
 

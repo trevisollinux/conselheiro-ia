@@ -26,6 +26,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import com.trevisolli.agendawidget.data.CalendarWriter
 import com.trevisolli.agendawidget.data.Range
+import com.trevisolli.agendawidget.data.WidgetTheme
+import com.trevisolli.agendawidget.widget.Backgrounds
+import com.trevisolli.agendawidget.widget.LandscapeArt
 import com.trevisolli.agendawidget.ui.APP_COLORS
 import com.trevisolli.agendawidget.ui.APP_TYPE
 import com.trevisolli.agendawidget.ui.AgendaTab
@@ -174,7 +177,8 @@ class MainActivity : ComponentActivity() {
         var tasksEnabled by remember { mutableStateOf(settings.googleTasksEnabled) }
         var tasksMessage by remember { mutableStateOf<String?>(null) }
 
-        var artBg by remember { mutableStateOf(settings.artBackground) }
+        var theme by remember { mutableStateOf(settings.widgetTheme) }
+        var scene by remember { mutableStateOf(settings.sceneChoice) }
         var opacity by remember { mutableStateOf(settings.widgetOpacity) }
         var artSeed by remember { mutableStateOf(System.currentTimeMillis()) }
         var morningOn by remember { mutableStateOf(settings.briefMorningOn) }
@@ -499,8 +503,7 @@ class MainActivity : ComponentActivity() {
 
             Section("Resumos automáticos") {
                 Text(
-                    "De manhã, o plano do dia; no fim do dia, o que foi feito, o que ficou e o que vem amanhã. " +
-                        "Aparecem no topo do app, em \"Seu dia\"." + if (useAi) " Escritos pela sua IA." else " Modo automático.",
+                    "Plano do dia de manhã e balanço no fim do dia, no topo da aba Hoje.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -540,7 +543,7 @@ class MainActivity : ComponentActivity() {
                 if (briefings.isNotEmpty()) {
                     Text("Últimos resumos", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
                     val fmt = DateTimeFormatter.ofPattern("dd/MM HH:mm")
-                    briefings.take(6).forEach { b ->
+                    briefings.take(3).forEach { b ->
                         Column(Modifier.padding(vertical = 4.dp)) {
                             Text(
                                 "${b.slot.label} · ${Instant.ofEpochMilli(b.time).atZone(ZoneId.systemDefault()).format(fmt)}",
@@ -554,21 +557,46 @@ class MainActivity : ComponentActivity() {
             }
 
             Section("Visual do widget") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Paisagem que muda sozinha", modifier = Modifier.weight(1f))
-                    Switch(checked = artBg, onCheckedChange = {
-                        artBg = it
-                        settings.artBackground = it
-                        refresh()
-                    })
+                Text("Fundo", style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    WidgetTheme.entries.forEach { t ->
+                        FilterChip(
+                            selected = theme == t,
+                            onClick = {
+                                theme = t
+                                settings.widgetTheme = t
+                                refresh()
+                            },
+                            label = { Text(t.label) },
+                        )
+                    }
                 }
-                Text(
-                    "Colinas, mar, bosque, campo de flores e lago, sem pessoas. A cena muda a cada atualização e o céu " +
-                        "acompanha o dia: amanhecer, tarde de verão, hora dourada, entardecer e noite estrelada. " +
-                        "O texto fica escuro ou claro conforme a cena.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text("Opacidade do fundo", style = MaterialTheme.typography.labelLarge)
+                if (theme == WidgetTheme.LANDSCAPE) {
+                    Text("Cena", style = MaterialTheme.typography.labelLarge)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = scene.isEmpty(),
+                            onClick = {
+                                scene = ""
+                                settings.sceneChoice = ""
+                                refresh()
+                            },
+                            label = { Text("Muda sozinha") },
+                        )
+                        LandscapeArt.Scene.entries.forEach { sc ->
+                            FilterChip(
+                                selected = scene == sc.name,
+                                onClick = {
+                                    scene = sc.name
+                                    settings.sceneChoice = sc.name
+                                    refresh()
+                                },
+                                label = { Text(sc.label) },
+                            )
+                        }
+                    }
+                }
+                Text("Opacidade", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(100, 85, 70, 55, 40).forEach { o ->
                         FilterChip(
@@ -582,9 +610,9 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
-                Preview(snapshot, artSeed, opacity / 100f, artBg)
-                if (artBg) {
-                    OutlinedButton(onClick = { artSeed = System.nanoTime() }) { Text("Ver outra paisagem na prévia") }
+                Preview(snapshot, artSeed, theme, scene, opacity)
+                if (theme == WidgetTheme.LANDSCAPE && scene.isEmpty()) {
+                    TextButton(onClick = { artSeed = System.nanoTime() }) { Text("Ver outra paisagem") }
                 }
             }
 
@@ -657,7 +685,7 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(
-                        "O texto vai direto do celular para a ${provider.label}, com a sua chave. O custo é cobrado na sua conta dela.",
+                        "Usa a sua chave; o uso é cobrado na sua conta da ${provider.label}.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -677,9 +705,7 @@ class MainActivity : ComponentActivity() {
                     })
                 }
                 Text(
-                    "Quando chega uma mensagem com data/hora (ex.: \"consulta quinta às 9h\"), aparece uma sugestão para " +
-                        "você confirmar. Nada é criado sozinho. Apps: WhatsApp, Telegram, Gmail, Outlook e SMS." +
-                        if (useAi) " Com \"Minha IA\" ligada, só as mensagens que parecem compromisso são enviadas para a IA." else "",
+                    "Mensagens com data e hora viram sugestões 📌 para você confirmar.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (detect && !listenerOn) {
@@ -694,17 +720,14 @@ class MainActivity : ComponentActivity() {
 
             Section("Compartilhar com o ConsigliereIA") {
                 Text(
-                    "Em qualquer app (WhatsApp, e-mail, notas, navegador), selecione um texto e toque em Compartilhar → " +
-                        "\"ConsigliereIA: criar compromisso\". Ele monta o evento ou a tarefa para você conferir. " +
-                        "Funciona também com prints (imagens): no modo automático o celular lê o texto; com IA, ela vê a imagem.",
+                    "Em qualquer app, toque em Compartilhar → ConsigliereIA para virar evento ou tarefa. Vale para texto e print.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
 
             Section("Levar para outro aparelho") {
                 Text(
-                    "Mostre o QR aqui e leia no outro aparelho em Importar. O QR contém seu token e sua chave de IA: " +
-                        "não mostre a mais ninguém.",
+                    "Leve suas configurações por QR. Ele contém suas chaves: não mostre a ninguém.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -724,7 +747,7 @@ class MainActivity : ComponentActivity() {
 
             Section("Bateria") {
                 Text(
-                    "Em celulares vivo, libere o app em \"sem restrições\" para o widget continuar atualizando.",
+                    "Deixe o app \"sem restrições\" para o widget atualizar sozinho.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 OutlinedButton(onClick = {
@@ -1020,48 +1043,34 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Amostra compacta do widget com o fundo escolhido. */
     @Composable
-    private fun Preview(snapshot: Snapshot, seed: Long, opacity: Float, artOn: Boolean) {
-        val art = remember(seed, opacity, artOn) {
-            if (artOn) LandscapeRenderer.render(900, 1200, seed, java.time.LocalTime.now().hour, opacity, 0f) else null
+    private fun Preview(snapshot: Snapshot, seed: Long, theme: WidgetTheme, scene: String, opacity: Int) {
+        val art = remember(seed, theme, scene, opacity) {
+            Backgrounds.render(Settings(this), 900, 560, seed, java.time.LocalTime.now().hour, 0f)
         }
-        val dark = art?.dark ?: true
-        val primary = if (dark) Color.White else Color(0xFF1C2A24)
-        val secondary = if (dark) Color(0xFFD6DEE5) else Color(0xFF3D4E47)
-        val overdueColor = if (dark) Color(0xFFFF9C93) else Color(0xFFB3261E)
+        val primary = if (art.dark) Color.White else Color(0xFF1C2A24)
+        val secondary = if (art.dark) Color(0xFFD6DEE5) else Color(0xFF3D4E47)
+        val accent = if (art.dark) Color(0xFFFFE0A3) else Color(0xFF2E6B45)
         Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color(0xFF8E9A93))) {
-            if (art != null) {
-                Image(
-                    art.bitmap.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.matchParentSize(),
+            Image(
+                art.bitmap.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    if (java.time.LocalTime.now().hour < 12) "Bom dia" else "Boa tarde",
+                    color = primary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge,
                 )
-            } else {
-                Box(Modifier.matchParentSize().background(Color(0xFF202124).copy(alpha = opacity)))
-            }
-            Column(
-                Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text("Prévia do widget", color = secondary)
-                if (snapshot.summary.isNotBlank()) Text(snapshot.summary, color = if (dark) Color(0xFFFFE0A3) else Color(0xFF2E6B45))
-                if (snapshot.items.isEmpty()) Text("Nada nos próximos dias", color = primary)
-                snapshot.items.take(30).forEach { item ->
+                if (snapshot.summary.isNotBlank()) {
+                    Text(snapshot.summary, color = accent, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                }
+                snapshot.items.take(3).forEach { item ->
                     Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(10.dp).background(Color(item.color), CircleShape))
-                            Spacer(Modifier.width(8.dp))
-                            Text(item.title, color = primary, fontWeight = FontWeight.Bold, maxLines = 1)
-                        }
-                        Text(
-                            Format.subtitle(item),
-                            color = if (item.overdue) overdueColor else secondary,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(start = 18.dp),
-                        )
+                        Text(item.title, color = primary, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(Format.shortSubtitle(item), color = secondary, style = MaterialTheme.typography.labelSmall, maxLines = 1)
                     }
                 }
-                snapshot.errors.forEach { Text(it, color = overdueColor) }
-                art?.let { Text("🍃 ${it.label}", color = secondary, style = MaterialTheme.typography.labelSmall) }
             }
         }
     }

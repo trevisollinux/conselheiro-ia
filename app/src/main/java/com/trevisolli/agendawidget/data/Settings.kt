@@ -68,6 +68,17 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("art_bg", true)
         set(value) = prefs.edit().putBoolean("art_bg", value).apply()
 
+    /** Fundo do widget. Migra o antigo liga/desliga da paisagem. */
+    var widgetTheme: WidgetTheme
+        get() = WidgetTheme.entries.firstOrNull { it.name == prefs.getString("widget_theme", null) }
+            ?: if (artBackground) WidgetTheme.LANDSCAPE else WidgetTheme.DARK
+        set(value) = prefs.edit().putString("widget_theme", value.name).apply()
+
+    /** Cena fixa da paisagem; vazio = muda sozinha. */
+    var sceneChoice: String
+        get() = prefs.getString("scene_choice", "").orEmpty()
+        set(value) = prefs.edit().putString("scene_choice", value).apply()
+
     /** Opacidade do fundo do widget, em %. */
     var widgetOpacity: Int
         get() = prefs.getInt("widget_opacity", 70)
@@ -188,4 +199,12 @@ enum class Range(val label: String, val days: Long) {
         val date = java.time.Instant.ofEpochMilli(item.startMillis).atZone(zone).toLocalDate()
         return !date.isAfter(java.time.LocalDate.now(zone).plusDays(days))
     }
+}
+
+enum class WidgetTheme(val label: String) {
+    LANDSCAPE("Paisagem"),
+    LIGHT("Claro"),
+    DARK("Escuro"),
+    NOTEBOOK("Caderno"),
+    POSTIT("Post-it"),
 }

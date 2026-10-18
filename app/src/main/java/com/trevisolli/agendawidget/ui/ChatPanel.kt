@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -49,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.trevisolli.agendawidget.data.AgendaRepository
 import com.trevisolli.agendawidget.smart.Assistant
 import com.trevisolli.agendawidget.smart.ChatMessage
 import com.trevisolli.agendawidget.smart.ChatStore
@@ -58,10 +60,10 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private val EXAMPLES = listOf(
-    "Dentista quinta às 15h na agenda",
-    "Lembrar de pagar o MEI amanhã",
+    "O que tenho hoje?",
     "O que tenho amanhã?",
-    "Terminei comprar ração",
+    "Dentista quinta às 15h na agenda",
+    "Lembrar de pagar conta amanhã",
 )
 
 /** Conversa com o ConsigliereIA, por texto ou voz. Usada na aba Conversa e na janela aberta pelo widget. */
@@ -124,24 +126,11 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
                         Bubble(
                             ChatMessage(
                                 fromUser = false,
-                                text = "Oi! Me diga o que anotar e eu coloco na agenda ou no Todoist. Pode escrever ou tocar no 🎤.",
+                                text = "Oi! Me diga o que anotar e eu coloco na agenda ou no Todoist. Pode escrever, tocar no 🎤 " +
+                                    "ou usar uma das dicas aqui embaixo.",
                             ),
                             onUndo = null,
                         )
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            EXAMPLES.forEach { ex ->
-                                Text(
-                                    ex,
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(MaterialTheme.colorScheme.secondaryContainer)
-                                        .clickable { send(ex) }
-                                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                                )
-                            }
-                        }
                     }
                 }
             }
@@ -162,6 +151,32 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
                 )
             }
             if (busy) item { Bubble(ChatMessage(fromUser = false, text = "…"), onUndo = null) }
+        }
+
+        // Dicas sempre à mão, algumas a partir da sua lista ("Terminei Pagar mei").
+        val tips = remember(messages.size) {
+            val items = AgendaRepository.load(context).items
+            val zone = ZoneId.systemDefault()
+            val today = java.time.LocalDate.now(zone)
+            val firstTask = items.firstOrNull {
+                it.taskId != null && (it.overdue || Instant.ofEpochMilli(it.startMillis).atZone(zone).toLocalDate() == today)
+            }
+            listOfNotNull(firstTask?.let { "Terminei ${it.title}" }) + EXAMPLES
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+            items(tips) { tip ->
+                Text(
+                    tip,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.secondaryContainer)
+                        .clickable(enabled = !busy) { send(tip) }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            }
         }
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {

@@ -44,6 +44,40 @@ object Format {
         return parts.joinToString(" · ")
     }
 
+    /** Linha curta para listas já agrupadas por dia: "Todoist · 20:00", "09:00-10:00", "desde qua 14/10". */
+    fun shortSubtitle(item: AgendaItem): String {
+        val zone = ZoneId.systemDefault()
+        val start = Instant.ofEpochMilli(item.startMillis).atZone(zone)
+        val parts = mutableListOf<String>()
+        if (item.source != Source.CALENDAR) parts += item.source.label
+        if (item.overdue) {
+            parts += "desde " + start.toLocalDate().dayOfWeek.getDisplayName(TextStyle.SHORT, locale).removeSuffix(".") +
+                " " + start.format(dayMonth)
+        }
+        if (!item.dateOnly) {
+            val end = item.endMillis?.let { Instant.ofEpochMilli(it).atZone(zone) }
+            parts += if (end != null && end.toLocalDate() == start.toLocalDate()) {
+                "${start.format(time)}-${end.format(time)}"
+            } else {
+                start.format(time)
+            }
+        } else if (item.source == Source.CALENDAR) {
+            parts += "dia inteiro"
+        }
+        return parts.joinToString(" · ")
+    }
+
+    /** Cabeçalho de grupo no widget: "HOJE · DOM 18/10", "AMANHÃ", "QUARTA 21/10". */
+    fun dayHeader(date: LocalDate): String {
+        val today = LocalDate.now(ZoneId.systemDefault())
+        val weekday = date.dayOfWeek.getDisplayName(TextStyle.FULL, locale).removeSuffix("-feira")
+        return when (date) {
+            today -> "HOJE · " + date.dayOfWeek.getDisplayName(TextStyle.SHORT, locale).removeSuffix(".") + " " + date.format(dayMonth)
+            today.plusDays(1) -> "AMANHÃ"
+            else -> "$weekday ${date.format(dayMonth)}"
+        }.uppercase(locale)
+    }
+
     /** Ex.: "Amanhã 09:00", "Quarta, 21/10". */
     fun suggestionWhen(date: LocalDate?, time: java.time.LocalTime?): String? {
         if (date == null && time == null) return null

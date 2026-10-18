@@ -226,7 +226,16 @@ private fun Body(snapshot: Snapshot, ink: Ink, @Suppress("UNUSED_PARAMETER") foo
                 text = greeting,
                 style = TextStyle(color = ColorProvider(ink.primary), fontSize = 21.sp, fontWeight = FontWeight.Bold),
                 maxLines = 1,
-                modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity<MainActivity>()),
+                modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()),
+            )
+            Text(
+                text = "  " + java.time.LocalDate.now().let {
+                    it.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale("pt", "BR")).removeSuffix(".") +
+                        " " + it.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM"))
+                },
+                style = TextStyle(color = ColorProvider(ink.secondary), fontSize = 13.sp),
+                maxLines = 1,
+                modifier = GlanceModifier.defaultWeight(),
             )
             Image(
                 provider = ImageProvider(R.drawable.ic_refresh),
@@ -285,8 +294,17 @@ private fun Body(snapshot: Snapshot, ink: Ink, @Suppress("UNUSED_PARAMETER") foo
                 )
             }
         } else {
+            val rows = groupRows(visible)
             LazyColumn(modifier = GlanceModifier.defaultWeight().fillMaxWidth()) {
-                items(visible) { item -> ItemRow(item, ink) }
+                items(rows) { row ->
+                    when (row) {
+                        is Row_.Header -> HeaderRow(row, ink)
+                        is Row_.Item -> Column {
+                            ItemRow(row.item, ink, row.today)
+                            Spacer(GlanceModifier.height(3.dp))
+                        }
+                    }
+                }
             }
         }
 
@@ -338,9 +356,56 @@ private fun Body(snapshot: Snapshot, ink: Ink, @Suppress("UNUSED_PARAMETER") foo
     }
 }
 
+/** Linha da lista do widget: cabeçalho de dia ou item. */
+private sealed class Row_ {
+    data class Header(val label: String, val today: Boolean, val overdue: Boolean) : Row_()
+    data class Item(val item: AgendaItem, val today: Boolean) : Row_()
+}
+
+private fun groupRows(items: List<AgendaItem>): List<Row_> {
+    val zone = java.time.ZoneId.systemDefault()
+    val today = java.time.LocalDate.now(zone)
+    val rows = mutableListOf<Row_>()
+    val overdue = items.filter { it.overdue }
+    if (overdue.isNotEmpty()) {
+        rows += Row_.Header("ATRASADAS", today = false, overdue = true)
+        overdue.forEach { rows += Row_.Item(it, today = false) }
+    }
+    items.filterNot { it.overdue }
+        .groupBy { java.time.Instant.ofEpochMilli(it.startMillis).atZone(zone).toLocalDate() }
+        .toSortedMap()
+        .forEach { (date, list) ->
+            val isToday = date == today
+            rows += Row_.Header(Format.dayHeader(date), today = isToday, overdue = false)
+            list.forEach { rows += Row_.Item(it, today = isToday) }
+        }
+    return rows
+}
+
 @Composable
-private fun ItemRow(item: AgendaItem, ink: Ink) {
-    var modifier = GlanceModifier.fillMaxWidth().padding(vertical = 5.dp)
+private fun HeaderRow(h: Row_.Header, ink: Ink) {
+    Text(
+        text = h.label,
+        style = TextStyle(
+            color = ColorProvider(if (h.overdue) ink.overdue else if (h.today) ink.summary else ink.secondary),
+            fontSize = if (h.today) 13.sp else 11.sp,
+            fontWeight = FontWeight.Bold,
+        ),
+        maxLines = 1,
+        modifier = GlanceModifier.padding(top = 8.dp, bottom = 2.dp),
+    )
+}
+
+@Composable
+private fun ItemRow(item: AgendaItem, ink: Ink, today: Boolean = false) {
+    // Hoje com fundo destacado; atrasadas com fundo avermelhado; o resto discreto.
+    val highlight = when {
+        item.overdue -> ink.overdue.copy(alpha = 0.12f)
+        today -> ink.summary.copy(alpha = 0.14f)
+        else -> Color.Transparent
+    }
+    var modifier = GlanceModifier.fillMaxWidth().background(highlight).cornerRadius(12.dp)
+        .padding(horizontal = 6.dp, vertical = if (today || item.overdue) 5.dp else 3.dp)
     openIntent(item)?.let { modifier = modifier.clickable(actionStartActivity(it)) }
     Column(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -363,14 +428,14 @@ private fun ItemRow(item: AgendaItem, ink: Ink) {
                 text = item.title,
                 style = TextStyle(
                     color = ColorProvider(ink.primary),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = if (today || item.overdue) 16.sp else 14.sp,
+                    fontWeight = if (today || item.overdue) FontWeight.Bold else FontWeight.Medium,
                 ),
                 maxLines = 1,
             )
         }
         Text(
-            text = Format.subtitle(item),
+            text = Format.shortSubtitle(item).ifBlank { " " },
             style = TextStyle(
                 color = ColorProvider(if (item.overdue) ink.overdue else ink.secondary),
                 fontSize = 13.sp,

@@ -12,6 +12,10 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.LocalContext
+import androidx.glance.LocalSize
+import androidx.glance.layout.ContentScale
+import java.net.URLEncoder
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.action.ActionParameters
@@ -63,10 +67,13 @@ private val BACKGROUND = Color(0xFF202124)
 private val PRIMARY_TEXT = Color(0xFFFFFFFF)
 private val SECONDARY_TEXT = Color(0xFFBDC1C6)
 private val OVERDUE_TEXT = Color(0xFFF28B82)
-private val SUMMARY_TEXT = Color(0xFF8AB4F8)
+private val SUMMARY_TEXT = Color(0xFFF2C14E)
+private val TRACK_TEXT = Color(0xCCEEE6D3)
 private val SUGGESTION_TEXT = Color(0xFFFDD663)
 
 class AgendaWidget : GlanceAppWidget() {
+
+    override val sizeMode = androidx.glance.appwidget.SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         // Widget recém-adicionado: começa com o cache e pede uma atualização.
@@ -107,6 +114,7 @@ class CompleteAction : ActionCallback {
         if (token.isBlank()) return
         val ok = withContext(Dispatchers.IO) { runCatching { TodoistSource.close(token, id) }.isSuccess }
         val current = AgendaRepository.load(context)
+        if (ok) current.items.firstOrNull { it.taskId == id }?.let { Settings(context).logCompletion(it.title) }
         val next = if (ok) {
             current.copy(items = current.items.filterNot { it.taskId == id })
         } else {
@@ -125,11 +133,37 @@ class RefreshAction : ActionCallback {
 
 @Composable
 private fun Content(snapshot: Snapshot) {
+    val context = LocalContext.current
+    val size = LocalSize.current
+    val settings = Settings(context)
+    val opacity = settings.widgetOpacity / 100f
+    Box(modifier = GlanceModifier.fillMaxSize().cornerRadius(24.dp)) {
+        if (settings.jazzBackground) {
+            // Arte nova a cada atualização (semente = meia hora corrente), paleta conforme a hora do dia.
+            val density = context.resources.displayMetrics.density
+            val scale = (720f / (size.width.value * density)).coerceAtMost(1f)
+            val w = (size.width.value * density * scale).toInt()
+            val h = (size.height.value * density * scale).toInt()
+            val seed = System.currentTimeMillis() / 1_800_000L + snapshot.updatedAt / 1_800_000L
+            val art = JazzArt.render(w, h, seed, java.time.LocalTime.now().hour, opacity, 24 * density * scale)
+            Image(
+                provider = ImageProvider(art),
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = GlanceModifier.fillMaxSize(),
+            )
+        } else {
+            Box(modifier = GlanceModifier.fillMaxSize().background(BACKGROUND.copy(alpha = opacity))) {}
+        }
+        Body(snapshot)
+    }
+}
+
+@Composable
+private fun Body(snapshot: Snapshot) {
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
-            .background(BACKGROUND)
-            .cornerRadius(24.dp)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Row(
@@ -183,6 +217,19 @@ private fun Content(snapshot: Snapshot) {
                 items(snapshot.items) { item -> ItemRow(item) }
             }
         }
+
+        val track = JazzArt.trackOfTheDay()
+        Text(
+            text = "♪ $track",
+            style = TextStyle(color = ColorProvider(TRACK_TEXT), fontSize = 11.sp),
+            maxLines = 1,
+            modifier = GlanceModifier.clickable(
+                actionStartActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://open.spotify.com/search/" + URLEncoder.encode(track, "UTF-8").replace("+", "%20")))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                ),
+            ),
+        )
 
         if (snapshot.errors.isNotEmpty()) {
             Text(

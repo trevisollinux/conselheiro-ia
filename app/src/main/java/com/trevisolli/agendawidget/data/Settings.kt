@@ -63,6 +63,45 @@ class Settings(context: Context) {
         return true
     }
 
+    /** true = fundo jazz que muda sozinho; false = escuro clássico. */
+    var jazzBackground: Boolean
+        get() = prefs.getBoolean("jazz_bg", true)
+        set(value) = prefs.edit().putBoolean("jazz_bg", value).apply()
+
+    /** Opacidade do fundo do widget, em %. */
+    var widgetOpacity: Int
+        get() = prefs.getInt("widget_opacity", 85)
+        set(value) = prefs.edit().putInt("widget_opacity", value).apply()
+
+    var briefMorningOn: Boolean
+        get() = prefs.getBoolean("brief_morning", true)
+        set(value) = prefs.edit().putBoolean("brief_morning", value).apply()
+
+    var briefMorningHour: Int
+        get() = prefs.getInt("brief_morning_hour", 8)
+        set(value) = prefs.edit().putInt("brief_morning_hour", value).apply()
+
+    var briefEveningOn: Boolean
+        get() = prefs.getBoolean("brief_evening", true)
+        set(value) = prefs.edit().putBoolean("brief_evening", value).apply()
+
+    var briefEveningHour: Int
+        get() = prefs.getInt("brief_evening_hour", 18)
+        set(value) = prefs.edit().putInt("brief_evening_hour", value).apply()
+
+    /** Tarefas concluídas pelo widget hoje (reserva caso a API de concluídas falhe). */
+    fun logCompletion(title: String) {
+        val today = java.time.LocalDate.now().toString()
+        val kept = prefs.getStringSet("completions", emptySet()).orEmpty().filter { it.startsWith(today) }.toSet()
+        prefs.edit().putStringSet("completions", kept + "$today|$title").apply()
+    }
+
+    fun completionsToday(): List<String> {
+        val today = java.time.LocalDate.now().toString()
+        return prefs.getStringSet("completions", emptySet()).orEmpty()
+            .filter { it.startsWith("$today|") }.map { it.substringAfter('|') }
+    }
+
     var detectNotifications: Boolean
         get() = prefs.getBoolean("detect_notifications", false)
         set(value) = prefs.edit().putBoolean("detect_notifications", value).apply()

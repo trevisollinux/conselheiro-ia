@@ -43,8 +43,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,7 +57,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import com.trevisolli.agendawidget.smart.Briefing
+import com.trevisolli.agendawidget.widget.JazzArt
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -84,6 +96,31 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
+internal val JAZZ_COLORS = darkColorScheme(
+    primary = Color(0xFFE2B33C),
+    onPrimary = Color(0xFF1A1206),
+    secondary = Color(0xFF9BC1E0),
+    secondaryContainer = Color(0xFF2A3B5C),
+    onSecondaryContainer = Color(0xFFF2E8D5),
+    background = Color(0xFF0B1220),
+    surface = Color(0xFF0B1220),
+    onSurface = Color(0xFFF2E8D5),
+    onBackground = Color(0xFFF2E8D5),
+    surfaceVariant = Color(0xFF16213A),
+    onSurfaceVariant = Color(0xFFCFC6B4),
+    surfaceContainerHighest = Color(0xFF16213A),
+    outline = Color(0xFF6B6250),
+    error = Color(0xFFF28B82),
+)
+
+internal val JAZZ_TYPE = Typography().let { t ->
+    t.copy(
+        headlineMedium = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic, fontSize = 30.sp),
+        headlineSmall = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontSize = 24.sp),
+        titleMedium = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, color = Color(0xFFE2B33C)),
+    )
+}
+
 class MainActivity : ComponentActivity() {
     /** Incrementa a cada onResume para recarregar estado vindo de fora (sugestões, permissões). */
     private var resumeCount by mutableIntStateOf(0)
@@ -91,8 +128,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         RefreshWorker.schedule(this)
+        Briefing.scheduleAll(this)
         setContent {
-            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
+            MaterialTheme(colorScheme = JAZZ_COLORS, typography = JAZZ_TYPE) {
                 Surface(modifier = Modifier.fillMaxSize()) { SettingsScreen() }
             }
         }
@@ -127,6 +165,16 @@ class MainActivity : ComponentActivity() {
 
         var tasksEnabled by remember { mutableStateOf(settings.googleTasksEnabled) }
         var tasksMessage by remember { mutableStateOf<String?>(null) }
+
+        var jazzBg by remember { mutableStateOf(settings.jazzBackground) }
+        var opacity by remember { mutableStateOf(settings.widgetOpacity) }
+        var artSeed by remember { mutableStateOf(System.currentTimeMillis()) }
+        var morningOn by remember { mutableStateOf(settings.briefMorningOn) }
+        var morningHour by remember { mutableStateOf(settings.briefMorningHour) }
+        var eveningOn by remember { mutableStateOf(settings.briefEveningOn) }
+        var eveningHour by remember { mutableStateOf(settings.briefEveningHour) }
+        var briefings by remember { mutableStateOf(Briefing.history(this)) }
+        var briefBusy by remember { mutableStateOf(false) }
 
         var showQr by remember { mutableStateOf<Bitmap?>(null) }
         var backupMessage by remember { mutableStateOf<String?>(null) }
@@ -237,15 +285,39 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        LaunchedEffect(Unit) { if (calendarGranted) refresh() }
+        LaunchedEffect(Unit) {
+            if (calendarGranted) refresh()
+            // Resumos e sugestões chegam como notificação.
+            if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        LaunchedEffect(resumeCount) { briefings = Briefing.history(this@MainActivity) }
+
+        fun briefNow(slot: Briefing.Slot) {
+            briefBusy = true
+            scope.launch {
+                val text = Briefing.build(this@MainActivity, slot)
+                Briefing.save(this@MainActivity, Briefing.Entry(System.currentTimeMillis(), slot, text))
+                Briefing.notify(this@MainActivity, slot, text)
+                briefings = Briefing.history(this@MainActivity)
+                briefBusy = false
+            }
+        }
+
+        fun saveBriefSchedule() {
+            settings.briefMorningOn = morningOn
+            settings.briefMorningHour = morningHour
+            settings.briefEveningOn = eveningOn
+            settings.briefEveningHour = eveningHour
+            Briefing.scheduleAll(this@MainActivity)
+        }
 
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("ConsigliereIA", style = MaterialTheme.typography.headlineMedium)
+            Banner(artSeed, opacity = 1f)
             Text(
-                "Configure as fontes e adicione o widget \"ConsigliereIA\" na tela inicial.",
+                "Seu conselheiro, no tempo do jazz. Configure as fontes e adicione o widget na tela inicial.",
                 style = MaterialTheme.typography.bodyMedium,
             )
 
@@ -313,6 +385,89 @@ class MainActivity : ComponentActivity() {
                             refresh()
                         }) { Text("Remover") }
                     }
+                }
+            }
+
+            Section("Resumos automáticos") {
+                Text(
+                    "Uma notificação de manhã com o plano do dia e outra no fim do dia com o que foi feito, " +
+                        "o que ficou e o que vem amanhã." + if (useAi) " Escritos pela sua IA." else " Modo automático.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("☀️ Manhã", modifier = Modifier.weight(1f))
+                    Switch(checked = morningOn, onCheckedChange = { morningOn = it; saveBriefSchedule() })
+                }
+                if (morningOn) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(6, 7, 8, 9, 10).forEach { h ->
+                            FilterChip(selected = morningHour == h, onClick = { morningHour = h; saveBriefSchedule() }, label = { Text("${h}h") })
+                        }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🌙 Fim do dia", modifier = Modifier.weight(1f))
+                    Switch(checked = eveningOn, onCheckedChange = { eveningOn = it; saveBriefSchedule() })
+                }
+                if (eveningOn) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(16, 17, 18, 19, 20, 21).forEach { h ->
+                            FilterChip(selected = eveningHour == h, onClick = { eveningHour = h; saveBriefSchedule() }, label = { Text("${h}h") })
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { briefNow(Briefing.Slot.MORNING) }, enabled = !briefBusy) { Text("Testar manhã") }
+                    OutlinedButton(onClick = { briefNow(Briefing.Slot.EVENING) }, enabled = !briefBusy) { Text("Testar fim do dia") }
+                }
+                if (briefBusy) Text("Escrevendo…")
+                if (briefings.isNotEmpty()) {
+                    Text("Últimos resumos", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                    val fmt = DateTimeFormatter.ofPattern("dd/MM HH:mm")
+                    briefings.take(6).forEach { b ->
+                        Column(Modifier.padding(vertical = 4.dp)) {
+                            Text(
+                                "${b.slot.label} · ${Instant.ofEpochMilli(b.time).atZone(ZoneId.systemDefault()).format(fmt)}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(b.text, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+
+            Section("Visual do widget") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Fundo jazz que muda sozinho", modifier = Modifier.weight(1f))
+                    Switch(checked = jazzBg, onCheckedChange = {
+                        jazzBg = it
+                        settings.jazzBackground = it
+                        refresh()
+                    })
+                }
+                Text(
+                    "A arte muda a cada atualização e a paleta acompanha o dia: café pela manhã, Blue Note à tarde, " +
+                        "clube enfumaçado à noite.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text("Opacidade do fundo", style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(100, 85, 65, 45, 25).forEach { o ->
+                        FilterChip(
+                            selected = opacity == o,
+                            onClick = {
+                                opacity = o
+                                settings.widgetOpacity = o
+                                refresh()
+                            },
+                            label = { Text("$o%") },
+                        )
+                    }
+                }
+                if (jazzBg) {
+                    Banner(artSeed, opacity = opacity / 100f)
+                    OutlinedButton(onClick = { artSeed = System.nanoTime() }) { Text("Ver outra arte") }
                 }
             }
 
@@ -521,6 +676,28 @@ class MainActivity : ComponentActivity() {
                 "(pacote com.trevisolli.agendawidget + SHA-1 do README) e tente de novo em alguns minutos."
         } else {
             "Não autorizado: $msg"
+        }
+    }
+
+    @Composable
+    private fun Banner(seed: Long, opacity: Float) {
+        val art = remember(seed, opacity) {
+            JazzArt.render(1080, 380, seed, java.time.LocalTime.now().hour, opacity, 48f).asImageBitmap()
+        }
+        Box(Modifier.fillMaxWidth().height(130.dp).clip(RoundedCornerShape(20.dp))) {
+            Image(art, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            Column(Modifier.align(Alignment.CenterStart).padding(start = 20.dp)) {
+                Text(
+                    "ConsigliereIA",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = Color(0xFFF7EBD3),
+                )
+                Text(
+                    "♪ ${JazzArt.trackOfTheDay()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFF2C14E),
+                )
+            }
         }
     }
 

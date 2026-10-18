@@ -90,7 +90,7 @@ class ConfirmActivity : ComponentActivity() {
             return
         }
         setContent {
-            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
+            MaterialTheme(colorScheme = JAZZ_COLORS, typography = JAZZ_TYPE) {
                 Surface(modifier = Modifier.fillMaxSize()) { Screen(stored, shared, image) }
             }
         }

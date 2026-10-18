@@ -53,6 +53,17 @@ object TodoistSource {
         return items
     }
 
+    /** Títulos das tarefas concluídas desde [since] (para o resumo da tarde). */
+    fun completedSince(token: String, since: java.time.Instant): List<String> {
+        val until = java.time.Instant.now()
+        val url = "https://api.todoist.com/api/v1/tasks/completed/by_completion_date?limit=200" +
+            "&since=" + URLEncoder.encode(since.toString(), "UTF-8") +
+            "&until=" + URLEncoder.encode(until.toString(), "UTF-8")
+        val res = Http.getJson(url, token)
+        val items = res.optJSONArray("items") ?: res.optJSONArray("results") ?: return emptyList()
+        return List(items.length()) { items.getJSONObject(it).optString("content") }.filter { it.isNotBlank() }
+    }
+
     /** Conclui a tarefa (recorrentes avançam para a próxima data). */
     fun close(token: String, id: String) {
         Http.postJson(

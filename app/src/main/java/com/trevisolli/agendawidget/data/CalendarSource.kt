@@ -85,6 +85,7 @@ object CalendarSource {
                 }
             }
         }
-        return items
+        // O mesmo evento pode vir de duas agendas (ex.: vivo + Google): mantém um só.
+        return items.distinctBy { Triple(it.title.trim().lowercase(), it.startMillis, it.endMillis) }
     }
 }

@@ -63,14 +63,14 @@ class Settings(context: Context) {
         return true
     }
 
-    /** true = fundo jazz que muda sozinho; false = escuro clássico. */
-    var jazzBackground: Boolean
-        get() = prefs.getBoolean("jazz_bg", true)
-        set(value) = prefs.edit().putBoolean("jazz_bg", value).apply()
+    /** true = paisagem que muda sozinha; false = escuro clássico. */
+    var artBackground: Boolean
+        get() = prefs.getBoolean("art_bg", true)
+        set(value) = prefs.edit().putBoolean("art_bg", value).apply()
 
     /** Opacidade do fundo do widget, em %. */
     var widgetOpacity: Int
-        get() = prefs.getInt("widget_opacity", 85)
+        get() = prefs.getInt("widget_opacity", 70)
         set(value) = prefs.edit().putInt("widget_opacity", value).apply()
 
     var briefMorningOn: Boolean

@@ -25,7 +25,6 @@ import com.trevisolli.agendawidget.data.Settings
 import com.trevisolli.agendawidget.data.Source
 import com.trevisolli.agendawidget.data.TodoistSource
 import com.trevisolli.agendawidget.widget.AgendaWidget
-import com.trevisolli.agendawidget.widget.JazzArt
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -102,7 +101,6 @@ object Briefing {
             }
             (events + tasks).take(5).forEach { append("\n").append(line(it, zone)) }
             if (overdue.isNotEmpty()) append("\nAtrasadas: ").append(overdue.take(3).joinToString(", ") { it.title })
-            append("\n♪ Trilha do dia: ").append(JazzArt.trackOfTheDay(today))
         }
     }
 
@@ -131,10 +129,10 @@ object Briefing {
     }
 
     private const val SYSTEM =
-        "Você é o ConsigliereIA, um conselheiro pessoal com alma de jazz: direto, caloroso, sem enrolação. " +
+        "Você é o ConsigliereIA, um conselheiro pessoal calmo e acolhedor, direto e sem enrolação. " +
             "Escreva em português do Brasil, no máximo 5 linhas curtas, usando tópicos com '•' quando listar. " +
             "Manhã: o plano do dia e a prioridade número 1. Fim do dia: o que foi feito, o que ficou e o que vem amanhã. " +
-            "Pode usar no máximo uma metáfora curta de jazz. Sem markdown além dos '•'."
+            "Pode usar no máximo uma imagem curta de natureza (vento, chuva, sol). Sem markdown além dos '•'."
 
     private fun aiPrompt(slot: Slot, items: List<AgendaItem>, completed: List<String>, today: LocalDate, zone: ZoneId): String {
         val relevant = items.filter { it.overdue || !dateOf(it, zone).isAfter(today.plusDays(1)) }.take(30)
@@ -148,7 +146,6 @@ object Briefing {
             if (slot == Slot.EVENING) {
                 append("Concluídas hoje: ${if (completed.isEmpty()) "nenhuma registrada" else completed.joinToString("; ")}\n")
             }
-            if (slot == Slot.MORNING) append("Termine com: ♪ Trilha do dia: ${JazzArt.trackOfTheDay(today)}\n")
         }
     }
 

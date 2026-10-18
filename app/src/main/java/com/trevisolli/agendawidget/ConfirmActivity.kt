@@ -90,7 +90,7 @@ class ConfirmActivity : ComponentActivity() {
             return
         }
         setContent {
-            MaterialTheme(colorScheme = JAZZ_COLORS, typography = JAZZ_TYPE) {
+            MaterialTheme(colorScheme = APP_COLORS, typography = APP_TYPE) {
                 Surface(modifier = Modifier.fillMaxSize()) { Screen(stored, shared, image) }
             }
         }

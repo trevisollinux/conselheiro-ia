@@ -44,7 +44,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Typography
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -66,7 +66,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import com.trevisolli.agendawidget.smart.Briefing
-import com.trevisolli.agendawidget.widget.JazzArt
+import com.trevisolli.agendawidget.widget.LandscapeRenderer
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -96,28 +96,32 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
-internal val JAZZ_COLORS = darkColorScheme(
-    primary = Color(0xFFE2B33C),
-    onPrimary = Color(0xFF1A1206),
-    secondary = Color(0xFF9BC1E0),
-    secondaryContainer = Color(0xFF2A3B5C),
-    onSecondaryContainer = Color(0xFFF2E8D5),
-    background = Color(0xFF0B1220),
-    surface = Color(0xFF0B1220),
-    onSurface = Color(0xFFF2E8D5),
-    onBackground = Color(0xFFF2E8D5),
-    surfaceVariant = Color(0xFF16213A),
-    onSurfaceVariant = Color(0xFFCFC6B4),
-    surfaceContainerHighest = Color(0xFF16213A),
-    outline = Color(0xFF6B6250),
-    error = Color(0xFFF28B82),
+/** Tons de aquarela: papel creme, verde de campo, azul de céu. */
+internal val APP_COLORS = lightColorScheme(
+    primary = Color(0xFF3E7C59),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFD4E8D3),
+    onPrimaryContainer = Color(0xFF1C3A28),
+    secondary = Color(0xFF5E93B8),
+    secondaryContainer = Color(0xFFD6E8F3),
+    onSecondaryContainer = Color(0xFF1E3A4F),
+    background = Color(0xFFF4EFE2),
+    surface = Color(0xFFF4EFE2),
+    onSurface = Color(0xFF2D3A31),
+    onBackground = Color(0xFF2D3A31),
+    surfaceVariant = Color(0xFFFFFBF2),
+    onSurfaceVariant = Color(0xFF55615A),
+    surfaceContainerHighest = Color(0xFFFFFBF2),
+    surfaceContainerHigh = Color(0xFFFFFBF2),
+    outline = Color(0xFFB9B29E),
+    error = Color(0xFFB3261E),
 )
 
-internal val JAZZ_TYPE = Typography().let { t ->
+internal val APP_TYPE = Typography().let { t ->
     t.copy(
         headlineMedium = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic, fontSize = 30.sp),
         headlineSmall = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontSize = 24.sp),
-        titleMedium = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, color = Color(0xFFE2B33C)),
+        titleMedium = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, color = Color(0xFF3E7C59)),
     )
 }
 
@@ -130,7 +134,7 @@ class MainActivity : ComponentActivity() {
         RefreshWorker.schedule(this)
         Briefing.scheduleAll(this)
         setContent {
-            MaterialTheme(colorScheme = JAZZ_COLORS, typography = JAZZ_TYPE) {
+            MaterialTheme(colorScheme = APP_COLORS, typography = APP_TYPE) {
                 Surface(modifier = Modifier.fillMaxSize()) { SettingsScreen() }
             }
         }
@@ -166,7 +170,7 @@ class MainActivity : ComponentActivity() {
         var tasksEnabled by remember { mutableStateOf(settings.googleTasksEnabled) }
         var tasksMessage by remember { mutableStateOf<String?>(null) }
 
-        var jazzBg by remember { mutableStateOf(settings.jazzBackground) }
+        var artBg by remember { mutableStateOf(settings.artBackground) }
         var opacity by remember { mutableStateOf(settings.widgetOpacity) }
         var artSeed by remember { mutableStateOf(System.currentTimeMillis()) }
         var morningOn by remember { mutableStateOf(settings.briefMorningOn) }
@@ -317,7 +321,7 @@ class MainActivity : ComponentActivity() {
         ) {
             Banner(artSeed, opacity = 1f)
             Text(
-                "Seu conselheiro, no tempo do jazz. Configure as fontes e adicione o widget na tela inicial.",
+                "Seu conselheiro de bolso. Configure as fontes e adicione o widget na tela inicial.",
                 style = MaterialTheme.typography.bodyMedium,
             )
 
@@ -326,7 +330,7 @@ class MainActivity : ComponentActivity() {
                 Spacer(Modifier.width(12.dp))
                 Text("Última: ${Format.updatedAt(snapshot.updatedAt)}", style = MaterialTheme.typography.bodySmall)
             }
-            Preview(snapshot)
+            Preview(snapshot, artSeed, opacity / 100f, artBg)
 
             if (suggestions.isNotEmpty()) {
                 Section("📌 Sugestões para revisar") {
@@ -439,21 +443,22 @@ class MainActivity : ComponentActivity() {
 
             Section("Visual do widget") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Fundo jazz que muda sozinho", modifier = Modifier.weight(1f))
-                    Switch(checked = jazzBg, onCheckedChange = {
-                        jazzBg = it
-                        settings.jazzBackground = it
+                    Text("Paisagem que muda sozinha", modifier = Modifier.weight(1f))
+                    Switch(checked = artBg, onCheckedChange = {
+                        artBg = it
+                        settings.artBackground = it
                         refresh()
                     })
                 }
                 Text(
-                    "A arte muda a cada atualização e a paleta acompanha o dia: café pela manhã, Blue Note à tarde, " +
-                        "clube enfumaçado à noite.",
+                    "Colinas, mar, bosque, campo de flores e lago, sem pessoas. A cena muda a cada atualização e o céu " +
+                        "acompanha o dia: amanhecer, tarde de verão, hora dourada, entardecer e noite estrelada. " +
+                        "O texto fica escuro ou claro conforme a cena.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text("Opacidade do fundo", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(100, 85, 65, 45, 25).forEach { o ->
+                    listOf(100, 85, 70, 55, 40).forEach { o ->
                         FilterChip(
                             selected = opacity == o,
                             onClick = {
@@ -465,9 +470,8 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
-                if (jazzBg) {
-                    Banner(artSeed, opacity = opacity / 100f)
-                    OutlinedButton(onClick = { artSeed = System.nanoTime() }) { Text("Ver outra arte") }
+                if (artBg) {
+                    OutlinedButton(onClick = { artSeed = System.nanoTime() }) { Text("Ver outra paisagem na prévia") }
                 }
             }
 
@@ -682,20 +686,20 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun Banner(seed: Long, opacity: Float) {
         val art = remember(seed, opacity) {
-            JazzArt.render(1080, 380, seed, java.time.LocalTime.now().hour, opacity, 48f).asImageBitmap()
+            LandscapeRenderer.render(1080, 380, seed + 1, java.time.LocalTime.now().hour, opacity, 48f)
         }
         Box(Modifier.fillMaxWidth().height(130.dp).clip(RoundedCornerShape(20.dp))) {
-            Image(art, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            Image(art.bitmap.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             Column(Modifier.align(Alignment.CenterStart).padding(start = 20.dp)) {
                 Text(
                     "ConsigliereIA",
                     style = MaterialTheme.typography.headlineMedium,
-                    color = Color(0xFFF7EBD3),
+                    color = if (art.dark) Color(0xFFFFF8EC) else Color(0xFF1C2A24),
                 )
                 Text(
-                    "♪ ${JazzArt.trackOfTheDay()}",
+                    "🍃 ${art.label}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFF2C14E),
+                    color = if (art.dark) Color(0xFFE8EEF2) else Color(0xFF3D4E47),
                 )
             }
         }
@@ -712,32 +716,47 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun Preview(snapshot: Snapshot) {
-        Card(modifier = Modifier.fillMaxWidth()) {
+    private fun Preview(snapshot: Snapshot, seed: Long, opacity: Float, artOn: Boolean) {
+        val art = remember(seed, opacity, artOn) {
+            if (artOn) LandscapeRenderer.render(900, 1200, seed, java.time.LocalTime.now().hour, opacity, 0f) else null
+        }
+        val dark = art?.dark ?: true
+        val primary = if (dark) Color.White else Color(0xFF1C2A24)
+        val secondary = if (dark) Color(0xFFD6DEE5) else Color(0xFF3D4E47)
+        val overdueColor = if (dark) Color(0xFFFF9C93) else Color(0xFFB3261E)
+        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color(0xFF8E9A93))) {
+            if (art != null) {
+                Image(
+                    art.bitmap.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize(),
+                )
+            } else {
+                Box(Modifier.matchParentSize().background(Color(0xFF202124).copy(alpha = opacity)))
+            }
             Column(
-                Modifier.background(Color(0xFF202124)).padding(16.dp),
+                Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text("Prévia do widget", color = Color(0xFFBDC1C6))
-                if (snapshot.summary.isNotBlank()) Text(snapshot.summary, color = Color(0xFF8AB4F8))
-                if (snapshot.items.isEmpty()) Text("Nada nos próximos dias", color = Color.White)
+                Text("Prévia do widget", color = secondary)
+                if (snapshot.summary.isNotBlank()) Text(snapshot.summary, color = if (dark) Color(0xFFFFE0A3) else Color(0xFF2E6B45))
+                if (snapshot.items.isEmpty()) Text("Nada nos próximos dias", color = primary)
                 snapshot.items.take(30).forEach { item ->
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(10.dp).background(Color(item.color), CircleShape))
                             Spacer(Modifier.width(8.dp))
-                            Text(item.title, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text(item.title, color = primary, fontWeight = FontWeight.Bold, maxLines = 1)
                         }
                         Text(
                             Format.subtitle(item),
-                            color = if (item.overdue) Color(0xFFF28B82) else Color(0xFFBDC1C6),
+                            color = if (item.overdue) overdueColor else secondary,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(start = 18.dp),
                         )
                     }
                 }
-                snapshot.errors.forEach { Text(it, color = Color(0xFFF28B82)) }
-                Spacer(Modifier.height(2.dp))
+                snapshot.errors.forEach { Text(it, color = overdueColor) }
+                art?.let { Text("🍃 ${it.label}", color = secondary, style = MaterialTheme.typography.labelSmall) }
             }
         }
     }

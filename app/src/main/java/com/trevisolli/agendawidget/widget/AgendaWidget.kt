@@ -15,7 +15,7 @@ import androidx.glance.GlanceModifier
 import androidx.glance.LocalContext
 import androidx.glance.LocalSize
 import androidx.glance.layout.ContentScale
-import java.net.URLEncoder
+import androidx.glance.ColorFilter
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.action.ActionParameters
@@ -64,12 +64,25 @@ import com.trevisolli.agendawidget.data.Source
 
 private val SNAPSHOT_KEY = stringPreferencesKey("snapshot")
 private val BACKGROUND = Color(0xFF202124)
-private val PRIMARY_TEXT = Color(0xFFFFFFFF)
-private val SECONDARY_TEXT = Color(0xFFBDC1C6)
-private val OVERDUE_TEXT = Color(0xFFF28B82)
-private val SUMMARY_TEXT = Color(0xFFF2C14E)
-private val TRACK_TEXT = Color(0xCCEEE6D3)
-private val SUGGESTION_TEXT = Color(0xFFFDD663)
+
+/** Cores do texto: escuras sobre cenas claras (dia), claras sobre cenas escuras (noite). */
+private data class Ink(
+    val primary: Color,
+    val secondary: Color,
+    val summary: Color,
+    val overdue: Color,
+    val suggestion: Color,
+    val footer: Color,
+)
+
+private val LIGHT_INK = Ink(
+    primary = Color(0xFFFFFFFF), secondary = Color(0xFFD6DEE5), summary = Color(0xFFFFE0A3),
+    overdue = Color(0xFFFF9C93), suggestion = Color(0xFFFFE08A), footer = Color(0xCCE8EEF2),
+)
+private val DARK_INK = Ink(
+    primary = Color(0xFF1C2A24), secondary = Color(0xFF3D4E47), summary = Color(0xFF2E6B45),
+    overdue = Color(0xFFB3261E), suggestion = Color(0xFF8A5A00), footer = Color(0xCC3D4E47),
+)
 
 class AgendaWidget : GlanceAppWidget() {
 
@@ -138,29 +151,30 @@ private fun Content(snapshot: Snapshot) {
     val settings = Settings(context)
     val opacity = settings.widgetOpacity / 100f
     Box(modifier = GlanceModifier.fillMaxSize().cornerRadius(24.dp)) {
-        if (settings.jazzBackground) {
-            // Arte nova a cada atualização (semente = meia hora corrente), paleta conforme a hora do dia.
+        if (settings.artBackground) {
+            // Paisagem nova a cada atualização (semente = meia hora corrente); céu conforme a hora do dia.
             val density = context.resources.displayMetrics.density
             val scale = (720f / (size.width.value * density)).coerceAtMost(1f)
             val w = (size.width.value * density * scale).toInt()
             val h = (size.height.value * density * scale).toInt()
             val seed = System.currentTimeMillis() / 1_800_000L + snapshot.updatedAt / 1_800_000L
-            val art = JazzArt.render(w, h, seed, java.time.LocalTime.now().hour, opacity, 24 * density * scale)
+            val art = LandscapeRenderer.render(w, h, seed, java.time.LocalTime.now().hour, opacity, 24 * density * scale)
             Image(
-                provider = ImageProvider(art),
+                provider = ImageProvider(art.bitmap),
                 contentDescription = null,
                 contentScale = ContentScale.FillBounds,
                 modifier = GlanceModifier.fillMaxSize(),
             )
+            Body(snapshot, if (art.dark) LIGHT_INK else DARK_INK, "🍃 " + art.label)
         } else {
             Box(modifier = GlanceModifier.fillMaxSize().background(BACKGROUND.copy(alpha = opacity))) {}
+            Body(snapshot, LIGHT_INK, null)
         }
-        Body(snapshot)
     }
 }
 
 @Composable
-private fun Body(snapshot: Snapshot) {
+private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
@@ -173,17 +187,19 @@ private fun Body(snapshot: Snapshot) {
             Image(
                 provider = ImageProvider(R.drawable.ic_compass),
                 contentDescription = null,
+                colorFilter = ColorFilter.tint(ColorProvider(ink.primary)),
                 modifier = GlanceModifier.size(18.dp),
             )
             Spacer(GlanceModifier.width(6.dp))
             Text(
                 text = "ConsigliereIA",
-                style = TextStyle(color = ColorProvider(SECONDARY_TEXT), fontSize = 14.sp),
+                style = TextStyle(color = ColorProvider(ink.primary), fontSize = 14.sp, fontWeight = FontWeight.Medium),
                 modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity<MainActivity>()),
             )
             Image(
                 provider = ImageProvider(R.drawable.ic_refresh),
                 contentDescription = "Atualizar",
+                colorFilter = ColorFilter.tint(ColorProvider(ink.primary)),
                 modifier = GlanceModifier.size(20.dp).clickable(actionRunCallback<RefreshAction>()),
             )
         }
@@ -191,7 +207,7 @@ private fun Body(snapshot: Snapshot) {
             Spacer(GlanceModifier.height(4.dp))
             Text(
                 text = snapshot.summary,
-                style = TextStyle(color = ColorProvider(SUMMARY_TEXT), fontSize = 13.sp),
+                style = TextStyle(color = ColorProvider(ink.summary), fontSize = 13.sp),
                 maxLines = 2,
             )
         }
@@ -200,7 +216,7 @@ private fun Body(snapshot: Snapshot) {
             Text(
                 text = "📌 ${snapshot.pendingSuggestions} " +
                     if (snapshot.pendingSuggestions == 1) "sugestão para revisar" else "sugestões para revisar",
-                style = TextStyle(color = ColorProvider(SUGGESTION_TEXT), fontSize = 13.sp, fontWeight = FontWeight.Bold),
+                style = TextStyle(color = ColorProvider(ink.suggestion), fontSize = 13.sp, fontWeight = FontWeight.Bold),
                 modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()),
             )
         }
@@ -209,32 +225,27 @@ private fun Body(snapshot: Snapshot) {
         if (snapshot.items.isEmpty()) {
             Text(
                 text = if (snapshot.updatedAt == 0L) "Toque para configurar" else "Nada nos próximos dias",
-                style = TextStyle(color = ColorProvider(PRIMARY_TEXT), fontSize = 16.sp),
+                style = TextStyle(color = ColorProvider(ink.primary), fontSize = 16.sp),
                 modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()),
             )
         } else {
             LazyColumn(modifier = GlanceModifier.defaultWeight().fillMaxWidth()) {
-                items(snapshot.items) { item -> ItemRow(item) }
+                items(snapshot.items) { item -> ItemRow(item, ink) }
             }
         }
 
-        val track = JazzArt.trackOfTheDay()
-        Text(
-            text = "♪ $track",
-            style = TextStyle(color = ColorProvider(TRACK_TEXT), fontSize = 11.sp),
-            maxLines = 1,
-            modifier = GlanceModifier.clickable(
-                actionStartActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse("https://open.spotify.com/search/" + URLEncoder.encode(track, "UTF-8").replace("+", "%20")))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                ),
-            ),
-        )
+        if (footer != null) {
+            Text(
+                text = footer,
+                style = TextStyle(color = ColorProvider(ink.footer), fontSize = 11.sp),
+                maxLines = 1,
+            )
+        }
 
         if (snapshot.errors.isNotEmpty()) {
             Text(
                 text = snapshot.errors.joinToString("; "),
-                style = TextStyle(color = ColorProvider(OVERDUE_TEXT), fontSize = 11.sp),
+                style = TextStyle(color = ColorProvider(ink.overdue), fontSize = 11.sp),
                 maxLines = 2,
             )
         }
@@ -242,7 +253,7 @@ private fun Body(snapshot: Snapshot) {
 }
 
 @Composable
-private fun ItemRow(item: AgendaItem) {
+private fun ItemRow(item: AgendaItem, ink: Ink) {
     var modifier = GlanceModifier.fillMaxWidth().padding(vertical = 5.dp)
     openIntent(item)?.let { modifier = modifier.clickable(actionStartActivity(it)) }
     Column(modifier = modifier) {
@@ -265,7 +276,7 @@ private fun ItemRow(item: AgendaItem) {
             Text(
                 text = item.title,
                 style = TextStyle(
-                    color = ColorProvider(PRIMARY_TEXT),
+                    color = ColorProvider(ink.primary),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                 ),
@@ -275,7 +286,7 @@ private fun ItemRow(item: AgendaItem) {
         Text(
             text = Format.subtitle(item),
             style = TextStyle(
-                color = ColorProvider(if (item.overdue) OVERDUE_TEXT else SECONDARY_TEXT),
+                color = ColorProvider(if (item.overdue) ink.overdue else ink.secondary),
                 fontSize = 13.sp,
             ),
             maxLines = 1,

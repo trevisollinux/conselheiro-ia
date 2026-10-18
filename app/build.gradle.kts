@@ -12,8 +12,8 @@ android {
         applicationId = "com.trevisolli.agendawidget"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.8"
+        versionCode = 9
+        versionName = "0.9"
     }
 
     // Chave fixa e versionada: o SHA-1 precisa ser estável para o OAuth do Google Tasks.

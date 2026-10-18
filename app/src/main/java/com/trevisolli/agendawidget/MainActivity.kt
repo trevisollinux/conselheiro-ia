@@ -35,6 +35,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -49,6 +52,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -58,6 +62,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -79,7 +84,11 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import com.trevisolli.agendawidget.data.AgendaItem
 import com.trevisolli.agendawidget.data.AgendaRepository
+import com.trevisolli.agendawidget.data.Source
+import com.trevisolli.agendawidget.data.TodoistSource
+import java.time.LocalDate
 import com.trevisolli.agendawidget.data.CalendarSource
 import com.trevisolli.agendawidget.data.Format
 import com.trevisolli.agendawidget.data.GoogleTasksSource
@@ -179,6 +188,10 @@ class MainActivity : ComponentActivity() {
         var eveningHour by remember { mutableStateOf(settings.briefEveningHour) }
         var briefings by remember { mutableStateOf(Briefing.history(this)) }
         var briefBusy by remember { mutableStateOf(false) }
+        var notifyBrief by remember { mutableStateOf(settings.briefNotify) }
+        /** Tarefas concluídas nesta tela: continuam visíveis (riscadas) para poder desmarcar. */
+        val doneNow = remember { mutableStateMapOf<String, AgendaItem>() }
+        var toggling by remember { mutableStateOf<String?>(null) }
 
         var showQr by remember { mutableStateOf<Bitmap?>(null) }
         var backupMessage by remember { mutableStateOf<String?>(null) }
@@ -309,9 +322,31 @@ class MainActivity : ComponentActivity() {
             scope.launch {
                 val text = Briefing.build(this@MainActivity, slot)
                 Briefing.save(this@MainActivity, Briefing.Entry(System.currentTimeMillis(), slot, text))
-                Briefing.notify(this@MainActivity, slot, text)
+                if (settings.briefNotify) Briefing.notify(this@MainActivity, slot, text)
                 briefings = Briefing.history(this@MainActivity)
                 briefBusy = false
+            }
+        }
+
+        fun toggleTask(item: AgendaItem, done: Boolean) {
+            val id = item.taskId ?: return
+            toggling = id
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) {
+                    runCatching {
+                        if (done) TodoistSource.close(settings.todoistToken, id) else TodoistSource.reopen(settings.todoistToken, id)
+                    }.isSuccess
+                }
+                if (ok) {
+                    if (done) {
+                        doneNow[id] = item
+                        settings.logCompletion(item.title)
+                    } else {
+                        doneNow.remove(id)
+                    }
+                }
+                toggling = null
+                refresh()
             }
         }
 
@@ -328,9 +363,17 @@ class MainActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Banner(artSeed, opacity = 1f)
-            Text(
-                "Seu conselheiro de bolso. Configure as fontes e adicione o widget na tela inicial.",
-                style = MaterialTheme.typography.bodyMedium,
+
+            DayCard(
+                snapshot = snapshot,
+                briefings = briefings,
+                doneNow = doneNow.values.toList(),
+                toggling = toggling,
+                busy = briefBusy,
+                onPrepare = {
+                    briefNow(if (java.time.LocalTime.now().hour < 15) Briefing.Slot.MORNING else Briefing.Slot.EVENING)
+                },
+                onToggle = { item, done -> toggleTask(item, done) },
             )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -402,10 +445,17 @@ class MainActivity : ComponentActivity() {
 
             Section("Resumos automáticos") {
                 Text(
-                    "Uma notificação de manhã com o plano do dia e outra no fim do dia com o que foi feito, " +
-                        "o que ficou e o que vem amanhã." + if (useAi) " Escritos pela sua IA." else " Modo automático.",
+                    "De manhã, o plano do dia; no fim do dia, o que foi feito, o que ficou e o que vem amanhã. " +
+                        "Aparecem no topo do app, em \"Seu dia\"." + if (useAi) " Escritos pela sua IA." else " Modo automático.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Também avisar por notificação", modifier = Modifier.weight(1f))
+                    Switch(checked = notifyBrief, onCheckedChange = {
+                        notifyBrief = it
+                        settings.briefNotify = it
+                    })
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("☀️ Manhã", modifier = Modifier.weight(1f))
                     Switch(checked = morningOn, onCheckedChange = { morningOn = it; saveBriefSchedule() })
@@ -688,6 +738,122 @@ class MainActivity : ComponentActivity() {
                 "(pacote com.trevisolli.agendawidget + SHA-1 do README) e tente de novo em alguns minutos."
         } else {
             "Não autorizado: $msg"
+        }
+    }
+
+    /** O ConsigliereIA "falando" o resumo do dia, com a lista de hoje para marcar logo abaixo. */
+    @Composable
+    private fun DayCard(
+        snapshot: Snapshot,
+        briefings: List<Briefing.Entry>,
+        doneNow: List<AgendaItem>,
+        toggling: String?,
+        busy: Boolean,
+        onPrepare: () -> Unit,
+        onToggle: (AgendaItem, Boolean) -> Unit,
+    ) {
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now(zone)
+        fun dateOf(millis: Long) = Instant.ofEpochMilli(millis).atZone(zone).toLocalDate()
+        val brief = briefings.firstOrNull { dateOf(it.time) == today }
+        val doneIds = doneNow.mapNotNull { it.taskId }.toSet()
+        val dayItems = snapshot.items.filter { it.overdue || dateOf(it.startMillis) == today }
+        val tasks = dayItems.filter { it.source != Source.CALENDAR && it.taskId !in doneIds }
+        val events = dayItems.filter { it.source == Source.CALENDAR }
+        val hhmm = DateTimeFormatter.ofPattern("HH:mm")
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Seu dia", style = MaterialTheme.typography.titleMedium)
+
+                // Balão de conversa
+                Row(verticalAlignment = Alignment.Top) {
+                    Box(
+                        Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center,
+                    ) { Text("🧭") }
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        val who = brief?.let {
+                            "ConsigliereIA · ${it.slot.label}, ${Instant.ofEpochMilli(it.time).atZone(zone).format(hhmm)}"
+                        } ?: "ConsigliereIA"
+                        Text(who, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.height(4.dp))
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomEnd = 18.dp, bottomStart = 18.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                        ) {
+                            Text(
+                                brief?.text ?: snapshot.summary.ifBlank { "Ainda não preparei o resumo de hoje." },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                        }
+                        TextButton(onClick = onPrepare, enabled = !busy) {
+                            Text(if (busy) "Escrevendo…" else if (brief == null) "Preparar meu dia" else "Conversar de novo")
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                Text("Para hoje", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+
+                if (tasks.isEmpty() && events.isEmpty() && doneNow.isEmpty()) {
+                    Text("Nada pendente para hoje. Aproveite 🍃", style = MaterialTheme.typography.bodyMedium)
+                }
+                events.forEach { e ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+                        Box(Modifier.size(10.dp).background(Color(e.color), CircleShape))
+                        Spacer(Modifier.width(14.dp))
+                        Text(
+                            if (e.dateOnly) "dia todo" else Instant.ofEpochMilli(e.startMillis).atZone(zone).format(hhmm),
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.width(64.dp),
+                        )
+                        Text(e.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                    }
+                }
+                tasks.forEach { t ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (t.taskId != null) {
+                            Checkbox(checked = false, enabled = toggling != t.taskId, onCheckedChange = { onToggle(t, true) })
+                        } else {
+                            Spacer(Modifier.width(48.dp))
+                        }
+                        Column {
+                            Text(t.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (t.overdue) "Atrasada · ${Format.subtitle(t).substringAfter("Atrasada · ")}" else t.source.label,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (t.overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                doneNow.forEach { t ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = true, enabled = toggling != t.taskId, onCheckedChange = { onToggle(t, false) })
+                        Text(
+                            t.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            textDecoration = TextDecoration.LineThrough,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (doneNow.isNotEmpty()) {
+                    Text(
+                        "Concluída sem querer? Desmarque que ela volta no Todoist.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 

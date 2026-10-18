@@ -73,6 +73,11 @@ class Settings(context: Context) {
         get() = prefs.getInt("widget_opacity", 70)
         set(value) = prefs.edit().putInt("widget_opacity", value).apply()
 
+    /** Além de aparecer no app, o resumo também chega como notificação. */
+    var briefNotify: Boolean
+        get() = prefs.getBoolean("brief_notify", true)
+        set(value) = prefs.edit().putBoolean("brief_notify", value).apply()
+
     var briefMorningOn: Boolean
         get() = prefs.getBoolean("brief_morning", true)
         set(value) = prefs.edit().putBoolean("brief_morning", value).apply()

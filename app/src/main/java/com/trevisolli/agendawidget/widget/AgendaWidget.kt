@@ -209,6 +209,7 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
                 text = snapshot.summary,
                 style = TextStyle(color = ColorProvider(ink.summary), fontSize = 13.sp, fontWeight = FontWeight.Medium),
                 maxLines = 4,
+                modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()),
             )
         }
         if (snapshot.pendingSuggestions > 0) {

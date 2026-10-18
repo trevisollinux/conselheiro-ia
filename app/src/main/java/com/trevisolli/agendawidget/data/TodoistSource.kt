@@ -73,6 +73,15 @@ object TodoistSource {
         )
     }
 
+    /** Desfaz a conclusão (caixinha desmarcada no app). */
+    fun reopen(token: String, id: String) {
+        Http.postJson(
+            "https://api.todoist.com/api/v1/tasks/" + URLEncoder.encode(id, "UTF-8") + "/reopen",
+            mapOf("Authorization" to "Bearer $token"),
+            JSONObject(),
+        )
+    }
+
     /** Cria uma tarefa; com hora vira due_datetime (UTC), sem hora vira due_date. */
     fun create(token: String, title: String, date: LocalDate?, time: LocalTime?, description: String?) {
         val body = JSONObject().put("content", title)

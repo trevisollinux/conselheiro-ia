@@ -244,7 +244,7 @@ class BriefingWorker(context: Context, params: WorkerParameters) : CoroutineWork
         if (enabled) {
             val text = Briefing.build(applicationContext, slot)
             Briefing.save(applicationContext, Briefing.Entry(System.currentTimeMillis(), slot, text))
-            Briefing.notify(applicationContext, slot, text)
+            if (s.briefNotify) Briefing.notify(applicationContext, slot, text)
         }
         // Próximo dia: entra na fila depois deste (não cancela a execução atual).
         val hour = if (slot == Briefing.Slot.MORNING) s.briefMorningHour else s.briefEveningHour

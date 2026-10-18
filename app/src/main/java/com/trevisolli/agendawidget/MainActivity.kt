@@ -281,7 +281,15 @@ class MainActivity : ComponentActivity() {
                     val answer = withContext(Dispatchers.IO) {
                         AiClient.complete(provider, aiKey.trim(), settings.effectiveModel, "Responda em português.", "Diga apenas: funcionando")
                     }
-                    "✅ ${provider.label} respondeu: ${answer.take(60)}"
+                    val switched = AiClient.redirects[provider]
+                    if (switched != null && switched != settings.effectiveModel) {
+                        // Guarda o modelo novo para não errar de novo.
+                        settings.aiModel = switched
+                        aiModel = switched
+                        "✅ ${provider.label} respondeu: ${answer.take(60)}\n(o modelo antigo saiu de linha; troquei para $switched)"
+                    } else {
+                        "✅ ${provider.label} respondeu: ${answer.take(60)}"
+                    }
                 } catch (e: Exception) {
                     "❌ ${e.message?.take(200)}"
                 }

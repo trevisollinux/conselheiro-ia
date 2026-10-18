@@ -17,7 +17,7 @@ O widget atualiza a cada 30 min, quando a agenda muda e pelo botão ↻.
   direto do celular (sem servidor no meio); o custo vai para a sua conta.
   - Claude: console.anthropic.com → API Keys (modelo padrão `claude-opus-5-5`)
   - ChatGPT: platform.openai.com → API keys (padrão `gpt-5-mini`)
-  - Gemini: aistudio.google.com → Get API key (padrão `gemini-2.5-flash`)
+  - Gemini: aistudio.google.com → Get API key (padrão `gemini-3.8-flash`)
   - O campo "Modelo" permite trocar por outro (ex.: `claude-haiku-5-5`, mais barato).
 
 Onde a inteligência é usada:

@@ -10,20 +10,41 @@ import android.util.Base64
 enum class AiProvider(val label: String, val defaultModel: String, val keyHint: String) {
     CLAUDE("Claude", "claude-opus-5-5", "console.anthropic.com → API Keys"),
     OPENAI("ChatGPT", "gpt-5-mini", "platform.openai.com → API keys"),
-    GEMINI("Gemini", "gemini-2.5-flash", "aistudio.google.com → Get API key"),
+    GEMINI("Gemini", "gemini-3.8-flash", "aistudio.google.com → Get API key"),
 }
 
 /** Chamada única de texto para a IA escolhida pelo usuário (chave dele, sem servidor no meio). */
 object AiClient {
+    /**
+     * Modelo indicado pelo provedor quando o configurado saiu de linha
+     * (ex.: "no longer available… use models/gemini-3.8-flash"). Vale até o app fechar.
+     */
+    val redirects = java.util.concurrent.ConcurrentHashMap<AiProvider, String>()
+
+    private val SUGGESTED = Regex("use (?:models/)?([A-Za-z0-9][A-Za-z0-9._-]+)")
+
     /** [jpeg]: imagem opcional (print), já reduzida. */
     fun complete(provider: AiProvider, key: String, model: String, system: String, user: String, jpeg: ByteArray? = null): String {
         val image = jpeg?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
-        return when (provider) {
+        val first = redirects[provider] ?: model
+        return try {
+            call(provider, key, first, system, user, image)
+        } catch (e: IOException) {
+            // Modelo aposentado: tenta uma vez com o que o próprio provedor sugeriu.
+            val msg = e.message.orEmpty()
+            val suggested = SUGGESTED.find(msg)?.groupValues?.get(1)?.trimEnd('.')
+            if (!msg.startsWith("HTTP 404") || suggested == null || suggested == first) throw e
+            redirects[provider] = suggested
+            call(provider, key, suggested, system, user, image)
+        }
+    }
+
+    private fun call(provider: AiProvider, key: String, model: String, system: String, user: String, image: String?): String =
+        when (provider) {
             AiProvider.CLAUDE -> claude(key, model, system, user, image)
             AiProvider.OPENAI -> openAi(key, model, system, user, image)
             AiProvider.GEMINI -> gemini(key, model, system, user, image)
         }.trim()
-    }
 
     private fun claude(key: String, model: String, system: String, user: String, image: String?): String {
         val content = JSONArray()

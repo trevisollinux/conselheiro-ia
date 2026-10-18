@@ -450,10 +450,35 @@ class MainActivity : ComponentActivity() {
                 OutlinedTextField(
                     value = cityInput,
                     onValueChange = { cityInput = it },
-                    label = { Text("Sua cidade") },
+                    label = { Text("Sua cidade (ou use a localização)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                    if (!granted) {
+                        cityStatus = "Sem permissão de localização. Digite a cidade."
+                        return@rememberLauncherForActivityResult
+                    }
+                    cityStatus = "Localizando…"
+                    scope.launch {
+                        cityStatus = try {
+                            val place = WeatherSource.useDeviceLocation(this@MainActivity)
+                            if (place == null) {
+                                "Não consegui a localização agora. Ligue a localização ou digite a cidade."
+                            } else {
+                                withContext(Dispatchers.IO) { WeatherSource.refresh(this@MainActivity) }
+                                cityInput = place
+                                "📍 $place · " + (WeatherSource.load(this@MainActivity)?.label ?: "")
+                            }
+                        } catch (e: Exception) {
+                            "Erro: ${e.message?.take(80)}"
+                        }
+                        refresh()
+                    }
+                }
+                OutlinedButton(onClick = { locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION) }) {
+                    Text("📍 Usar minha localização")
+                }
                 Button(onClick = {
                     cityStatus = "Procurando…"
                     scope.launch {
@@ -472,7 +497,7 @@ class MainActivity : ComponentActivity() {
                         }
                         refresh()
                     }
-                }) { Text("Salvar") }
+                }) { Text("Salvar cidade") }
                 cityStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
 

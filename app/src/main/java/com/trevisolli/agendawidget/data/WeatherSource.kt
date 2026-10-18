@@ -1,6 +1,20 @@
 package com.trevisolli.agendawidget.data
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationManager
+import android.os.Build
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Locale
+import kotlin.coroutines.resume
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -43,6 +57,7 @@ object WeatherSource {
     /** Procura a cidade e guarda a coordenada. Retorna o nome encontrado, ou null. */
     fun setCity(context: Context, name: String): String? {
         val s = Settings(context)
+        s.useLocation = false
         if (name.isBlank()) {
             s.city = ""
             cache(context).delete()
@@ -58,10 +73,65 @@ object WeatherSource {
         return found
     }
 
+    fun hasLocationPermission(context: Context) =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    /** Última posição aproximada conhecida (rede/Wi-Fi), sem ligar o GPS. */
+    @SuppressLint("MissingPermission")
+    private fun lastLocation(context: Context): Location? {
+        if (!hasLocationPermission(context)) return null
+        val lm = context.getSystemService(LocationManager::class.java) ?: return null
+        return listOf(LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER, LocationManager.GPS_PROVIDER)
+            .mapNotNull { p -> runCatching { lm.getLastKnownLocation(p) }.getOrNull() }
+            .maxByOrNull { it.time }
+    }
+
+    /** Pede uma posição nova (Android 11+) ou usa a última conhecida. */
+    @SuppressLint("MissingPermission")
+    suspend fun currentLocation(context: Context): Location? {
+        if (!hasLocationPermission(context)) return null
+        val lm = context.getSystemService(LocationManager::class.java) ?: return null
+        if (Build.VERSION.SDK_INT >= 30 && lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+            val fresh = withTimeoutOrNull(10_000) {
+                suspendCancellableCoroutine<Location?> { cont ->
+                    lm.getCurrentLocation(LocationManager.NETWORK_PROVIDER, null, context.mainExecutor) { cont.resume(it) }
+                }
+            }
+            if (fresh != null) return fresh
+        }
+        return lastLocation(context)
+    }
+
+    /** Usa a localização do aparelho. Retorna o nome do lugar, ou null se não conseguiu. */
+    @Suppress("DEPRECATION")
+    suspend fun useDeviceLocation(context: Context): String? {
+        val loc = currentLocation(context) ?: return null
+        val s = Settings(context)
+        s.cityLat = loc.latitude
+        s.cityLon = loc.longitude
+        s.useLocation = true
+        val name = withContext(Dispatchers.IO) {
+            runCatching {
+                Geocoder(context, Locale("pt", "BR")).getFromLocation(loc.latitude, loc.longitude, 1)?.firstOrNull()
+                    ?.let { a -> listOfNotNull(a.locality ?: a.subAdminArea, a.adminArea).joinToString(", ") }
+            }.getOrNull()
+        }
+        s.city = name?.ifBlank { null } ?: "Minha localização"
+        cache(context).delete()
+        return s.city
+    }
+
     /** Atualiza no máximo a cada 30 min. */
     fun refresh(context: Context): Weather? {
         val s = Settings(context)
         if (s.city.isBlank()) return null
+        // No modo localização, acompanha onde o aparelho está (posição aproximada já conhecida).
+        if (s.useLocation) {
+            lastLocation(context)?.let {
+                s.cityLat = it.latitude
+                s.cityLon = it.longitude
+            }
+        }
         load(context)?.let { if (System.currentTimeMillis() - it.fetchedAt < 30 * 60_000L) return it }
         val url = "https://api.open-meteo.com/v1/forecast?latitude=${s.cityLat}&longitude=${s.cityLon}" +
             "&current=temperature_2m,weather_code,is_day" +

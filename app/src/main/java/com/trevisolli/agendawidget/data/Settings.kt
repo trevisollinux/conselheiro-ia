@@ -93,6 +93,11 @@ class Settings(context: Context) {
         get() = prefs.getString("city", "").orEmpty()
         set(value) = prefs.edit().putString("city", value.trim()).apply()
 
+    /** true = acompanha a localização do aparelho em vez da cidade digitada. */
+    var useLocation: Boolean
+        get() = prefs.getBoolean("use_location", false)
+        set(value) = prefs.edit().putBoolean("use_location", value).apply()
+
     var cityLat: Double
         get() = prefs.getFloat("city_lat", 0f).toDouble()
         set(value) = prefs.edit().putFloat("city_lat", value.toFloat()).apply()

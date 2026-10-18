@@ -239,13 +239,26 @@ private fun Body(snapshot: Snapshot, ink: Ink, @Suppress("UNUSED_PARAMETER") foo
             )
         }
         if (snapshot.summary.isNotBlank()) {
-            Spacer(GlanceModifier.height(2.dp))
-            Text(
-                text = snapshot.summary,
-                style = TextStyle(color = ColorProvider(ink.summary), fontSize = 13.sp, fontWeight = FontWeight.Medium),
-                maxLines = 3,
-                modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()),
-            )
+            // O conselho do dia em destaque: balão com barra colorida à esquerda.
+            Spacer(GlanceModifier.height(6.dp))
+            Row(
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .background(ink.summary.copy(alpha = 0.16f))
+                    .cornerRadius(14.dp)
+                    .clickable(actionStartActivity<MainActivity>()),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = GlanceModifier.width(4.dp).height(56.dp).background(ink.summary).cornerRadius(2.dp),
+                ) {}
+                Text(
+                    text = snapshot.summary,
+                    style = TextStyle(color = ColorProvider(ink.summary), fontSize = 15.sp, fontWeight = FontWeight.Bold),
+                    maxLines = 4,
+                    modifier = GlanceModifier.defaultWeight().padding(horizontal = 10.dp, vertical = 8.dp),
+                )
+            }
         }
         if (snapshot.pendingSuggestions > 0) {
             Spacer(GlanceModifier.height(4.dp))

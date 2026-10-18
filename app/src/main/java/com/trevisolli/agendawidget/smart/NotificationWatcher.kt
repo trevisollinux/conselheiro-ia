@@ -42,9 +42,13 @@ class NotificationWatcher : NotificationListenerService() {
         if (body.length < 6) return
         val sender = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
         val label = if (sender.isBlank()) origin else "$origin · $sender"
+        val isEmail = sbn.packageName in EMAIL_APPS
 
         scope.launch {
-            val suggestion = Brain.fromNotification(applicationContext, body, label) ?: return@launch
+            InboxStore.add(applicationContext, InboxStore.Msg(origin, sender, body, System.currentTimeMillis()))
+            // E-mails automáticos (avisos do Google, login, propaganda, códigos) não viram sugestão.
+            if (isEmail && AUTOMATED.containsMatchIn((sender + " " + body).lowercase())) return@launch
+            val suggestion = Brain.fromNotification(applicationContext, body, label, strict = isEmail) ?: return@launch
             if (SuggestionStore.add(applicationContext, suggestion)) {
                 notifySuggestion(applicationContext, suggestion)
                 RefreshWorker.runNow(applicationContext)
@@ -59,6 +63,16 @@ class NotificationWatcher : NotificationListenerService() {
 
     companion object {
         private const val CHANNEL = "suggestions"
+
+        private val EMAIL_APPS = setOf("com.google.android.gm", "com.microsoft.office.outlook")
+
+        private val AUTOMATED = Regex(
+            "no-?reply|nao-?responda|não responda|noreply|notifica|newsletter|você está recebendo este e-mail|" +
+                "voce esta recebendo|fazer login|login com o google|alerta de segurança|alerta de seguranca|" +
+                "código de verificação|codigo de verificacao|redefinir (a )?senha|cancelar inscrição|cancelar inscricao|" +
+                "unsubscribe|promoção|promocao|oferta|desconto|cupom|% off|sua fatura|seu pedido|rastreio|" +
+                "compartilhou alguns dados|conta do google",
+        )
 
         val WATCHED = mapOf(
             "com.whatsapp" to "WhatsApp",

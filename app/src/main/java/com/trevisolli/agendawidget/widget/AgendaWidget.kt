@@ -56,6 +56,7 @@ import com.trevisolli.agendawidget.data.AgendaItem
 import com.trevisolli.agendawidget.data.AgendaRepository
 import com.trevisolli.agendawidget.data.Format
 import com.trevisolli.agendawidget.data.Range
+import com.trevisolli.agendawidget.data.WidgetTheme
 import com.trevisolli.agendawidget.smart.ChatStore
 import com.trevisolli.agendawidget.ChatActivity
 import com.trevisolli.agendawidget.data.Settings
@@ -174,20 +175,20 @@ private fun Content(snapshot: Snapshot) {
         val scale = (720f / (size.width.value * density)).coerceAtMost(1f)
         val w = (size.width.value * density * scale).toInt()
         val h = (size.height.value * density * scale).toInt()
-        val seed = System.currentTimeMillis() / 1_800_000L + snapshot.updatedAt / 1_800_000L
-        val art = Backgrounds.render(settings, w, h, seed, java.time.LocalTime.now().hour, 24 * density * scale)
+        val art = Backgrounds.render(context, w, h, java.time.LocalTime.now().hour, 24 * density * scale)
         Image(
             provider = ImageProvider(art.bitmap),
             contentDescription = null,
             contentScale = ContentScale.FillBounds,
             modifier = GlanceModifier.fillMaxSize(),
         )
-        Body(snapshot, if (art.dark) LIGHT_INK else DARK_INK, null)
+        // Legenda só para obras de arte (título — artista).
+        Body(snapshot, if (art.dark) LIGHT_INK else DARK_INK, art.label.takeIf { settings.widgetTheme == WidgetTheme.ART && it.isNotBlank() })
     }
 }
 
 @Composable
-private fun Body(snapshot: Snapshot, ink: Ink, @Suppress("UNUSED_PARAMETER") footer: String?) {
+private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
     val context = LocalContext.current
     val settings = Settings(context)
     val range = Range.entries.firstOrNull { it.name == currentState<Preferences>()[RANGE_KEY] } ?: settings.widgetRange
@@ -319,6 +320,13 @@ private fun Body(snapshot: Snapshot, ink: Ink, @Suppress("UNUSED_PARAMETER") foo
             Text(
                 text = snapshot.errors.joinToString("; "),
                 style = TextStyle(color = ColorProvider(ink.overdue), fontSize = 11.sp),
+                maxLines = 1,
+            )
+        }
+        if (footer != null) {
+            Text(
+                text = "🖼 $footer",
+                style = TextStyle(color = ColorProvider(ink.footer), fontSize = 10.sp),
                 maxLines = 1,
             )
         }

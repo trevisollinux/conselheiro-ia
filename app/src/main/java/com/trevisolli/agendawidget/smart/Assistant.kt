@@ -7,6 +7,7 @@ import com.trevisolli.agendawidget.data.CalendarWriter
 import com.trevisolli.agendawidget.data.Format
 import com.trevisolli.agendawidget.data.Settings
 import com.trevisolli.agendawidget.data.TodoistSource
+import com.trevisolli.agendawidget.data.WeatherSource
 import com.trevisolli.agendawidget.widget.AgendaWidget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -218,7 +219,8 @@ object Assistant {
             "Regras: se o usuário falar em agenda/calendário, consulta, reunião, exame ou algo para comparecer, use create_event. " +
             "Se for algo a fazer (comprar, pagar, ligar, lembrar), use create_task. Pode criar várias ações. " +
             "Títulos curtos, sem a data. Datas relativas (amanhã, sexta) a partir de hoje. " +
-            "Se for pergunta sobre a agenda, responda com base na lista e deixe actions vazio. " +
+            "Se for pergunta sobre a agenda, o tempo ou as mensagens recebidas (WhatsApp, e-mail), responda com base nos dados " +
+            "fornecidos e deixe actions vazio. Ao criar algo ao ar livre com chuva prevista, avise no reply. " +
             "O reply confirma em até 2 frases; não repita a lista do que foi criado (o app mostra)."
 
     private fun aiPlan(context: Context, text: String, items: List<AgendaItem>, history: List<ChatMessage>): Plan {
@@ -231,6 +233,8 @@ object Assistant {
             append("Agenda e tarefas (atrasadas e próximos dias):\n")
             items.take(40).forEach { append("- ${it.title} (${Format.subtitle(it)})\n") }
             if (items.isEmpty()) append("(vazia)\n")
+            WeatherSource.load(context)?.let { append(WeatherSource.forecastLine(it)).append("\n") }
+            append(InboxStore.promptBlock(InboxStore.recent(context, hours = 24)))
             if (history.isNotEmpty()) {
                 append("Conversa recente:\n")
                 history.forEach { append(if (it.fromUser) "Usuário: " else "Você: ").append(it.text.take(200)).append("\n") }

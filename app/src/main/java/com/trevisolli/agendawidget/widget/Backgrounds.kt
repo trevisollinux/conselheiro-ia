@@ -1,27 +1,97 @@
 package com.trevisolli.agendawidget.widget
 
+import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Rect
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
+import com.trevisolli.agendawidget.data.ArtSource
 import com.trevisolli.agendawidget.data.Settings
+import com.trevisolli.agendawidget.data.WeatherSource
 import com.trevisolli.agendawidget.data.WidgetTheme
 
 /** Fundo do widget conforme o tema escolhido: paisagem, cor lisa ou papel. */
 object Backgrounds {
 
-    fun render(settings: Settings, width: Int, height: Int, seed: Long, hour: Int, cornerPx: Float): LandscapeRenderer.Result {
+    /** Semente da cena: muda no intervalo escolhido (30 min, 1 h, 3 h…). */
+    fun seed(settings: Settings): Long = System.currentTimeMillis() / (settings.rotateMinutes.coerceAtLeast(30) * 60_000L)
+
+    fun weatherFor(context: Context): LandscapeArt.Weather = when (WeatherSource.load(context)?.mood) {
+        WeatherSource.Mood.RAIN -> LandscapeArt.Weather.RAIN
+        WeatherSource.Mood.STORM -> LandscapeArt.Weather.STORM
+        WeatherSource.Mood.CLOUDY -> LandscapeArt.Weather.CLOUDY
+        WeatherSource.Mood.FOG -> LandscapeArt.Weather.FOG
+        WeatherSource.Mood.HOT -> LandscapeArt.Weather.HOT
+        else -> LandscapeArt.Weather.CLEAR
+    }
+
+    fun render(context: Context, width: Int, height: Int, hour: Int, cornerPx: Float, seedOverride: Long? = null): LandscapeRenderer.Result {
+        val settings = Settings(context)
         val opacity = settings.widgetOpacity / 100f
-        return when (val theme = settings.widgetTheme) {
-            WidgetTheme.LANDSCAPE -> {
+        val seed = seedOverride ?: seed(settings)
+        val theme = settings.widgetTheme
+        if (theme == WidgetTheme.ART) {
+            artwork(context, settings, width.coerceAtLeast(64), height.coerceAtLeast(64), opacity, cornerPx)?.let { return it }
+        }
+        return when (theme) {
+            WidgetTheme.LANDSCAPE, WidgetTheme.ART -> {
                 val fixed = LandscapeArt.Scene.entries.firstOrNull { it.name == settings.sceneChoice }
-                LandscapeRenderer.render(width, height, seed, hour, opacity, cornerPx, fixed ?: LandscapeArt.sceneFor(seed))
+                LandscapeRenderer.render(
+                    width, height, seed, hour, opacity, cornerPx,
+                    fixed ?: LandscapeArt.sceneFor(seed), weatherFor(context),
+                )
             }
             else -> paper(theme, width.coerceAtLeast(64), height.coerceAtLeast(64), opacity, cornerPx)
         }
+    }
+
+    /** Obra baixada, recortada para preencher o widget, com véu para o texto. Null se ainda não há obra. */
+    private fun artwork(context: Context, settings: Settings, w: Int, h: Int, opacity: Float, corner: Float): LandscapeRenderer.Result? {
+        val file = ArtSource.imageFile(context)
+        if (!file.exists()) return null
+        val src = BitmapFactory.decodeFile(file.path) ?: return null
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        c.clipPath(Path().apply { addRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), corner, corner, Path.Direction.CW) })
+        c.saveLayerAlpha(0f, 0f, w.toFloat(), h.toFloat(), (opacity.coerceIn(0f, 1f) * 255).toInt())
+        // Recorte central (como "center crop").
+        val scale = maxOf(w / src.width.toFloat(), h / src.height.toFloat())
+        val sw = w / scale
+        val sh = h / scale
+        val left = (src.width - sw) / 2
+        val top = (src.height - sh) / 2
+        c.drawBitmap(src, Rect(left.toInt(), top.toInt(), (left + sw).toInt(), (top + sh).toInt()), Rect(0, 0, w, h), Paint(Paint.FILTER_BITMAP_FLAG))
+        val dark = luminance(src) < 0.55f
+        val veil = Paint().apply { color = if (dark) 0x73000000 else 0x8CFFFFFF.toInt() }
+        c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), veil)
+        c.restore()
+        src.recycle()
+        return LandscapeRenderer.Result(bmp, dark = dark, label = settings.artCaption)
+    }
+
+    /** Brilho médio (0..1) por amostragem. */
+    private fun luminance(b: Bitmap): Float {
+        var sum = 0.0
+        var n = 0
+        val stepX = (b.width / 24).coerceAtLeast(1)
+        val stepY = (b.height / 24).coerceAtLeast(1)
+        var y = 0
+        while (y < b.height) {
+            var x = 0
+            while (x < b.width) {
+                val px = b.getPixel(x, y)
+                sum += (0.299 * (px shr 16 and 0xFF) + 0.587 * (px shr 8 and 0xFF) + 0.114 * (px and 0xFF)) / 255.0
+                n++
+                x += stepX
+            }
+            y += stepY
+        }
+        return if (n == 0) 0.5f else (sum / n).toFloat()
     }
 
     private fun paper(theme: WidgetTheme, w: Int, h: Int, opacity: Float, corner: Float): LandscapeRenderer.Result {

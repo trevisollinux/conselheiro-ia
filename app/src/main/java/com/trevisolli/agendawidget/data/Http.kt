@@ -16,6 +16,24 @@ internal object Http {
 
     fun delete(url: String, headers: Map<String, String>): JSONObject = request("DELETE", url, headers, null)
 
+    /** GET JSON sem autenticação (APIs públicas). */
+    fun getPublic(url: String): JSONObject = request("GET", url, mapOf("User-Agent" to USER_AGENT), null)
+
+    fun getBytes(url: String): ByteArray {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        try {
+            conn.connectTimeout = 20_000
+            conn.readTimeout = 60_000
+            conn.setRequestProperty("User-Agent", USER_AGENT)
+            if (conn.responseCode !in 200..299) throw IOException("HTTP ${conn.responseCode}")
+            return conn.inputStream.use { it.readBytes() }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private const val USER_AGENT = "ConsigliereIA/1.0 (app pessoal)"
+
     private fun request(method: String, url: String, headers: Map<String, String>, body: JSONObject?): JSONObject {
         val conn = URL(url).openConnection() as HttpURLConnection
         try {

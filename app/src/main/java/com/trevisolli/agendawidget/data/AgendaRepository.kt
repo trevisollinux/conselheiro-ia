@@ -34,6 +34,20 @@ object AgendaRepository {
                 errors += "Todoist: ${e.message}"
             }
         }
+        if (settings.city.isNotBlank()) {
+            try {
+                WeatherSource.refresh(context)
+            } catch (e: Exception) {
+                errors += "Tempo: ${e.message?.take(80)}"
+            }
+        }
+        if (settings.widgetTheme == WidgetTheme.ART) {
+            try {
+                ArtSource.refreshIfDue(context)
+            } catch (e: Exception) {
+                errors += "Arte: ${e.message?.take(80)}"
+            }
+        }
         if (settings.notionToken.isNotBlank()) {
             try {
                 NotionScanner.scan(context)

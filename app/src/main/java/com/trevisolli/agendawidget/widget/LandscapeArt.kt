@@ -88,10 +88,38 @@ object LandscapeArt {
 
     fun sceneFor(seed: Long): Scene = Scene.entries[Random(seed).nextInt(Scene.entries.size)]
 
+    /** Tempo lá fora, para a cena acompanhar (chuva, nublado, calor…). */
+    enum class Weather(val label: String) {
+        CLEAR(""), HOT("Calor"), CLOUDY("Nublado"), FOG("Neblina"), RAIN("Chuva"), STORM("Tempestade")
+    }
+
+    /** Céu acinzentado para dias nublados/chuvosos. */
+    private fun overcast(sky: Sky, amount: Float): Sky {
+        val grey = if (sky.dark) 0xFF2A2F3A.toInt() else 0xFF9AA5B1.toInt()
+        return sky.copy(
+            gradient = sky.gradient.map { mix(it, grey, amount) }.toIntArray(),
+            light = mix(sky.light, grey, amount),
+            cloud = mix(sky.cloud, if (sky.dark) 0xFF4A5060.toInt() else 0xFFD3D8DE.toInt(), amount),
+            cloudShade = mix(sky.cloudShade, if (sky.dark) 0xFF2E3340.toInt() else 0xFF9AA3AE.toInt(), amount),
+            far = mix(sky.far, grey, amount * 0.5f),
+            mid = mix(sky.mid, grey, amount * 0.3f),
+            near = mix(sky.near, grey, amount * 0.2f),
+            sea = mix(sky.sea, grey, amount * 0.5f),
+        )
+    }
+
     /** Desenha a cena inteira. Retorna se o resultado é escuro (texto claro por cima). */
-    fun draw(p: Painter, seed: Long, hour: Int, scene: Scene = sceneFor(seed)): Boolean {
+    fun draw(p: Painter, seed: Long, hour: Int, scene: Scene = sceneFor(seed), weather: Weather = Weather.CLEAR): Boolean {
         val rnd = Random(seed * 31 + 7)
-        val sky = skyFor(hour)
+        val base = skyFor(hour)
+        val sky = when (weather) {
+            Weather.RAIN -> overcast(base, 0.55f)
+            Weather.STORM -> overcast(base, 0.7f)
+            Weather.CLOUDY -> overcast(base, 0.35f)
+            Weather.FOG -> overcast(base, 0.45f)
+            else -> base
+        }
+        val wet = weather == Weather.RAIN || weather == Weather.STORM
         val w = p.width.toFloat()
         val h = p.height.toFloat()
         val unit = min(w, h)
@@ -103,10 +131,18 @@ object LandscapeArt {
         val lx = w * (0.62f + rnd.nextFloat() * 0.25f)
         val ly = h * (0.12f + rnd.nextFloat() * 0.18f)
         val lr = unit * (0.06f + rnd.nextFloat() * 0.03f)
-        p.glow(lx, ly, lr * 5f, withAlpha(sky.light, 150), withAlpha(sky.light, 0))
-        p.circle(lx, ly, lr, withAlpha(sky.light, 235))
+        if (!wet) {
+            val heat = if (weather == Weather.HOT) 1.6f else 1f
+            p.glow(lx, ly, lr * 5f * heat, withAlpha(sky.light, if (weather == Weather.CLOUDY) 80 else 150), withAlpha(sky.light, 0))
+            p.circle(lx, ly, lr * heat.coerceAtMost(1.3f), withAlpha(sky.light, if (weather == Weather.CLOUDY) 140 else 235))
+        }
 
-        val cloudCount = if (sky === NIGHT) 2 else 3 + rnd.nextInt(3)
+        val cloudCount = when {
+            wet || weather == Weather.CLOUDY -> 5 + rnd.nextInt(3)
+            weather == Weather.HOT -> 1
+            base === NIGHT -> 2
+            else -> 3 + rnd.nextInt(3)
+        }
         repeat(cloudCount) {
             val cw = w * (0.3f + rnd.nextFloat() * 0.35f)
             cloud(p, rnd, w * (rnd.nextFloat() * 1.1f - 0.05f), h * (0.1f + rnd.nextFloat() * 0.35f), cw, sky)
@@ -116,11 +152,16 @@ object LandscapeArt {
             Scene.HILLS -> hills(p, rnd, w, h, sky, tree = true, flowers = false)
             Scene.MEADOW -> hills(p, rnd, w, h, sky, tree = false, flowers = true)
             Scene.SEASIDE -> seaside(p, rnd, w, h, sky)
-            Scene.FOREST -> forest(p, rnd, w, h, sky)
+            Scene.FOREST -> forest(p, rnd, w, h, sky, rays = weather == Weather.CLEAR || weather == Weather.HOT)
             Scene.LAKE -> lake(p, rnd, w, h, sky)
         }
 
-        if (sky.dark) fireflies(p, rnd, w, h)
+        if (sky.dark && !wet) fireflies(p, rnd, w, h)
+        if (wet) rain(p, rnd, w, h, weather == Weather.STORM, sky.dark)
+        if (weather == Weather.STORM) lightning(p, rnd, w, h)
+        if (weather == Weather.FOG) {
+            p.verticalGradient(h * 0.35f, h, intArrayOf(0x00FFFFFF, 0x99E6EAEE.toInt(), 0xCCE6EAEE.toInt()), floatArrayOf(0f, 0.6f, 1f))
+        }
         return sky.dark
     }
 
@@ -276,8 +317,8 @@ object LandscapeArt {
         house(p, rnd, w * 0.82f, cliffTop - h * 0.02f, min(w, h) * 0.08f, sky)
     }
 
-    private fun forest(p: Painter, rnd: Random, w: Float, h: Float, sky: Sky) {
-        if (!sky.dark) {
+    private fun forest(p: Painter, rnd: Random, w: Float, h: Float, sky: Sky, rays: Boolean) {
+        if (!sky.dark && rays) {
             repeat(4) {
                 val x = w * (0.1f + rnd.nextFloat() * 0.5f)
                 val spread = w * (0.08f + rnd.nextFloat() * 0.1f)
@@ -356,6 +397,36 @@ object LandscapeArt {
             p.circle(x, yy - r * 1.1f, r * 0.75f, treeColor)
         }
         if (rnd.nextBoolean()) house(p, rnd, w * (0.15f + rnd.nextFloat() * 0.3f), y + unit * 0.01f, unit * 0.035f, sky)
+    }
+
+    private fun rain(p: Painter, rnd: Random, w: Float, h: Float, heavy: Boolean, dark: Boolean) {
+        val color = if (dark) 0x66C8D6E8 else 0x80FFFFFF.toInt()
+        repeat(if (heavy) 220 else 140) {
+            val x = rnd.nextFloat() * (w + h * 0.3f) - h * 0.15f
+            val y = rnd.nextFloat() * h
+            val len = h * (0.025f + rnd.nextFloat() * 0.03f)
+            p.line(x, y, x - len * 0.25f, y + len, 1.3f, color)
+        }
+        // Gotinhas batendo no chão
+        repeat(25) {
+            val x = rnd.nextFloat() * w
+            val y = h * (0.9f + rnd.nextFloat() * 0.1f)
+            p.line(x - 3f, y, x + 3f, y, 1f, color)
+        }
+    }
+
+    private fun lightning(p: Painter, rnd: Random, w: Float, h: Float) {
+        var x = w * (0.55f + rnd.nextFloat() * 0.35f)
+        var y = h * 0.12f
+        val color = 0xDDFFF6B0.toInt()
+        p.glow(x, y, h * 0.25f, 0x55FFF6B0, 0x00FFF6B0)
+        while (y < h * 0.55f) {
+            val nx = x + (rnd.nextFloat() - 0.5f) * w * 0.08f
+            val ny = y + h * (0.04f + rnd.nextFloat() * 0.05f)
+            p.line(x, y, nx, ny, 3f, color)
+            x = nx
+            y = ny
+        }
     }
 
     private fun fireflies(p: Painter, rnd: Random, w: Float, h: Float) {

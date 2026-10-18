@@ -25,7 +25,8 @@ object Brain {
             "\"time\": \"HH:MM\" ou null, \"duration_min\": número ou null, \"kind\": \"event\" ou \"task\"}. " +
             "title: curto (até 50 caracteres), no infinitivo ou substantivo, sem a data. " +
             "kind = event quando tem hora marcada ou é algo para comparecer; task quando é algo a fazer. " +
-            "found = false se a mensagem não contém nenhum compromisso, prazo ou tarefa concreta."
+            "found = false se a mensagem não contém nenhum compromisso, prazo ou tarefa concreta, " +
+            "se for aviso automático (login, segurança, propaganda, recibo, código) ou se a data/hora já passou."
 
     fun rules(text: String, origin: String): Suggestion {
         val r = RuleParser.parse(text)
@@ -80,9 +81,15 @@ object Brain {
      * Mensagem de notificação: as regras filtram primeiro (barato e local);
      * só o que passa no filtro vai para a IA, se ela estiver ligada.
      */
-    fun fromNotification(context: Context, text: String, origin: String): Suggestion? {
+    fun fromNotification(context: Context, text: String, origin: String, strict: Boolean = false): Suggestion? {
         val r = RuleParser.parse(text)
         if (!RuleParser.isStrong(r)) return null
+        // E-mail: exige palavra de compromisso ("consulta", "reunião"…), não só data e hora.
+        if (strict && !r.hasKeyword) return null
+        // Data/hora que já passou não é compromisso (ex.: "você entrou às 12:36").
+        val today = LocalDate.now()
+        if (r.date != null && r.date.isBefore(today)) return null
+        if ((r.date == null || r.date == today) && r.time != null && r.time.isBefore(LocalTime.now())) return null
         if (!Settings(context).aiReady) return rules(text, origin)
         return try {
             ai(context, text, origin)

@@ -8,6 +8,8 @@ import android.os.Bundle
 import android.provider.CalendarContract
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -70,6 +72,7 @@ class ConfirmActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         val storedId = intent.getStringExtra(EXTRA_SUGGESTION_ID)
         val stored = storedId?.let { SuggestionStore.get(this, it) }
         val isSend = intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_PROCESS_TEXT
@@ -215,7 +218,7 @@ class ConfirmActivity : ComponentActivity() {
         }
 
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+            modifier = Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Nova sugestão", style = MaterialTheme.typography.headlineSmall)

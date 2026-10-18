@@ -5,6 +5,7 @@ import com.trevisolli.agendawidget.data.AgendaItem
 import com.trevisolli.agendawidget.data.Format
 import com.trevisolli.agendawidget.data.Settings
 import com.trevisolli.agendawidget.data.Source
+import com.trevisolli.agendawidget.data.WeatherSource
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -47,26 +48,32 @@ object Summary {
 
     private const val SUMMARY_SYSTEM =
         "Você é o ConsigliereIA, um conselheiro pessoal direto. Recebe a agenda e as tarefas do usuário e escreve UMA frase " +
-            "em português do Brasil, com no máximo 140 caracteres, dizendo como está o dia e o que priorizar. " +
+            "em português do Brasil, com no máximo 150 caracteres, dizendo como está o dia e o que priorizar. " +
+            "Se o tempo pedir (chuva no horário de um compromisso, calor forte), inclua o conselho prático, ex.: leve guarda-chuva. " +
             "Sem saudação, sem emojis em excesso (no máximo 1), sem markdown."
 
     /** Resumo por IA, com cache: só chama de novo quando a lista ou o dia muda. Cai para as regras em caso de erro. */
     fun build(context: Context, items: List<AgendaItem>, errors: MutableList<String>): String {
         val settings = Settings(context)
-        val ruleText = rules(items)
+        val weather = WeatherSource.load(context)
+        val advice = weather?.let { WeatherSource.advice(it, items) }
+        val ruleText = rules(items) + (advice?.let { " $it" } ?: "")
         if (!settings.aiReady) return ruleText
 
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
         val relevant = items.filter { it.overdue || !dateOf(it, zone).isAfter(today.plusDays(1)) }.take(25)
-        val key = settings.aiProvider.name + today + relevant.joinToString("|") { it.title + it.startMillis + it.overdue }.hashCode()
+        val key = settings.aiProvider.name + today + (advice ?: "") + weather?.mood +
+            relevant.joinToString("|") { it.title + it.startMillis + it.overdue }.hashCode()
         if (key == settings.summaryCacheKey && settings.summaryCacheText.isNotBlank()) return settings.summaryCacheText
 
         val list = if (relevant.isEmpty()) "(nada agendado para hoje e amanhã)" else relevant.joinToString("\n") {
             "- ${it.title} (${Format.subtitle(it)})"
         }
         val prompt = "Agora: ${java.time.LocalDateTime.now(zone).format(DateTimeFormatter.ofPattern("EEEE dd/MM HH:mm", java.util.Locale("pt", "BR")))}\n" +
-            "Itens (atrasadas, hoje e amanhã):\n$list"
+            "Itens (atrasadas, hoje e amanhã):\n$list" +
+            (weather?.let { "\n" + WeatherSource.forecastLine(it) } ?: "") +
+            (advice?.let { "\nConselho de tempo já calculado: $it" } ?: "")
         return try {
             val text = AiClient.complete(settings.aiProvider, settings.aiKey, settings.effectiveModel, SUMMARY_SYSTEM, prompt)
                 .lines().firstOrNull { it.isNotBlank() }?.trim()?.take(200)

@@ -24,6 +24,7 @@ import com.trevisolli.agendawidget.data.AgendaRepository
 import com.trevisolli.agendawidget.data.Settings
 import com.trevisolli.agendawidget.data.Source
 import com.trevisolli.agendawidget.data.TodoistSource
+import com.trevisolli.agendawidget.data.WeatherSource
 import com.trevisolli.agendawidget.widget.AgendaWidget
 import org.json.JSONArray
 import org.json.JSONObject
@@ -62,15 +63,23 @@ object Briefing {
             settings.completionsToday()
         }
 
+        val weather = WeatherSource.load(context)
+        val advice = weather?.let { WeatherSource.advice(it, snapshot.items) }
+        val inbox = InboxStore.recent(context, hours = if (slot == Slot.MORNING) 14 else 12)
         val ruleText = when (slot) {
             Slot.MORNING -> morningRules(snapshot.items, today, zone)
             Slot.EVENING -> eveningRules(snapshot.items, completed, today, zone)
-        }
+        } + (weather?.let { "\n🌤 ${it.label}" } ?: "") + (advice?.let { "\n$it" } ?: "") +
+            InboxStore.countsLine(inbox)?.let { "\n$it" }.orEmpty()
         if (!settings.aiReady) return ruleText
         return try {
             val text = AiClient.complete(
                 settings.aiProvider, settings.aiKey, settings.effectiveModel,
-                SYSTEM, aiPrompt(slot, snapshot.items, completed, today, zone),
+                SYSTEM,
+                aiPrompt(slot, snapshot.items, completed, today, zone) +
+                    (weather?.let { WeatherSource.forecastLine(it) + "\n" } ?: "") +
+                    (advice?.let { "Conselho de tempo: $it\n" } ?: "") +
+                    InboxStore.promptBlock(inbox),
             ).trim()
             text.ifBlank { ruleText }
         } catch (e: Exception) {
@@ -132,7 +141,9 @@ object Briefing {
         "Você é o ConsigliereIA, um conselheiro pessoal calmo e acolhedor, direto e sem enrolação. " +
             "Escreva em português do Brasil, no máximo 5 linhas curtas, usando tópicos com '•' quando listar. " +
             "Manhã: o plano do dia e a prioridade número 1. Fim do dia: o que foi feito, o que ficou e o que vem amanhã. " +
-            "Pode usar no máximo uma imagem curta de natureza (vento, chuva, sol). Sem markdown além dos '•'."
+            "Se o tempo pedir, dê o conselho prático (guarda-chuva, calor). Se houver mensagens recebidas, destaque no máximo 3 " +
+            "que pedem ação (quem e o quê, em poucas palavras) e ignore propaganda e avisos automáticos. " +
+            "Pode usar no máximo uma imagem curta de natureza. Sem markdown além dos '•'."
 
     private fun aiPrompt(slot: Slot, items: List<AgendaItem>, completed: List<String>, today: LocalDate, zone: ZoneId): String {
         val relevant = items.filter { it.overdue || !dateOf(it, zone).isAfter(today.plusDays(1)) }.take(30)

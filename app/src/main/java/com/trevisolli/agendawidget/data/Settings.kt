@@ -79,6 +79,41 @@ class Settings(context: Context) {
         get() = prefs.getString("scene_choice", "").orEmpty()
         set(value) = prefs.edit().putString("scene_choice", value).apply()
 
+    var artStyle: ArtStyle
+        get() = ArtStyle.entries.firstOrNull { it.name == prefs.getString("art_style", null) } ?: ArtStyle.GENERAL
+        set(value) = prefs.edit().putString("art_style", value.name).apply()
+
+    /** De quanto em quanto tempo a paisagem/obra muda. */
+    var rotateMinutes: Int
+        get() = prefs.getInt("rotate_minutes", 60)
+        set(value) = prefs.edit().putInt("rotate_minutes", value).apply()
+
+    /** Cidade para a previsão do tempo (vazio = sem clima). */
+    var city: String
+        get() = prefs.getString("city", "").orEmpty()
+        set(value) = prefs.edit().putString("city", value.trim()).apply()
+
+    var cityLat: Double
+        get() = prefs.getFloat("city_lat", 0f).toDouble()
+        set(value) = prefs.edit().putFloat("city_lat", value.toFloat()).apply()
+
+    var cityLon: Double
+        get() = prefs.getFloat("city_lon", 0f).toDouble()
+        set(value) = prefs.edit().putFloat("city_lon", value.toFloat()).apply()
+
+    /** Estado da obra de arte atual. */
+    var artFetchedAt: Long
+        get() = prefs.getLong("art_fetched_at", 0)
+        set(value) = prefs.edit().putLong("art_fetched_at", value).apply()
+
+    var artFetchedStyle: String
+        get() = prefs.getString("art_fetched_style", "").orEmpty()
+        set(value) = prefs.edit().putString("art_fetched_style", value).apply()
+
+    var artCaption: String
+        get() = prefs.getString("art_caption", "").orEmpty()
+        set(value) = prefs.edit().putString("art_caption", value).apply()
+
     /** Opacidade do fundo do widget, em %. */
     var widgetOpacity: Int
         get() = prefs.getInt("widget_opacity", 70)
@@ -157,6 +192,9 @@ class Settings(context: Context) {
             .put("detect", detectNotifications)
             .put("notion", notionToken)
             .put("name", userName)
+            .put("city", city)
+            .put("lat", cityLat)
+            .put("lon", cityLon)
         return PREFIX + Base64.encodeToString(json.toString().toByteArray(), Base64.NO_WRAP)
     }
 
@@ -177,6 +215,9 @@ class Settings(context: Context) {
         detectNotifications = json.optBoolean("detect")
         notionToken = json.optString("notion")
         userName = json.optString("name")
+        city = json.optString("city")
+        cityLat = json.optDouble("lat", 0.0)
+        cityLon = json.optDouble("lon", 0.0)
         notionLastScan = 0
         summaryCacheKey = ""
         return true
@@ -203,8 +244,17 @@ enum class Range(val label: String, val days: Long) {
 
 enum class WidgetTheme(val label: String) {
     LANDSCAPE("Paisagem"),
+    ART("Obras de arte"),
     LIGHT("Claro"),
     DARK("Escuro"),
     NOTEBOOK("Caderno"),
     POSTIT("Post-it"),
+}
+
+/** Estilos de obra (Art Institute of Chicago, domínio público, sem chave). */
+enum class ArtStyle(val label: String, val query: String) {
+    GENERAL("Geral", "landscape"),
+    JAPANESE("Japonesa", "Hiroshige Hokusai woodblock"),
+    RENAISSANCE("Renascença", "Renaissance"),
+    IMPRESSIONISM("Impressionismo", "Impressionism"),
 }

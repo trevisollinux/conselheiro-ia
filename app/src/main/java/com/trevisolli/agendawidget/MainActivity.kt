@@ -27,6 +27,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import com.trevisolli.agendawidget.data.CalendarWriter
 import com.trevisolli.agendawidget.data.Range
 import com.trevisolli.agendawidget.data.WidgetTheme
+import com.trevisolli.agendawidget.data.ArtStyle
+import com.trevisolli.agendawidget.data.WeatherSource
 import com.trevisolli.agendawidget.widget.Backgrounds
 import com.trevisolli.agendawidget.widget.LandscapeArt
 import com.trevisolli.agendawidget.ui.APP_COLORS
@@ -179,6 +181,10 @@ class MainActivity : ComponentActivity() {
 
         var theme by remember { mutableStateOf(settings.widgetTheme) }
         var scene by remember { mutableStateOf(settings.sceneChoice) }
+        var artStyle by remember { mutableStateOf(settings.artStyle) }
+        var rotate by remember { mutableStateOf(settings.rotateMinutes) }
+        var cityInput by remember { mutableStateOf(settings.city) }
+        var cityStatus by remember { mutableStateOf<String?>(WeatherSource.load(this)?.label) }
         var opacity by remember { mutableStateOf(settings.widgetOpacity) }
         var artSeed by remember { mutableStateOf(System.currentTimeMillis()) }
         var morningOn by remember { mutableStateOf(settings.briefMorningOn) }
@@ -436,6 +442,40 @@ class MainActivity : ComponentActivity() {
                 }) { Text("Salvar") }
             }
 
+            Section("Tempo") {
+                Text(
+                    "A paisagem acompanha o tempo e o resumo avisa de chuva nos seus compromissos.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    value = cityInput,
+                    onValueChange = { cityInput = it },
+                    label = { Text("Sua cidade") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Button(onClick = {
+                    cityStatus = "Procurando…"
+                    scope.launch {
+                        cityStatus = try {
+                            val found = withContext(Dispatchers.IO) {
+                                WeatherSource.setCity(this@MainActivity, cityInput)?.also { WeatherSource.refresh(this@MainActivity) }
+                            }
+                            if (found == null) {
+                                if (cityInput.isBlank()) "Tempo desligado." else "Cidade não encontrada."
+                            } else {
+                                cityInput = found
+                                "✅ $found · " + (WeatherSource.load(this@MainActivity)?.label ?: "")
+                            }
+                        } catch (e: Exception) {
+                            "Erro: ${e.message?.take(80)}"
+                        }
+                        refresh()
+                    }
+                }) { Text("Salvar") }
+                cityStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+
             Section("Agenda do celular") {
                 if (calendarGranted) {
                     Text("Conectada (todas as agendas visíveis, inclusive Google).")
@@ -569,6 +609,43 @@ class MainActivity : ComponentActivity() {
                             },
                             label = { Text(t.label) },
                         )
+                    }
+                }
+                if (theme == WidgetTheme.ART) {
+                    Text("Estilo", style = MaterialTheme.typography.labelLarge)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ArtStyle.entries.forEach { st ->
+                            FilterChip(
+                                selected = artStyle == st,
+                                onClick = {
+                                    artStyle = st
+                                    settings.artStyle = st
+                                    settings.artFetchedAt = 0
+                                    refresh()
+                                },
+                                label = { Text(st.label) },
+                            )
+                        }
+                    }
+                    TextButton(onClick = {
+                        settings.artFetchedAt = 0
+                        refresh()
+                    }) { Text("Trocar obra agora") }
+                }
+                if (theme == WidgetTheme.LANDSCAPE || theme == WidgetTheme.ART) {
+                    Text("Trocar a cada", style = MaterialTheme.typography.labelLarge)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(30 to "30 min", 60 to "1 h", 180 to "3 h", 360 to "6 h", 1440 to "1 dia").forEach { (m, label) ->
+                            FilterChip(
+                                selected = rotate == m,
+                                onClick = {
+                                    rotate = m
+                                    settings.rotateMinutes = m
+                                    refresh()
+                                },
+                                label = { Text(label) },
+                            )
+                        }
                     }
                 }
                 if (theme == WidgetTheme.LANDSCAPE) {
@@ -1046,8 +1123,8 @@ class MainActivity : ComponentActivity() {
     /** Amostra compacta do widget com o fundo escolhido. */
     @Composable
     private fun Preview(snapshot: Snapshot, seed: Long, theme: WidgetTheme, scene: String, opacity: Int) {
-        val art = remember(seed, theme, scene, opacity) {
-            Backgrounds.render(Settings(this), 900, 560, seed, java.time.LocalTime.now().hour, 0f)
+        val art = remember(seed, theme, scene, opacity, snapshot.updatedAt) {
+            Backgrounds.render(this, 900, 560, java.time.LocalTime.now().hour, 0f, seed)
         }
         val primary = if (art.dark) Color.White else Color(0xFF1C2A24)
         val secondary = if (art.dark) Color(0xFFD6DEE5) else Color(0xFF3D4E47)

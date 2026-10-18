@@ -55,10 +55,10 @@ object AiClient {
         }
         val res = Http.postJson("https://api.anthropic.com/v1/messages", headers, body)
         if (res.optString("stop_reason") == "refusal") throw IOException("a IA recusou o pedido")
-        val content = res.getJSONArray("content")
+        val blocks = res.getJSONArray("content")
         return buildString {
-            for (i in 0 until content.length()) {
-                val block = content.getJSONObject(i)
+            for (i in 0 until blocks.length()) {
+                val block = blocks.getJSONObject(i)
                 if (block.optString("type") == "text") append(block.optString("text"))
             }
         }

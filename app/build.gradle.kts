@@ -12,8 +12,13 @@ android {
         applicationId = "com.trevisolli.agendawidget"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "1.5"
+        versionCode = 18
+        versionName = "1.5.1"
+
+        // Só celulares reais (ARM): deixa o APK bem menor.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     // Chave fixa e versionada: o SHA-1 precisa ser estável para o OAuth do Google Tasks.

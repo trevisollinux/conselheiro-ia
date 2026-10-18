@@ -29,13 +29,18 @@ jobs:
           name: agenda-widget-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Publish "latest" release
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk agenda-widget.apk
+          # Cria a release como rascunho, sobe o APK e só então publica:
+          # quem baixar nunca pega um arquivo pela metade.
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          TAG="v${VERSION}-${GITHUB_RUN_NUMBER}"
+          cp app/build/outputs/apk/debug/app-debug.apk "ConsigliereIA-${VERSION}.apk"
+          gh release create "$TAG" "ConsigliereIA-${VERSION}.apk" --draft \
+            --title "ConsigliereIA ${VERSION}" \
+            --notes "Build ${GITHUB_SHA::7}. Baixe o APK no celular e instale por cima."
+          gh release edit "$TAG" --draft=false --latest
+          # Remove a release antiga "latest" do esquema anterior, se ainda existir.
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest agenda-widget.apk \
-            --title "Última versão" \
-            --notes "Build de ${GITHUB_SHA::7}. Baixe agenda-widget.apk no celular e instale." \
-            --prerelease

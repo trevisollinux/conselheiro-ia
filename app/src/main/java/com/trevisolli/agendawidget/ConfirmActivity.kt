@@ -72,7 +72,7 @@ class ConfirmActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val storedId = intent.getStringExtra(EXTRA_SUGGESTION_ID)
         val stored = storedId?.let { SuggestionStore.get(this, it) }
-        val isSend = intent.action == Intent.ACTION_SEND
+        val isSend = intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_PROCESS_TEXT
         val image: Uri? = if (isSend && intent.type?.startsWith("image/") == true) {
             IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
         } else {
@@ -82,6 +82,7 @@ class ConfirmActivity : ComponentActivity() {
             listOfNotNull(
                 intent.getStringExtra(Intent.EXTRA_SUBJECT),
                 intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString(),
+                intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString(),
             ).joinToString("\n").trim()
         } else {
             ""

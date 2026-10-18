@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -154,6 +155,12 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
         }
 
         // Dicas sempre à mão, algumas a partir da sua lista ("Terminei Pagar mei").
+        // Texto copiado (ex.: mensagem do WhatsApp) vira a primeira dica: um toque e ele anota.
+        val clipboard = LocalClipboardManager.current
+        val copied = remember(messages.size) {
+            runCatching { clipboard.getText()?.text?.trim() }.getOrNull()
+                ?.takeIf { it.length in 4..1500 && messages.none { m -> m.fromUser && m.text == it } }
+        }
         val tips = remember(messages.size) {
             val items = AgendaRepository.load(context).items
             val zone = ZoneId.systemDefault()
@@ -164,6 +171,21 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
             listOfNotNull(firstTask?.let { "Terminei ${it.title}" }) + EXAMPLES
         }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+            if (copied != null) {
+                item {
+                    Text(
+                        "📋 Usar o que copiei: " + copied.lineSequence().first().take(28) + "…",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.primary)
+                            .clickable(enabled = !busy) { send(copied) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+            }
             items(tips) { tip ->
                 Text(
                     tip,

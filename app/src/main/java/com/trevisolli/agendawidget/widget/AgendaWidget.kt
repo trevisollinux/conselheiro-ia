@@ -15,6 +15,7 @@ import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.action.ActionParameters
+import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -50,6 +51,10 @@ import com.trevisolli.agendawidget.R
 import com.trevisolli.agendawidget.data.AgendaItem
 import com.trevisolli.agendawidget.data.AgendaRepository
 import com.trevisolli.agendawidget.data.Format
+import com.trevisolli.agendawidget.data.Settings
+import com.trevisolli.agendawidget.data.TodoistSource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.trevisolli.agendawidget.data.Snapshot
 import com.trevisolli.agendawidget.data.Source
 
@@ -90,6 +95,26 @@ class AgendaWidget : GlanceAppWidget() {
 
 class AgendaWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = AgendaWidget()
+}
+
+private val TASK_ID = ActionParameters.Key<String>("taskId")
+
+/** Toque no círculo: conclui no Todoist e some da lista na hora. */
+class CompleteAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        val id = parameters[TASK_ID] ?: return
+        val token = Settings(context).todoistToken
+        if (token.isBlank()) return
+        val ok = withContext(Dispatchers.IO) { runCatching { TodoistSource.close(token, id) }.isSuccess }
+        val current = AgendaRepository.load(context)
+        val next = if (ok) {
+            current.copy(items = current.items.filterNot { it.taskId == id })
+        } else {
+            current.copy(errors = current.errors + "Todoist: não consegui concluir a tarefa")
+        }
+        AgendaWidget.push(context, next)
+        RefreshWorker.runNow(context)
+    }
 }
 
 class RefreshAction : ActionCallback {
@@ -175,10 +200,21 @@ private fun ItemRow(item: AgendaItem) {
     openIntent(item)?.let { modifier = modifier.clickable(actionStartActivity(it)) }
     Column(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = GlanceModifier.size(10.dp).cornerRadius(5.dp).background(Color(item.color)),
-            ) {}
-            Spacer(GlanceModifier.width(8.dp))
+            if (item.taskId != null) {
+                // Tarefa do Todoist: círculo tocável para concluir.
+                Image(
+                    provider = ImageProvider(R.drawable.ic_task_circle),
+                    contentDescription = "Concluir",
+                    modifier = GlanceModifier.size(18.dp)
+                        .clickable(actionRunCallback<CompleteAction>(actionParametersOf(TASK_ID to item.taskId))),
+                )
+                Spacer(GlanceModifier.width(6.dp))
+            } else {
+                Box(
+                    modifier = GlanceModifier.size(10.dp).cornerRadius(5.dp).background(Color(item.color)),
+                ) {}
+                Spacer(GlanceModifier.width(8.dp))
+            }
             Text(
                 text = item.title,
                 style = TextStyle(
@@ -196,7 +232,7 @@ private fun ItemRow(item: AgendaItem) {
                 fontSize = 13.sp,
             ),
             maxLines = 1,
-            modifier = GlanceModifier.padding(start = 18.dp),
+            modifier = GlanceModifier.padding(start = if (item.taskId != null) 24.dp else 18.dp),
         )
     }
 }

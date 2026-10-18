@@ -44,6 +44,22 @@ object Brain {
         val s = Settings(context)
         val raw = AiClient.complete(s.aiProvider, s.aiKey, s.effectiveModel, EXTRACT_SYSTEM, todayContext() + "\n\nMensagem:\n" + text)
         val json = AiClient.extractJson(raw) ?: throw IllegalStateException("resposta da IA sem JSON")
+        return fromJson(json, text, origin)
+    }
+
+    /** Print com IA: a imagem vai direto para o modelo (lê texto, conversas, cartazes, convites). */
+    fun aiImage(context: Context, jpeg: ByteArray, ocrText: String, origin: String): Suggestion? {
+        val s = Settings(context)
+        val raw = AiClient.complete(
+            s.aiProvider, s.aiKey, s.effectiveModel, EXTRACT_SYSTEM,
+            todayContext() + "\n\nA imagem anexada é um print. Extraia o compromisso ou tarefa principal dela.",
+            jpeg,
+        )
+        val json = AiClient.extractJson(raw) ?: throw IllegalStateException("resposta da IA sem JSON")
+        return fromJson(json, ocrText.ifBlank { "Print compartilhado" }, origin)
+    }
+
+    private fun fromJson(json: org.json.JSONObject, text: String, origin: String): Suggestion? {
         if (!json.optBoolean("found", false)) return null
         val date = json.optString("date").takeIf { !json.isNull("date") && it.length == 10 }
             ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }

@@ -19,6 +19,8 @@ data class AgendaItem(
     val overdue: Boolean,
     val color: Int,
     val openUri: String?,
+    /** Id da tarefa no Todoist, para concluir pelo widget. */
+    val taskId: String? = null,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("title", title)
@@ -29,6 +31,7 @@ data class AgendaItem(
         .put("overdue", overdue)
         .put("color", color)
         .put("uri", openUri ?: JSONObject.NULL)
+        .put("taskId", taskId ?: JSONObject.NULL)
 
     companion object {
         fun fromJson(o: JSONObject) = AgendaItem(
@@ -40,6 +43,7 @@ data class AgendaItem(
             overdue = o.optBoolean("overdue"),
             color = o.getInt("color"),
             openUri = if (o.isNull("uri")) null else o.getString("uri"),
+            taskId = if (o.isNull("taskId")) null else o.optString("taskId").ifBlank { null },
         )
     }
 }

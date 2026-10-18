@@ -1,6 +1,9 @@
 package com.trevisolli.agendawidget
 
 import android.content.Intent
+import android.net.Uri
+import androidx.core.content.IntentCompat
+import com.trevisolli.agendawidget.smart.ImageReader
 import android.os.Bundle
 import android.provider.CalendarContract
 import android.widget.Toast
@@ -67,7 +70,13 @@ class ConfirmActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val storedId = intent.getStringExtra(EXTRA_SUGGESTION_ID)
         val stored = storedId?.let { SuggestionStore.get(this, it) }
-        val shared = if (intent.action == Intent.ACTION_SEND) {
+        val isSend = intent.action == Intent.ACTION_SEND
+        val image: Uri? = if (isSend && intent.type?.startsWith("image/") == true) {
+            IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            null
+        }
+        val shared = if (isSend && image == null) {
             listOfNotNull(
                 intent.getStringExtra(Intent.EXTRA_SUBJECT),
                 intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString(),
@@ -75,23 +84,26 @@ class ConfirmActivity : ComponentActivity() {
         } else {
             ""
         }
-        if (stored == null && shared.isBlank()) {
+        if (stored == null && shared.isBlank() && image == null) {
             Toast.makeText(this, "Sugestão não encontrada", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
         setContent {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
-                Surface(modifier = Modifier.fillMaxSize()) { Screen(stored, shared) }
+                Surface(modifier = Modifier.fillMaxSize()) { Screen(stored, shared, image) }
             }
         }
     }
 
     @Composable
-    private fun Screen(stored: Suggestion?, shared: String) {
+    private fun Screen(stored: Suggestion?, shared: String, image: Uri?) {
         val settings = remember { Settings(this) }
         val scope = rememberCoroutineScope()
-        val initial = remember { stored ?: Brain.rules(shared, "Compartilhado") }
+        val origin = if (image != null) "Print" else "Compartilhado"
+        val initial = remember { stored ?: Brain.rules(shared, origin) }
+        var sourceText by remember { mutableStateOf(stored?.text ?: shared) }
+        var kind by remember { mutableStateOf(initial.kind) }
 
         var title by remember { mutableStateOf(initial.title) }
         var date by remember { mutableStateOf(initial.date?.format(DATE).orEmpty()) }
@@ -101,18 +113,46 @@ class ConfirmActivity : ComponentActivity() {
         var busy by remember { mutableStateOf(false) }
 
         fun apply(s: Suggestion) {
+            kind = s.kind
             title = s.title
             date = s.date?.format(DATE).orEmpty()
             time = s.time?.format(TIME).orEmpty()
             duration = s.durationMin.toString()
         }
 
-        // Texto compartilhado + IA ligada: refina o que as regras acharam.
         LaunchedEffect(Unit) {
-            if (stored == null && settings.aiReady) {
+            if (image != null) {
+                // Print: o celular lê o texto (OCR); com IA, a imagem também vai para o modelo.
+                status = "Lendo o print…"
+                try {
+                    val bitmap = withContext(Dispatchers.IO) { ImageReader.loadBitmap(this@ConfirmActivity, image) }
+                    val ocr = runCatching { ImageReader.ocr(bitmap) }.getOrDefault("")
+                    sourceText = ocr.ifBlank { "(sem texto legível no print)" }
+                    if (settings.aiReady) {
+                        status = "Analisando o print com ${settings.aiProvider.label}…"
+                        val ai = withContext(Dispatchers.IO) {
+                            Brain.aiImage(this@ConfirmActivity, ImageReader.toJpeg(bitmap), ocr, origin)
+                        }
+                        if (ai != null) {
+                            apply(ai)
+                            status = "Sugestão da ${settings.aiProvider.label}. Confira antes de salvar."
+                        } else {
+                            status = "A IA não achou compromisso no print. Preencha à mão se quiser."
+                        }
+                    } else if (ocr.isNotBlank()) {
+                        apply(Brain.rules(ocr, origin))
+                        status = "Lido no modo automático. Confira antes de salvar."
+                    } else {
+                        status = "Não achei texto no print."
+                    }
+                } catch (e: Exception) {
+                    status = "Erro ao ler o print: ${e.message?.take(100)}"
+                }
+            } else if (stored == null && settings.aiReady) {
+                // Texto compartilhado + IA ligada: refina o que as regras acharam.
                 status = "Analisando com ${settings.aiProvider.label}…"
                 try {
-                    val ai = withContext(Dispatchers.IO) { Brain.ai(this@ConfirmActivity, shared, "Compartilhado") }
+                    val ai = withContext(Dispatchers.IO) { Brain.ai(this@ConfirmActivity, shared, origin) }
                     if (ai != null) {
                         apply(ai)
                         status = "Sugestão da ${settings.aiProvider.label}. Confira antes de salvar."
@@ -141,7 +181,7 @@ class ConfirmActivity : ComponentActivity() {
             val zone = ZoneId.systemDefault()
             val intent = Intent(Intent.ACTION_INSERT).setData(CalendarContract.Events.CONTENT_URI)
                 .putExtra(CalendarContract.Events.TITLE, title)
-                .putExtra(CalendarContract.Events.DESCRIPTION, (stored?.text ?: shared).take(2000))
+                .putExtra(CalendarContract.Events.DESCRIPTION, sourceText.take(2000))
             if (t != null) {
                 val start = d.atTime(t).atZone(zone)
                 val minutes = duration.toLongOrNull()?.coerceIn(5, 1440) ?: 60
@@ -161,7 +201,7 @@ class ConfirmActivity : ComponentActivity() {
             scope.launch {
                 try {
                     withContext(Dispatchers.IO) {
-                        TodoistSource.create(settings.todoistToken, title, parsedDate(), parsedTime(), stored?.text ?: shared)
+                        TodoistSource.create(settings.todoistToken, title, parsedDate(), parsedTime(), sourceText)
                     }
                     done("Tarefa criada no Todoist")
                 } catch (e: Exception) {
@@ -177,12 +217,12 @@ class ConfirmActivity : ComponentActivity() {
         ) {
             Text("Nova sugestão", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "De: ${stored?.origin ?: "Compartilhado"}" + if (settings.aiReady) " · IA" else " · automático",
+                "De: ${stored?.origin ?: origin}" + if (settings.aiReady) " · IA" else " · automático",
                 style = MaterialTheme.typography.bodySmall,
             )
             Card(Modifier.fillMaxWidth()) {
                 Text(
-                    (stored?.text ?: shared).take(600),
+                    sourceText.ifBlank { "…" }.take(600),
                     modifier = Modifier.padding(12.dp),
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -212,7 +252,7 @@ class ConfirmActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            val prefersTask = initial.kind == Kind.TASK && settings.todoistToken.isNotBlank()
+            val prefersTask = kind == Kind.TASK && settings.todoistToken.isNotBlank()
             if (prefersTask) {
                 Button(onClick = { addToTodoist() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                     Text("Criar tarefa no Todoist")

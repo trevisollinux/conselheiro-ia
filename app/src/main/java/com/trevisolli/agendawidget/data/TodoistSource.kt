@@ -45,11 +45,21 @@ object TodoistSource {
                     overdue = overdue,
                     color = COLOR,
                     openUri = "https://app.todoist.com/app/task/" + task.optString("id"),
+                    taskId = task.optString("id").ifBlank { null },
                 )
             }
             cursor = page.optString("next_cursor").takeIf { !page.isNull("next_cursor") && it.isNotBlank() }
         } while (cursor != null)
         return items
+    }
+
+    /** Conclui a tarefa (recorrentes avançam para a próxima data). */
+    fun close(token: String, id: String) {
+        Http.postJson(
+            "https://api.todoist.com/api/v1/tasks/" + URLEncoder.encode(id, "UTF-8") + "/close",
+            mapOf("Authorization" to "Bearer $token"),
+            JSONObject(),
+        )
     }
 
     /** Cria uma tarefa; com hora vira due_datetime (UTC), sem hora vira due_date. */

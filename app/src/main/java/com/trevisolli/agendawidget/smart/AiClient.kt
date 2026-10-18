@@ -5,6 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.net.URLEncoder
+import android.util.Base64
 
 enum class AiProvider(val label: String, val defaultModel: String, val keyHint: String) {
     CLAUDE("Claude", "claude-opus-5-5", "console.anthropic.com → API Keys"),
@@ -14,19 +15,32 @@ enum class AiProvider(val label: String, val defaultModel: String, val keyHint: 
 
 /** Chamada única de texto para a IA escolhida pelo usuário (chave dele, sem servidor no meio). */
 object AiClient {
-    fun complete(provider: AiProvider, key: String, model: String, system: String, user: String): String =
-        when (provider) {
-            AiProvider.CLAUDE -> claude(key, model, system, user)
-            AiProvider.OPENAI -> openAi(key, model, system, user)
-            AiProvider.GEMINI -> gemini(key, model, system, user)
+    /** [jpeg]: imagem opcional (print), já reduzida. */
+    fun complete(provider: AiProvider, key: String, model: String, system: String, user: String, jpeg: ByteArray? = null): String {
+        val image = jpeg?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
+        return when (provider) {
+            AiProvider.CLAUDE -> claude(key, model, system, user, image)
+            AiProvider.OPENAI -> openAi(key, model, system, user, image)
+            AiProvider.GEMINI -> gemini(key, model, system, user, image)
         }.trim()
+    }
 
-    private fun claude(key: String, model: String, system: String, user: String): String {
+    private fun claude(key: String, model: String, system: String, user: String, image: String?): String {
+        val content = JSONArray()
+        if (image != null) {
+            content.put(
+                JSONObject().put("type", "image").put(
+                    "source",
+                    JSONObject().put("type", "base64").put("media_type", "image/jpeg").put("data", image),
+                ),
+            )
+        }
+        content.put(JSONObject().put("type", "text").put("text", user))
         val body = JSONObject()
             .put("model", model)
             .put("max_tokens", 4000)
             .put("system", system)
-            .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", user)))
+            .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", content)))
         val headers = mutableMapOf(
             "x-api-key" to key,
             "anthropic-version" to "2023-06-01",
@@ -50,14 +64,21 @@ object AiClient {
         }
     }
 
-    private fun openAi(key: String, model: String, system: String, user: String): String {
+    private fun openAi(key: String, model: String, system: String, user: String, image: String?): String {
+        val content = JSONArray().put(JSONObject().put("type", "text").put("text", user))
+        if (image != null) {
+            content.put(
+                JSONObject().put("type", "image_url")
+                    .put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$image")),
+            )
+        }
         val body = JSONObject()
             .put("model", model)
             .put(
                 "messages",
                 JSONArray()
                     .put(JSONObject().put("role", "system").put("content", system))
-                    .put(JSONObject().put("role", "user").put("content", user)),
+                    .put(JSONObject().put("role", "user").put("content", content)),
             )
         val res = Http.postJson(
             "https://api.openai.com/v1/chat/completions",
@@ -67,21 +88,21 @@ object AiClient {
         return res.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content")
     }
 
-    private fun gemini(key: String, model: String, system: String, user: String): String {
+    private fun gemini(key: String, model: String, system: String, user: String, image: String?): String {
+        val parts = JSONArray()
+        if (image != null) {
+            parts.put(JSONObject().put("inlineData", JSONObject().put("mimeType", "image/jpeg").put("data", image)))
+        }
+        parts.put(JSONObject().put("text", user))
         val body = JSONObject()
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
-            .put(
-                "contents",
-                JSONArray().put(
-                    JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", user))),
-                ),
-            )
+            .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", parts)))
         val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
             URLEncoder.encode(model, "UTF-8") + ":generateContent"
         val res = Http.postJson(url, mapOf("x-goog-api-key" to key), body)
-        val parts = res.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts")
+        val out = res.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts")
         return buildString {
-            for (i in 0 until parts.length()) append(parts.getJSONObject(i).optString("text"))
+            for (i in 0 until out.length()) append(out.getJSONObject(i).optString("text"))
         }
     }
 

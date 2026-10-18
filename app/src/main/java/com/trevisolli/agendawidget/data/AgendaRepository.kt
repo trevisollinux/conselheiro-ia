@@ -1,6 +1,7 @@
 package com.trevisolli.agendawidget.data
 
 import android.content.Context
+import com.trevisolli.agendawidget.smart.NotionScanner
 import com.trevisolli.agendawidget.smart.Summary
 import com.trevisolli.agendawidget.smart.SuggestionStore
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +31,13 @@ object AgendaRepository {
                 items += TodoistSource.fetch(settings.todoistToken, days)
             } catch (e: Exception) {
                 errors += "Todoist: ${e.message}"
+            }
+        }
+        if (settings.notionToken.isNotBlank()) {
+            try {
+                NotionScanner.scan(context)
+            } catch (e: Exception) {
+                errors += "Notion: ${e.message?.take(120)}"
             }
         }
         if (settings.googleTasksEnabled) {

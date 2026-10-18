@@ -45,6 +45,24 @@ class Settings(context: Context) {
     val aiReady: Boolean
         get() = useAi && aiKey.isNotBlank()
 
+    /** Token de integração interna do Notion ("Internal Integration Secret"). */
+    var notionToken: String
+        get() = prefs.getString("notion_token", "").orEmpty()
+        set(value) = prefs.edit().putString("notion_token", value.trim()).apply()
+
+    var notionLastScan: Long
+        get() = prefs.getLong("notion_last_scan", 0)
+        set(value) = prefs.edit().putLong("notion_last_scan", value).apply()
+
+    /** Trechos de notas já analisados, para não sugerir de novo o que foi descartado. */
+    fun markSeen(key: String): Boolean {
+        val seen = prefs.getStringSet("seen", emptySet()).orEmpty()
+        if (key in seen) return false
+        val next = if (seen.size > 2000) setOf(key) else seen + key
+        prefs.edit().putStringSet("seen", next).apply()
+        return true
+    }
+
     var detectNotifications: Boolean
         get() = prefs.getBoolean("detect_notifications", false)
         set(value) = prefs.edit().putBoolean("detect_notifications", value).apply()
@@ -67,6 +85,7 @@ class Settings(context: Context) {
             .put("aiKey", aiKey)
             .put("aiModel", aiModel)
             .put("detect", detectNotifications)
+            .put("notion", notionToken)
         return PREFIX + Base64.encodeToString(json.toString().toByteArray(), Base64.NO_WRAP)
     }
 
@@ -85,6 +104,8 @@ class Settings(context: Context) {
         aiKey = json.optString("aiKey")
         aiModel = json.optString("aiModel")
         detectNotifications = json.optBoolean("detect")
+        notionToken = json.optString("notion")
+        notionLastScan = 0
         summaryCacheKey = ""
         return true
     }

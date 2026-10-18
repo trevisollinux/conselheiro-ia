@@ -121,6 +121,7 @@ class MainActivity : ComponentActivity() {
         var aiTest by remember { mutableStateOf<String?>(null) }
 
         var detect by remember { mutableStateOf(settings.detectNotifications) }
+        var notionToken by remember { mutableStateOf(settings.notionToken) }
         val suggestions = remember(resumeCount, snapshot) { SuggestionStore.all(this) }
         val listenerOn = remember(resumeCount) { NotificationWatcher.isEnabled(this) }
 
@@ -148,6 +149,7 @@ class MainActivity : ComponentActivity() {
             aiKey = settings.aiKey
             aiModel = settings.aiModel
             detect = settings.detectNotifications
+            notionToken = settings.notionToken
         }
 
         val calendarPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -314,6 +316,37 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            Section("Notion") {
+                OutlinedTextField(
+                    value = notionToken,
+                    onValueChange = { notionToken = it },
+                    label = { Text("Token da integração") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "1) notion.so/profile/integrations → Nova integração (interna) → copie o \"Internal Integration Secret\".\n" +
+                        "2) Em cada página ou banco de notas que ele pode ler: ••• → Conexões → adicione a integração.\n" +
+                        "A cada atualização ele olha as páginas editadas e sugere o que tiver data (ex.: \"Dentista 22/10 15h\").",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        settings.notionToken = notionToken
+                        settings.notionLastScan = 0
+                        refresh()
+                    }) { Text("Salvar e ler agora") }
+                    if (settings.notionToken.isNotBlank()) {
+                        OutlinedButton(onClick = {
+                            notionToken = ""
+                            settings.notionToken = ""
+                            refresh()
+                        }) { Text("Remover") }
+                    }
+                }
+            }
+
             Section("Inteligência") {
                 Text(
                     "Usada no resumo do dia e para entender mensagens compartilhadas ou recebidas.",
@@ -390,7 +423,8 @@ class MainActivity : ComponentActivity() {
             Section("Compartilhar com o ConsigliereIA") {
                 Text(
                     "Em qualquer app (WhatsApp, e-mail, notas, navegador), selecione um texto e toque em Compartilhar → " +
-                        "\"ConsigliereIA: criar compromisso\". Ele monta o evento ou a tarefa para você conferir.",
+                        "\"ConsigliereIA: criar compromisso\". Ele monta o evento ou a tarefa para você conferir. " +
+                        "Funciona também com prints (imagens): no modo automático o celular lê o texto; com IA, ela vê a imagem.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

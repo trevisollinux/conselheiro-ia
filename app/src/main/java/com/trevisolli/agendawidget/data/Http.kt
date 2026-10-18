@@ -9,6 +9,8 @@ internal object Http {
     fun getJson(url: String, bearer: String): JSONObject =
         request("GET", url, mapOf("Authorization" to "Bearer $bearer"), null)
 
+    fun get(url: String, headers: Map<String, String>): JSONObject = request("GET", url, headers, null)
+
     fun postJson(url: String, headers: Map<String, String>, body: JSONObject): JSONObject =
         request("POST", url, headers, body)
 

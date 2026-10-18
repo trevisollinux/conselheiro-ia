@@ -656,6 +656,14 @@ class MainActivity : ComponentActivity() {
                         settings.artFetchedAt = 0
                         refresh()
                     }) { Text("Trocar obra agora") }
+                    Text(
+                        "Destaques do Met Museum (Nova York), em domínio público." +
+                            settings.artCaption.takeIf { it.isNotBlank() }?.let { "\nAgora: $it" }.orEmpty(),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    settings.artError.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                    }
                 }
                 if (theme == WidgetTheme.LANDSCAPE || theme == WidgetTheme.ART) {
                     Text("Trocar a cada", style = MaterialTheme.typography.labelLarge)

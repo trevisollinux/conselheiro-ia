@@ -115,6 +115,11 @@ class Settings(context: Context) {
         get() = prefs.getString("art_fetched_style", "").orEmpty()
         set(value) = prefs.edit().putString("art_fetched_style", value).apply()
 
+    /** Último problema ao buscar obra (mostrado só nas Configurações, nunca no widget). */
+    var artError: String
+        get() = prefs.getString("art_error", "").orEmpty()
+        set(value) = prefs.edit().putString("art_error", value).apply()
+
     var artCaption: String
         get() = prefs.getString("art_caption", "").orEmpty()
         set(value) = prefs.edit().putString("art_caption", value).apply()
@@ -256,10 +261,42 @@ enum class WidgetTheme(val label: String) {
     POSTIT("Post-it"),
 }
 
-/** Estilos de obra (Art Institute of Chicago, domínio público, sem chave). */
-enum class ArtStyle(val label: String, val query: String) {
-    GENERAL("Geral", "landscape"),
-    JAPANESE("Japonesa", "Hiroshige Hokusai woodblock"),
-    RENAISSANCE("Renascença", "Renaissance"),
-    IMPRESSIONISM("Impressionismo", "Impressionism"),
+/**
+ * Estilos de obra do Met Museum (domínio público, sem chave). Cada estilo junta algumas buscas;
+ * "isHighlight" = só os destaques escolhidos pelos curadores do museu.
+ */
+enum class ArtStyle(val label: String, val queries: List<String>) {
+    GENERAL(
+        "Geral",
+        listOf("isHighlight=true&hasImages=true&departmentId=11&q=painting"),
+    ),
+    JAPANESE(
+        "Japonesa",
+        listOf(
+            "isHighlight=true&hasImages=true&departmentId=6&artistOrCulture=true&q=Japan",
+            "hasImages=true&artistOrCulture=true&q=Hokusai",
+            "hasImages=true&artistOrCulture=true&q=Hiroshige",
+        ),
+    ),
+    RENAISSANCE(
+        "Renascença",
+        listOf("isHighlight=true&hasImages=true&departmentId=11&dateBegin=1400&dateEnd=1600&q=painting"),
+    ),
+    IMPRESSIONISM(
+        "Impressionismo",
+        listOf(
+            "isHighlight=true&hasImages=true&departmentId=11&dateBegin=1860&dateEnd=1910&q=landscape",
+            "isHighlight=true&hasImages=true&artistOrCulture=true&q=Monet",
+        ),
+    ),
+    SOCIAL_REALISM(
+        "Realismo social",
+        listOf(
+            "hasImages=true&departmentId=11&artistOrCulture=true&q=Millet",
+            "hasImages=true&departmentId=11&artistOrCulture=true&q=Courbet",
+            "hasImages=true&departmentId=11&artistOrCulture=true&q=Daumier",
+            "hasImages=true&departmentId=1&artistOrCulture=true&q=Bellows",
+            "hasImages=true&departmentId=1&artistOrCulture=true&q=Sloan",
+        ),
+    ),
 }

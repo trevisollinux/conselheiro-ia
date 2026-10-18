@@ -2,17 +2,19 @@ package com.trevisolli.agendawidget.data
 
 import android.content.Context
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
-import java.net.URLEncoder
 import kotlin.random.Random
 
 /**
- * Obras de arte em domínio público do Art Institute of Chicago (API aberta, sem chave).
- * Baixa uma obra do estilo escolhido e troca no intervalo configurado.
+ * Obras em domínio público do Met Museum (API aberta, sem chave).
+ * Se a internet ou o museu falharem, usa a coleção embutida no app (baixada do Met na hora do build).
  */
 object ArtSource {
+    private const val API = "https://collectionapi.metmuseum.org/public/collection/v1"
+
     fun imageFile(context: Context) = File(context.filesDir, "art.jpg")
-    private fun listFile(context: Context, style: ArtStyle) = File(context.filesDir, "art_list_${style.name}.json")
+    private fun idsFile(context: Context, style: ArtStyle) = File(context.filesDir, "met_ids_${style.name}.json")
 
     /** Troca a obra se passou o intervalo ou se o estilo mudou. Retorna true se trocou. */
     fun refreshIfDue(context: Context, force: Boolean = false): Boolean {
@@ -22,37 +24,67 @@ object ArtSource {
         val due = System.currentTimeMillis() - s.artFetchedAt >= s.rotateMinutes * 60_000L
         if (!force && !due && s.artFetchedStyle == style.name && imageFile(context).exists()) return false
 
-        val list = candidates(context, style)
-        if (list.length() == 0) return false
+        val online = try {
+            fromMet(context, style).also { if (it) s.artError = "" }
+        } catch (e: Exception) {
+            s.artError = "Met Museum indisponível (${e.message?.take(60)}); usando a coleção do app."
+            false
+        }
+        val ok = online || fromBundle(context, style)
+        if (ok) {
+            s.artFetchedAt = System.currentTimeMillis()
+            s.artFetchedStyle = style.name
+        }
+        return ok
+    }
+
+    private fun fromMet(context: Context, style: ArtStyle): Boolean {
+        val ids = ids(context, style)
+        if (ids.isEmpty()) return false
+        // Algumas obras não têm imagem liberada: tenta até 6.
+        repeat(6) {
+            val id = ids[Random.nextInt(ids.size)]
+            val o = Http.getPublic("$API/objects/$id")
+            val img = o.optString("primaryImageSmall").ifBlank { o.optString("primaryImage") }
+            if (o.optBoolean("isPublicDomain") && img.isNotBlank()) {
+                imageFile(context).writeBytes(Http.getBytes(img))
+                Settings(context).artCaption = caption(o.optString("title"), o.optString("artistDisplayName"))
+                return true
+            }
+        }
+        return false
+    }
+
+    /** IDs do estilo, guardados por uma semana. */
+    private fun ids(context: Context, style: ArtStyle): List<Int> {
+        val f = idsFile(context, style)
+        if (f.exists() && System.currentTimeMillis() - f.lastModified() < 7 * 24 * 3600_000L) {
+            runCatching { JSONArray(f.readText()).let { a -> return List(a.length()) { a.getInt(it) } } }
+        }
+        val all = LinkedHashSet<Int>()
+        for (q in style.queries) {
+            val arr = runCatching { Http.getPublic("$API/search?$q").optJSONArray("objectIDs") }.getOrNull() ?: continue
+            for (i in 0 until minOf(arr.length(), 300)) all += arr.getInt(i)
+        }
+        if (all.isNotEmpty()) f.writeText(JSONArray(all.toList()).toString())
+        return all.toList()
+    }
+
+    /** Coleção embutida: assets/art/manifest.json → {"ESTILO": [{"file": "...", "caption": "..."}]}. */
+    private fun fromBundle(context: Context, style: ArtStyle): Boolean {
+        val manifest = runCatching {
+            JSONObject(context.assets.open("art/manifest.json").bufferedReader().use { it.readText() })
+        }.getOrNull() ?: return false
+        val list = manifest.optJSONArray(style.name)?.takeIf { it.length() > 0 }
+            ?: manifest.optJSONArray(ArtStyle.GENERAL.name)?.takeIf { it.length() > 0 }
+            ?: return false
         val pick = list.getJSONObject(Random.nextInt(list.length()))
-        val url = "https://www.artic.edu/iiif/2/${pick.getString("image_id")}/full/843,/0/default.jpg"
-        val bytes = Http.getBytes(url)
+        val bytes = runCatching { context.assets.open(pick.getString("file")).use { it.readBytes() } }.getOrNull() ?: return false
         imageFile(context).writeBytes(bytes)
-        s.artFetchedAt = System.currentTimeMillis()
-        s.artFetchedStyle = style.name
-        s.artCaption = listOf(pick.optString("title"), pick.optString("artist_title"))
-            .filter { it.isNotBlank() && it != "null" }.joinToString(" — ")
+        Settings(context).artCaption = pick.optString("caption")
         return true
     }
 
-    /** Lista de obras do estilo, guardada por uma semana para não buscar toda vez. */
-    private fun candidates(context: Context, style: ArtStyle): JSONArray {
-        val f = listFile(context, style)
-        if (f.exists() && System.currentTimeMillis() - f.lastModified() < 7 * 24 * 3600_000L) {
-            runCatching { return JSONArray(f.readText()) }
-        }
-        val url = "https://api.artic.edu/api/v1/artworks/search?limit=100" +
-            "&fields=id,title,artist_title,image_id" +
-            "&q=" + URLEncoder.encode(style.query, "UTF-8") +
-            "&" + URLEncoder.encode("query[term][is_public_domain]", "UTF-8") + "=true"
-        val data = Http.getPublic(url).optJSONArray("data") ?: JSONArray()
-        val out = JSONArray()
-        for (i in 0 until data.length()) {
-            val o = data.getJSONObject(i)
-            val img = o.optString("image_id")
-            if (img.isNotBlank() && img != "null") out.put(o)
-        }
-        if (out.length() > 0) f.writeText(out.toString())
-        return out
-    }
+    private fun caption(title: String, artist: String) =
+        listOf(title, artist).filter { it.isNotBlank() && it != "null" }.joinToString(" — ")
 }

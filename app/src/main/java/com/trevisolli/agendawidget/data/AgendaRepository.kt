@@ -42,10 +42,11 @@ object AgendaRepository {
             }
         }
         if (settings.widgetTheme == WidgetTheme.ART) {
+            // Falha de arte não aparece no widget: ele cai para a paisagem e o aviso fica nas Configurações.
             try {
                 ArtSource.refreshIfDue(context)
             } catch (e: Exception) {
-                errors += "Arte: ${e.message?.take(80)}"
+                settings.artError = e.message?.take(120).orEmpty()
             }
         }
         if (settings.notionToken.isNotBlank()) {

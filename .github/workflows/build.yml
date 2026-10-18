@@ -21,6 +21,9 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Coleção de arte de reserva (Met Museum)
+        run: python3 tools/fetch_art.py app/src/main/assets/art || true
+
       - name: Build
         run: ./gradlew --no-daemon assembleDebug
 

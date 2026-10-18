@@ -19,7 +19,7 @@ internal object Http {
         try {
             conn.requestMethod = method
             conn.connectTimeout = 20_000
-            conn.readTimeout = 60_000
+            conn.readTimeout = 120_000
             conn.setRequestProperty("Accept", "application/json")
             headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
             if (body != null) {

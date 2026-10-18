@@ -28,14 +28,27 @@ object AiClient {
         val image = jpeg?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
         val first = redirects[provider] ?: model
         return try {
-            call(provider, key, first, system, user, image)
+            withRetryOnTimeout(provider) { call(provider, key, first, system, user, image) }
         } catch (e: IOException) {
             // Modelo aposentado: tenta uma vez com o que o próprio provedor sugeriu.
             val msg = e.message.orEmpty()
             val suggested = SUGGESTED.find(msg)?.groupValues?.get(1)?.trimEnd('.')
             if (!msg.startsWith("HTTP 404") || suggested == null || suggested == first) throw e
             redirects[provider] = suggested
-            call(provider, key, suggested, system, user, image)
+            withRetryOnTimeout(provider) { call(provider, key, suggested, system, user, image) }
+        }
+    }
+
+    /** Uma segunda tentativa se o provedor demorar demais; depois, mensagem clara. */
+    private fun <T> withRetryOnTimeout(provider: AiProvider, block: () -> T): T {
+        try {
+            return block()
+        } catch (e: java.net.SocketTimeoutException) {
+            try {
+                return block()
+            } catch (e2: java.net.SocketTimeoutException) {
+                throw IOException("a ${provider.label} demorou demais para responder. Tente de novo em instantes ou use um modelo mais leve (flash-lite).")
+            }
         }
     }
 
@@ -120,10 +133,31 @@ object AiClient {
             .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", parts)))
         val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
             URLEncoder.encode(model, "UTF-8") + ":generateContent"
-        val res = Http.postJson(url, mapOf("x-goog-api-key" to key), body)
+        val headers = mapOf("x-goog-api-key" to key)
+        // Gemini 3+ pensa bastante por padrão; para tarefas curtas, pede raciocínio baixo (resposta bem mais rápida).
+        val thinkLow = Regex("^gemini-([3-9]|\\d{2,})").containsMatchIn(model)
+        val res = if (thinkLow) {
+            try {
+                Http.postJson(
+                    url, headers,
+                    JSONObject(body.toString()).put(
+                        "generationConfig",
+                        JSONObject().put("thinkingConfig", JSONObject().put("thinkingLevel", "low")),
+                    ),
+                )
+            } catch (e: IOException) {
+                // Modelo que não aceita o ajuste: manda de novo sem ele.
+                if (e.message?.startsWith("HTTP 400") == true) Http.postJson(url, headers, body) else throw e
+            }
+        } else {
+            Http.postJson(url, headers, body)
+        }
         val out = res.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts")
         return buildString {
-            for (i in 0 until out.length()) append(out.getJSONObject(i).optString("text"))
+            for (i in 0 until out.length()) {
+                val part = out.getJSONObject(i)
+                if (!part.optBoolean("thought")) append(part.optString("text"))
+            }
         }
     }
 

@@ -207,8 +207,8 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
             Spacer(GlanceModifier.height(4.dp))
             Text(
                 text = snapshot.summary,
-                style = TextStyle(color = ColorProvider(ink.summary), fontSize = 13.sp),
-                maxLines = 2,
+                style = TextStyle(color = ColorProvider(ink.summary), fontSize = 13.sp, fontWeight = FontWeight.Medium),
+                maxLines = 4,
             )
         }
         if (snapshot.pendingSuggestions > 0) {

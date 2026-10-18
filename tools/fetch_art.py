@@ -46,6 +46,36 @@ def get(url, binary=False):
     return data if binary else json.loads(data)
 
 
+def search_ids(q):
+    """Busca nova (v1.1, paginada). Aceita formatos diferentes de resposta."""
+    url = f"{API.replace('/v1', '/v1.1')}/search?{q}&limit=200&offset=0"
+    resp = get(url)
+    print(f"  v1.1 {q[:60]}… → {json.dumps(resp)[:300]}")
+    return extract_ids(resp)
+
+
+def extract_ids(resp):
+    if isinstance(resp, dict):
+        for key in ("objectIDs", "objectIds", "ids"):
+            if isinstance(resp.get(key), list):
+                return [int(x) for x in resp[key]]
+        for key in ("data", "results", "objects", "items", "records"):
+            lst = resp.get(key)
+            if isinstance(lst, list):
+                out = []
+                for x in lst:
+                    if isinstance(x, int):
+                        out.append(x)
+                    elif isinstance(x, dict):
+                        v = x.get("objectID") or x.get("objectId") or x.get("id")
+                        if v is not None:
+                            out.append(int(v))
+                return out
+    if isinstance(resp, list):
+        return [int(x) for x in resp if isinstance(x, int)]
+    return []
+
+
 def main(out_dir):
     random.seed(42)
     manifest = {}
@@ -53,7 +83,7 @@ def main(out_dir):
         ids = []
         for q in queries:
             try:
-                ids += (get(f"{API}/search?{q}").get("objectIDs") or [])[:200]
+                ids += search_ids(q)[:200]
             except Exception as e:
                 print(f"[{style}] busca falhou: {e}")
         ids = list(dict.fromkeys(ids))

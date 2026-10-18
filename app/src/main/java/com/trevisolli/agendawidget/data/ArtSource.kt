@@ -63,11 +63,26 @@ object ArtSource {
         }
         val all = LinkedHashSet<Int>()
         for (q in style.queries) {
-            val arr = runCatching { Http.getPublic("$API/search?$q").optJSONArray("objectIDs") }.getOrNull() ?: continue
-            for (i in 0 until minOf(arr.length(), 300)) all += arr.getInt(i)
+            // Busca nova do Met (v1.1, paginada; a v1 foi aposentada em out/2026).
+            val resp = runCatching { Http.getPublic("${API}.1/search?$q&limit=200&offset=0") }.getOrNull() ?: continue
+            all += extractIds(resp).take(300)
         }
         if (all.isNotEmpty()) f.writeText(JSONArray(all.toList()).toString())
         return all.toList()
+    }
+
+    /** Aceita os formatos possíveis da resposta de busca. */
+    private fun extractIds(resp: JSONObject): List<Int> {
+        for (key in listOf("objectIDs", "objectIds", "ids")) {
+            resp.optJSONArray(key)?.let { a -> return List(a.length()) { a.optInt(it) }.filter { it > 0 } }
+        }
+        for (key in listOf("data", "results", "objects", "items", "records")) {
+            val a = resp.optJSONArray(key) ?: continue
+            return List(a.length()) { i ->
+                a.optJSONObject(i)?.let { o -> o.optInt("objectID", o.optInt("objectId", o.optInt("id"))) } ?: a.optInt(i)
+            }.filter { it > 0 }
+        }
+        return emptyList()
     }
 
     /** Coleção embutida: assets/art/manifest.json → {"ESTILO": [{"file": "...", "caption": "..."}]}. */

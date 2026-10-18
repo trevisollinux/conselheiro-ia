@@ -21,10 +21,55 @@ object AiClient {
      */
     val redirects = java.util.concurrent.ConcurrentHashMap<AiProvider, String>()
 
+    /** Limite da cota atingido: a IA fica pausada até [until] e o app usa as regras. */
+    class RateLimited(val until: Long) : IOException(
+        "limite grátis atingido; IA pausada até " +
+            java.time.Instant.ofEpochMilli(until).atZone(java.time.ZoneId.systemDefault()).toLocalTime()
+                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")),
+    )
+
+    private var prefs: android.content.SharedPreferences? = null
+
+    fun attach(prefs: android.content.SharedPreferences) {
+        this.prefs = prefs
+    }
+
+    val pausedUntil: Long
+        get() = prefs?.getLong("ai_paused_until", 0L)?.takeIf { it > System.currentTimeMillis() } ?: 0L
+
+    fun clearPause() {
+        prefs?.edit()?.remove("ai_paused_until")?.apply()
+    }
+
+    private val RETRY = Regex("\"retryDelay\"\\s*:\\s*\"(\\d+)")
+
+    /** Por minuto: espera o que o provedor pediu (mín. 5 min). Por dia: 3 h. Sem detalhe: 30 min. */
+    private fun pauseFor(message: String): Long {
+        val retry = RETRY.find(message)?.groupValues?.get(1)?.toLongOrNull()
+        val minutes = when {
+            message.contains("PerDay", ignoreCase = true) || message.contains("per day", ignoreCase = true) -> 180L
+            retry != null -> maxOf(5L, retry / 60 + 1)
+            else -> 30L
+        }
+        val until = System.currentTimeMillis() + minutes * 60_000
+        prefs?.edit()?.putLong("ai_paused_until", until)?.apply()
+        return until
+    }
+
     private val SUGGESTED = Regex("use (?:models/)?([A-Za-z0-9][A-Za-z0-9._-]+)")
 
     /** [jpeg]: imagem opcional (print), já reduzida. */
     fun complete(provider: AiProvider, key: String, model: String, system: String, user: String, jpeg: ByteArray? = null): String {
+        pausedUntil.takeIf { it > 0 }?.let { throw RateLimited(it) }
+        return try {
+            completeOnce(provider, key, model, system, user, jpeg)
+        } catch (e: IOException) {
+            if (e !is RateLimited && e.message.orEmpty().startsWith("HTTP 429")) throw RateLimited(pauseFor(e.message.orEmpty()))
+            throw e
+        }
+    }
+
+    private fun completeOnce(provider: AiProvider, key: String, model: String, system: String, user: String, jpeg: ByteArray?): String {
         val image = jpeg?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
         val first = redirects[provider] ?: model
         return try {

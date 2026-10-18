@@ -168,6 +168,7 @@ class MainActivity : ComponentActivity() {
     private fun AppRoot() {
         val settings = remember { Settings(this) }
         val scope = rememberCoroutineScope()
+        val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
         var snapshot by remember { mutableStateOf(AgendaRepository.load(this)) }
         var busy by remember { mutableStateOf(false) }
         var calendarGranted by remember { mutableStateOf(CalendarSource.hasPermission(this)) }
@@ -297,6 +298,8 @@ class MainActivity : ComponentActivity() {
         }
 
         fun saveAiAndTest() {
+            // Testar de novo (ex.: trocou para flash-lite) tira a pausa do 429.
+            AiClient.clearPause()
             settings.useAi = useAi
             settings.aiProvider = provider
             settings.aiKey = aiKey
@@ -373,6 +376,31 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        fun moveItem(item: AgendaItem, to: java.time.LocalDate, undo: Boolean = false) {
+            val from = com.trevisolli.agendawidget.data.Mover.dateOf(item)
+            if (from == to) return
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching { com.trevisolli.agendawidget.data.Mover.move(this@MainActivity, item, to) }
+                }
+                if (result.isFailure) {
+                    snackbar.showSnackbar("Não deu para mover: ${result.exceptionOrNull()?.message?.take(80)}")
+                    return@launch
+                }
+                val moved = com.trevisolli.agendawidget.data.Mover.shifted(item, to)
+                snapshot = snapshot.copy(items = (snapshot.items - item + moved).sortedBy { it.startMillis })
+                AgendaWidget.push(this@MainActivity, snapshot)
+                refresh()
+                if (undo) return@launch
+                val label = to.format(java.time.format.DateTimeFormatter.ofPattern("EEE, dd/MM", java.util.Locale("pt", "BR")))
+                val r = snackbar.showSnackbar("Movido para $label", actionLabel = "Desfazer", duration = androidx.compose.material3.SnackbarDuration.Long)
+                if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                    // Volta para o dia original (atrasada volta a ficar atrasada).
+                    moveItem(moved, from, undo = true)
+                }
+            }
+        }
+
         fun saveBriefSchedule() {
             settings.briefMorningOn = morningOn
             settings.briefMorningHour = morningHour
@@ -382,6 +410,7 @@ class MainActivity : ComponentActivity() {
         }
 
         Scaffold(
+            snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
             topBar = {
                 TopAppBar(
                     title = {
@@ -828,6 +857,17 @@ class MainActivity : ComponentActivity() {
                         "Usa a sua chave; o uso é cobrado na sua conta da ${provider.label}.",
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    val paused = AiClient.pausedUntil
+                    if (paused > 0) {
+                        val hora = java.time.Instant.ofEpochMilli(paused).atZone(java.time.ZoneId.systemDefault())
+                            .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                        Text(
+                            "⏸ Limite grátis atingido. IA pausada até $hora; enquanto isso, modo automático. " +
+                                "Um modelo flash-lite costuma ter mais cota.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
                 Button(onClick = { saveAiAndTest() }) { Text(if (useAi) "Salvar e testar" else "Salvar") }
                 aiTest?.let { Text(it) }
@@ -993,6 +1033,7 @@ class MainActivity : ComponentActivity() {
                         doneNow = doneNow.values.toList(),
                         toggling = toggling,
                         onToggle = { item, done -> toggleTask(item, done) },
+                        onMove = { item, to -> moveItem(item, to) },
                     )
 
                     else -> ChatPanel(

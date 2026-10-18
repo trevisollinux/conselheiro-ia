@@ -1,6 +1,32 @@
 package com.trevisolli.agendawidget.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +70,7 @@ fun AgendaTab(
     doneNow: List<AgendaItem>,
     toggling: String?,
     onToggle: (AgendaItem, Boolean) -> Unit,
+    onMove: (AgendaItem, LocalDate) -> Unit,
 ) {
     val zone = ZoneId.systemDefault()
     val today = LocalDate.now(zone)
@@ -68,6 +95,47 @@ fun AgendaTab(
             .forEach { (d, list) -> add(dayLabel(d) to list) }
     }
 
+    // Arrastar: segura o item, aparece a barra de dias embaixo; solta num dia (ou toca nele).
+    var moving by remember { mutableStateOf<AgendaItem?>(null) }
+    var dragPos by remember { mutableStateOf<Offset?>(null) }
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val rowPos = remember { mutableMapOf<String, Offset>() }
+    val chipRects = remember { mutableStateMapOf<LocalDate, Rect>() }
+    val hovered = dragPos?.let { p -> chipRects.entries.firstOrNull { it.value.contains(p) }?.key }
+    val context = LocalContext.current
+
+    fun finish(target: LocalDate?) {
+        val item = moving
+        if (item != null && target != null) {
+            onMove(item, target)
+            moving = null
+        }
+        dragPos = null
+    }
+
+    fun movable(item: AgendaItem): Modifier {
+        val key = item.moveKey ?: return Modifier
+        return Modifier
+            .onGloballyPositioned { rowPos[key] = it.positionInRoot() }
+            .pointerInput(item) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { touch ->
+                        moving = item
+                        dragPos = (rowPos[key] ?: Offset.Zero) + touch
+                    },
+                    onDrag = { change, amount ->
+                        change.consume()
+                        dragPos = dragPos?.plus(amount)
+                    },
+                    // Soltou fora de um dia: a barra continua aberta para tocar.
+                    onDragEnd = { finish(dragPos?.let { p -> chipRects.entries.firstOrNull { it.value.contains(p) }?.key }) },
+                    onDragCancel = { dragPos = null },
+                )
+            }
+            .alpha(if (moving?.moveKey == key) 0.35f else 1f)
+    }
+
+    Box(Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInRoot() }) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
@@ -78,6 +146,13 @@ fun AgendaTab(
                 Range.entries.forEach { r ->
                     FilterChip(selected = range == r, onClick = { onRange(r) }, label = { Text(r.label) })
                 }
+            }
+            if (visible.any { it.moveKey != null }) {
+                Text(
+                    "Segure um item para mudar de dia",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
         if (groups.isEmpty() && doneNow.isEmpty()) {
@@ -94,7 +169,7 @@ fun AgendaTab(
             }
             items(list) { item ->
                 if (item.taskId != null || item.dateOnly && item.source.name != "CALENDAR") {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = movable(item).fillMaxWidth()) {
                         if (item.taskId != null) {
                             Checkbox(checked = false, enabled = toggling != item.taskId, onCheckedChange = { onToggle(item, true) })
                         } else {
@@ -110,7 +185,7 @@ fun AgendaTab(
                         }
                     }
                 } else {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = movable(item).fillMaxWidth().padding(vertical = 6.dp)) {
                         Spacer(Modifier.width(18.dp))
                         Box(Modifier.size(10.dp).background(Color(item.color), CircleShape))
                         Spacer(Modifier.width(14.dp))
@@ -139,5 +214,93 @@ fun AgendaTab(
                 }
             }
         }
+    }
+        if (moving != null) item { Spacer(Modifier.height(120.dp)) }
+    }
+
+    val current = moving
+    if (current != null) {
+        val days = (0L..13L).map { today.plusDays(it) }
+        Surface(
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+            tonalElevation = 6.dp,
+            shadowElevation = 8.dp,
+            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        ) {
+            Column(Modifier.padding(vertical = 12.dp)) {
+                Row(
+                    Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Mover \"${current.title}\" para…",
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { moving = null; dragPos = null }) { Text("Cancelar") }
+                }
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(days) { d ->
+                        val selected = hovered == d
+                        Surface(
+                            onClick = { finish(d) },
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier.onGloballyPositioned { chipRects[d] = it.boundsInRoot() },
+                        ) {
+                            Column(
+                                Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                val top = when (d) {
+                                    today -> "Hoje"
+                                    today.plusDays(1) -> "Amanhã"
+                                    else -> d.dayOfWeek.getDisplayName(TextStyle.SHORT, locale).removeSuffix(".").replaceFirstChar { it.uppercase() }
+                                }
+                                val ink = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer
+                                Text(top, style = MaterialTheme.typography.labelLarge, color = ink)
+                                Text(d.format(DateTimeFormatter.ofPattern("dd/MM")), style = MaterialTheme.typography.bodySmall, color = ink)
+                            }
+                        }
+                    }
+                    item {
+                        Surface(
+                            onClick = {
+                                val start = maxOf(today, Instant.ofEpochMilli(current.startMillis).atZone(zone).toLocalDate())
+                                android.app.DatePickerDialog(context, { _, y, m, day -> finish(LocalDate.of(y, m + 1, day)) }, start.year, start.monthValue - 1, start.dayOfMonth).show()
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                        ) {
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("📅", style = MaterialTheme.typography.labelLarge)
+                                Text("Outra", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // O item "flutuando" sob o dedo.
+        dragPos?.let { p ->
+            val density = LocalDensity.current
+            Surface(
+                modifier = Modifier.offset {
+                    IntOffset((p.x - origin.x).roundToInt() - with(density) { 40.dp.roundToPx() }, (p.y - origin.y).roundToInt() - with(density) { 28.dp.roundToPx() })
+                }.widthIn(max = 260.dp),
+                shape = RoundedCornerShape(12.dp),
+                shadowElevation = 10.dp,
+                color = MaterialTheme.colorScheme.primaryContainer,
+            ) {
+                Text(current.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+            }
+        }
+    }
     }
 }

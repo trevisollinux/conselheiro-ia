@@ -37,6 +37,11 @@ object CalendarSource {
             CalendarContract.Instances.END,
             CalendarContract.Instances.ALL_DAY,
             CalendarContract.Instances.DISPLAY_COLOR,
+            CalendarContract.Instances.RRULE,
+            CalendarContract.Instances.ORIGINAL_ID,
+            CalendarContract.Instances.ORGANIZER,
+            CalendarContract.Instances.OWNER_ACCOUNT,
+            CalendarContract.Instances.CALENDAR_ACCESS_LEVEL,
         )
         val items = mutableListOf<AgendaItem>()
         context.contentResolver.query(
@@ -54,6 +59,12 @@ object CalendarSource {
                 val allDay = c.getInt(4) == 1
                 val color = c.getInt(5)
                 val openUri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, eventId).toString()
+                // Só move evento simples, de agenda editável e criado por você (convite de outra pessoa não).
+                val recurring = !c.getString(6).isNullOrBlank() || !c.isNull(7)
+                val organizer = c.getString(8).orEmpty()
+                val mine = organizer.isBlank() || organizer.equals(c.getString(9).orEmpty(), ignoreCase = true)
+                val editable = c.getInt(10) >= CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR
+                val moveKey = if (!recurring && mine && editable) "E:$eventId" else null
 
                 if (allDay) {
                     // Eventos de dia inteiro vêm em meia-noite UTC; o fim é exclusivo.
@@ -69,6 +80,7 @@ object CalendarSource {
                         overdue = false,
                         color = color,
                         openUri = openUri,
+                        moveKey = moveKey,
                     )
                 } else {
                     if (evEnd <= now) continue
@@ -81,6 +93,7 @@ object CalendarSource {
                         overdue = false,
                         color = color,
                         openUri = openUri,
+                        moveKey = moveKey,
                     )
                 }
             }

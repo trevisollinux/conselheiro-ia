@@ -25,13 +25,13 @@ object AgendaRepository {
         try {
             items += CalendarSource.fetch(context, days)
         } catch (e: Exception) {
-            errors += "Agenda: ${e.message}"
+            errors += "Agenda: ${e.message?.take(120)}"
         }
         if (settings.todoistToken.isNotBlank()) {
             try {
                 items += TodoistSource.fetch(settings.todoistToken, days)
             } catch (e: Exception) {
-                errors += "Todoist: ${e.message}"
+                errors += "Todoist: ${e.message?.take(120)}"
             }
         }
         if (settings.city.isNotBlank()) {
@@ -60,7 +60,7 @@ object AgendaRepository {
             try {
                 items += GoogleTasksSource.fetch(context, days)
             } catch (e: Exception) {
-                errors += "Google Tasks: ${e.message}"
+                errors += "Google Tasks: ${e.message?.take(120)}"
             }
         }
 

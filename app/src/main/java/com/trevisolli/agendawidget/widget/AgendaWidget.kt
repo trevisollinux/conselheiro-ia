@@ -126,6 +126,7 @@ class AgendaWidgetReceiver : GlanceAppWidgetReceiver() {
 }
 
 private val TASK_ID = ActionParameters.Key<String>("taskId")
+private val MOVE_KEY = ActionParameters.Key<String>("moveKey")
 private val RANGE_PARAM = ActionParameters.Key<String>("range")
 private val RANGE_KEY = stringPreferencesKey("range")
 
@@ -152,6 +153,27 @@ class CompleteAction : ActionCallback {
             current.copy(items = current.items.filterNot { it.taskId == id })
         } else {
             current.copy(errors = current.errors + "Todoist: não consegui concluir a tarefa")
+        }
+        AgendaWidget.push(context, next)
+        RefreshWorker.runNow(context)
+    }
+}
+
+/** » no widget: atrasada vem para hoje, o resto vai para o dia seguinte. */
+class MoveAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        val key = parameters[MOVE_KEY] ?: return
+        val current = AgendaRepository.load(context)
+        val item = current.items.firstOrNull { it.moveKey == key } ?: return
+        val to = com.trevisolli.agendawidget.data.Mover.nextDay(item)
+        val result = withContext(Dispatchers.IO) {
+            runCatching { com.trevisolli.agendawidget.data.Mover.move(context, item, to) }
+        }
+        val next = if (result.isSuccess) {
+            val moved = com.trevisolli.agendawidget.data.Mover.shifted(item, to)
+            current.copy(items = (current.items - item + moved).sortedBy { it.startMillis })
+        } else {
+            current.copy(errors = current.errors + "Mover: ${result.exceptionOrNull()?.message?.take(80)}")
         }
         AgendaWidget.push(context, next)
         RefreshWorker.runNow(context)
@@ -451,7 +473,17 @@ private fun ItemRow(item: AgendaItem, ink: Ink, today: Boolean = false) {
                     fontWeight = if (today || item.overdue) FontWeight.Bold else FontWeight.Medium,
                 ),
                 maxLines = 1,
+                modifier = GlanceModifier.defaultWeight(),
             )
+            if (item.moveKey != null) {
+                // » joga para o próximo dia (atrasada vem para hoje).
+                Text(
+                    text = "»",
+                    style = TextStyle(color = ColorProvider(ink.secondary), fontSize = 18.sp, fontWeight = FontWeight.Bold),
+                    modifier = GlanceModifier.padding(horizontal = 8.dp)
+                        .clickable(actionRunCallback<MoveAction>(actionParametersOf(MOVE_KEY to item.moveKey))),
+                )
+            }
         }
         Text(
             text = Format.shortSubtitle(item).ifBlank { " " },

@@ -21,6 +21,8 @@ data class AgendaItem(
     val openUri: String?,
     /** Id da tarefa no Todoist, para concluir pelo widget. */
     val taskId: String? = null,
+    /** "T:<id>" (Todoist) ou "E:<id>" (agenda) quando dá para mudar de dia; null em recorrentes e convites. */
+    val moveKey: String? = null,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("title", title)
@@ -32,6 +34,7 @@ data class AgendaItem(
         .put("color", color)
         .put("uri", openUri ?: JSONObject.NULL)
         .put("taskId", taskId ?: JSONObject.NULL)
+        .put("moveKey", moveKey ?: JSONObject.NULL)
 
     companion object {
         fun fromJson(o: JSONObject) = AgendaItem(
@@ -44,6 +47,7 @@ data class AgendaItem(
             color = o.getInt("color"),
             openUri = if (o.isNull("uri")) null else o.getString("uri"),
             taskId = if (o.isNull("taskId")) null else o.optString("taskId").ifBlank { null },
+            moveKey = if (o.isNull("moveKey")) null else o.optString("moveKey").ifBlank { null },
         )
     }
 }

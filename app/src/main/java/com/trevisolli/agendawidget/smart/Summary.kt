@@ -63,9 +63,13 @@ object Summary {
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
         val relevant = items.filter { it.overdue || !dateOf(it, zone).isAfter(today.plusDays(1)) }.take(25)
-        val key = settings.aiProvider.name + today + (advice ?: "") + weather?.mood +
-            relevant.joinToString("|") { it.title + it.startMillis + it.overdue }.hashCode()
-        if (key == settings.summaryCacheKey && settings.summaryCacheText.isNotBlank()) return settings.summaryCacheText
+        // A IA só refaz o resumo quando a lista muda; tempo/conselho novo, no máximo 1x por hora.
+        val itemsKey = settings.aiProvider.name + today + relevant.joinToString("|") { it.title + it.startMillis + it.overdue }.hashCode()
+        val key = itemsKey + "#" + (advice ?: "") + weather?.mood
+        val cached = settings.summaryCacheText.isNotBlank()
+        val sameItems = settings.summaryCacheKey.substringBefore("#") == itemsKey
+        val fresh = System.currentTimeMillis() - settings.summaryCacheAt < 60 * 60_000L
+        if (cached && (key == settings.summaryCacheKey || sameItems && fresh)) return settings.summaryCacheText
 
         val list = if (relevant.isEmpty()) "(nada agendado para hoje e amanhã)" else relevant.joinToString("\n") {
             "- ${it.title} (${Format.subtitle(it)})"
@@ -80,7 +84,11 @@ object Summary {
             if (text.isNullOrBlank()) return ruleText
             settings.summaryCacheKey = key
             settings.summaryCacheText = text
+            settings.summaryCacheAt = System.currentTimeMillis()
             text
+        } catch (e: AiClient.RateLimited) {
+            // Pausa avisada só em Configurações → Inteligência.
+            ruleText
         } catch (e: Exception) {
             errors += "IA: ${e.message?.take(120)}"
             ruleText

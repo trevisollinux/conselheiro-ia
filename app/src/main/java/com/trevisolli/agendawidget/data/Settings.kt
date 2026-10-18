@@ -8,6 +8,10 @@ import org.json.JSONObject
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
+    init {
+        com.trevisolli.agendawidget.smart.AiClient.attach(prefs)
+    }
+
     var todoistToken: String
         get() = prefs.getString("todoist_token", "").orEmpty()
         set(value) = prefs.edit().putString("todoist_token", value.trim()).apply()
@@ -42,8 +46,9 @@ class Settings(context: Context) {
     val effectiveModel: String
         get() = aiModel.ifBlank { aiProvider.defaultModel }
 
+    /** Pausada após um 429: nesse intervalo tudo usa as regras, sem erro na tela. */
     val aiReady: Boolean
-        get() = useAi && aiKey.isNotBlank()
+        get() = useAi && aiKey.isNotBlank() && com.trevisolli.agendawidget.smart.AiClient.pausedUntil == 0L
 
     /** Token de integração interna do Notion ("Internal Integration Secret"). */
     var notionToken: String
@@ -194,6 +199,10 @@ class Settings(context: Context) {
     var summaryCacheKey: String
         get() = prefs.getString("summary_key", "").orEmpty()
         set(value) = prefs.edit().putString("summary_key", value).apply()
+
+    var summaryCacheAt: Long
+        get() = prefs.getLong("summary_at", 0)
+        set(value) = prefs.edit().putLong("summary_at", value).apply()
 
     var summaryCacheText: String
         get() = prefs.getString("summary_text", "").orEmpty()

@@ -9,6 +9,8 @@ Widget Android que junta numa lista curta, no estilo do "Conselheiro IA" da vivo
 Mostra atrasadas primeiro (em vermelho), depois tudo em ordem de data. Tocar num item abre o evento ou a tarefa no app de origem.
 O widget atualiza a cada 30 min, quando a agenda muda e pelo botão ↻.
 
+Para mudar de dia: no widget, o **»** joga o item para o dia seguinte (atrasada vem para hoje); no app, na aba Agenda, segure o item e solte num dia da barra. Recorrentes e convites de outras pessoas ficam de fora.
+
 ## Inteligência: dois modos
 
 - **Automático (sem IA):** regras no próprio celular. Entendem "amanhã às 9h", "sexta 14:30", "dia 21/10",

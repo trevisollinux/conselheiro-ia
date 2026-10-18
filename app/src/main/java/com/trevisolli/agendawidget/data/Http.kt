@@ -50,7 +50,7 @@ internal object Http {
             val code = conn.responseCode
             if (code !in 200..299) {
                 val err = conn.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                throw IOException("HTTP $code ${err.take(300)}")
+                throw IOException("HTTP $code ${err.take(3000)}")
             }
             val text = conn.inputStream.bufferedReader().use { it.readText() }
             return if (text.isBlank()) JSONObject() else JSONObject(text)

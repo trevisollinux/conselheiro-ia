@@ -46,6 +46,8 @@ object TodoistSource {
                     color = COLOR,
                     openUri = "https://app.todoist.com/app/task/" + task.optString("id"),
                     taskId = task.optString("id").ifBlank { null },
+                    // Recorrente perderia a repetição ao trocar a data.
+                    moveKey = task.optString("id").takeIf { it.isNotBlank() && !due.optBoolean("is_recurring") }?.let { "T:$it" },
                 )
             }
             cursor = page.optString("next_cursor").takeIf { !page.isNull("next_cursor") && it.isNotBlank() }
@@ -96,6 +98,17 @@ object TodoistSource {
         if (!description.isNullOrBlank()) body.put("description", description.take(1000))
         val res = Http.postJson("https://api.todoist.com/api/v1/tasks", mapOf("Authorization" to "Bearer $token"), body)
         return res.optString("id").ifBlank { null }
+    }
+
+    /** Muda o dia mantendo a hora (se houver). */
+    fun reschedule(token: String, id: String, date: LocalDate, time: LocalTime?) {
+        val body = JSONObject()
+        if (time != null) {
+            body.put("due_datetime", ZonedDateTime.of(date, time, ZoneId.systemDefault()).toInstant().toString())
+        } else {
+            body.put("due_date", date.toString())
+        }
+        Http.postJson("https://api.todoist.com/api/v1/tasks/" + URLEncoder.encode(id, "UTF-8"), mapOf("Authorization" to "Bearer $token"), body)
     }
 
     fun delete(token: String, id: String) {

@@ -213,7 +213,6 @@ fun AgendaTab(
                     )
                 }
             }
-        }
     }
         if (moving != null) item { Spacer(Modifier.height(120.dp)) }
     }

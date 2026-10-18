@@ -14,6 +14,8 @@ internal object Http {
     fun postJson(url: String, headers: Map<String, String>, body: JSONObject): JSONObject =
         request("POST", url, headers, body)
 
+    fun delete(url: String, headers: Map<String, String>): JSONObject = request("DELETE", url, headers, null)
+
     private fun request(method: String, url: String, headers: Map<String, String>, body: JSONObject?): JSONObject {
         val conn = URL(url).openConnection() as HttpURLConnection
         try {

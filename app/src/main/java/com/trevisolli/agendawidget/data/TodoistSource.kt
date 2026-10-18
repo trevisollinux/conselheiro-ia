@@ -83,7 +83,8 @@ object TodoistSource {
     }
 
     /** Cria uma tarefa; com hora vira due_datetime (UTC), sem hora vira due_date. */
-    fun create(token: String, title: String, date: LocalDate?, time: LocalTime?, description: String?) {
+    /** Retorna o id da tarefa criada. */
+    fun create(token: String, title: String, date: LocalDate?, time: LocalTime?, description: String?): String? {
         val body = JSONObject().put("content", title)
         if (date != null) {
             if (time != null) {
@@ -93,7 +94,12 @@ object TodoistSource {
             }
         }
         if (!description.isNullOrBlank()) body.put("description", description.take(1000))
-        Http.postJson("https://api.todoist.com/api/v1/tasks", mapOf("Authorization" to "Bearer $token"), body)
+        val res = Http.postJson("https://api.todoist.com/api/v1/tasks", mapOf("Authorization" to "Bearer $token"), body)
+        return res.optString("id").ifBlank { null }
+    }
+
+    fun delete(token: String, id: String) {
+        Http.delete("https://api.todoist.com/api/v1/tasks/" + URLEncoder.encode(id, "UTF-8"), mapOf("Authorization" to "Bearer $token"))
     }
 
     /** Aceita "2026-10-21", "2026-10-21T09:00:00" (hora local) e "2026-10-21T12:00:00Z". */

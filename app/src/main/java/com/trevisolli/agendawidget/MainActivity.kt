@@ -7,6 +7,28 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings as AndroidSettings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import com.trevisolli.agendawidget.data.CalendarWriter
+import com.trevisolli.agendawidget.data.Range
+import com.trevisolli.agendawidget.ui.APP_COLORS
+import com.trevisolli.agendawidget.ui.APP_TYPE
+import com.trevisolli.agendawidget.ui.AgendaTab
+import com.trevisolli.agendawidget.ui.ChatPanel
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.IntentSenderRequest
@@ -105,35 +127,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
-/** Tons de aquarela: papel creme, verde de campo, azul de céu. */
-internal val APP_COLORS = lightColorScheme(
-    primary = Color(0xFF3E7C59),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFD4E8D3),
-    onPrimaryContainer = Color(0xFF1C3A28),
-    secondary = Color(0xFF5E93B8),
-    secondaryContainer = Color(0xFFD6E8F3),
-    onSecondaryContainer = Color(0xFF1E3A4F),
-    background = Color(0xFFF4EFE2),
-    surface = Color(0xFFF4EFE2),
-    onSurface = Color(0xFF2D3A31),
-    onBackground = Color(0xFF2D3A31),
-    surfaceVariant = Color(0xFFFFFBF2),
-    onSurfaceVariant = Color(0xFF55615A),
-    surfaceContainerHighest = Color(0xFFFFFBF2),
-    surfaceContainerHigh = Color(0xFFFFFBF2),
-    outline = Color(0xFFB9B29E),
-    error = Color(0xFFB3261E),
-)
-
-internal val APP_TYPE = Typography().let { t ->
-    t.copy(
-        headlineMedium = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic, fontSize = 30.sp),
-        headlineSmall = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontSize = 24.sp),
-        titleMedium = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, color = Color(0xFF3E7C59)),
-    )
-}
-
 class MainActivity : ComponentActivity() {
     /** Incrementa a cada onResume para recarregar estado vindo de fora (sugestões, permissões). */
     private var resumeCount by mutableIntStateOf(0)
@@ -144,7 +137,7 @@ class MainActivity : ComponentActivity() {
         Briefing.scheduleAll(this)
         setContent {
             MaterialTheme(colorScheme = APP_COLORS, typography = APP_TYPE) {
-                Surface(modifier = Modifier.fillMaxSize()) { SettingsScreen() }
+                Surface(modifier = Modifier.fillMaxSize()) { AppRoot() }
             }
         }
     }
@@ -154,16 +147,15 @@ class MainActivity : ComponentActivity() {
         resumeCount++
     }
 
-    @OptIn(ExperimentalLayoutApi::class)
+    @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
     @Composable
-    private fun SettingsScreen() {
+    private fun AppRoot() {
         val settings = remember { Settings(this) }
         val scope = rememberCoroutineScope()
         var snapshot by remember { mutableStateOf(AgendaRepository.load(this)) }
         var busy by remember { mutableStateOf(false) }
         var calendarGranted by remember { mutableStateOf(CalendarSource.hasPermission(this)) }
         var token by remember { mutableStateOf(settings.todoistToken) }
-        var days by remember { mutableStateOf(settings.days) }
 
         var useAi by remember { mutableStateOf(settings.useAi) }
         var provider by remember { mutableStateOf(settings.aiProvider) }
@@ -194,6 +186,13 @@ class MainActivity : ComponentActivity() {
         var toggling by remember { mutableStateOf<String?>(null) }
 
         var showQr by remember { mutableStateOf<Bitmap?>(null) }
+        var tab by remember { mutableStateOf(0) }
+        var inSettings by remember { mutableStateOf(false) }
+        BackHandler(enabled = inSettings) { inSettings = false }
+        var userName by remember { mutableStateOf(settings.userName) }
+        var range by remember { mutableStateOf(settings.widgetRange) }
+        var targetCal by remember { mutableStateOf(settings.targetCalendarId) }
+        var canWriteCalendar by remember { mutableStateOf(CalendarWriter.canWrite(this)) }
         var backupMessage by remember { mutableStateOf<String?>(null) }
 
         fun refresh() {
@@ -208,13 +207,13 @@ class MainActivity : ComponentActivity() {
 
         fun reloadFromSettings() {
             token = settings.todoistToken
-            days = settings.days
             useAi = settings.useAi
             provider = settings.aiProvider
             aiKey = settings.aiKey
             aiModel = settings.aiModel
             detect = settings.detectNotifications
             notionToken = settings.notionToken
+            userName = settings.userName
         }
 
         val calendarPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -222,6 +221,9 @@ class MainActivity : ComponentActivity() {
             if (granted) refresh()
         }
         val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        val writePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            canWriteCalendar = granted
+        }
 
         val scanQr = rememberLauncherForActivityResult(ScanContract()) { result ->
             val contents = result.contents ?: return@rememberLauncherForActivityResult
@@ -358,50 +360,73 @@ class MainActivity : ComponentActivity() {
             Briefing.scheduleAll(this@MainActivity)
         }
 
-        Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Banner(artSeed, opacity = 1f)
-
-            DayCard(
-                snapshot = snapshot,
-                briefings = briefings,
-                doneNow = doneNow.values.toList(),
-                toggling = toggling,
-                busy = briefBusy,
-                onPrepare = {
-                    briefNow(if (java.time.LocalTime.now().hour < 15) Briefing.Slot.MORNING else Briefing.Slot.EVENING)
-                },
-                onToggle = { item, done -> toggleTask(item, done) },
-            )
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = { refresh() }, enabled = !busy) { Text(if (busy) "Atualizando…" else "Atualizar agora") }
-                Spacer(Modifier.width(12.dp))
-                Text("Última: ${Format.updatedAt(snapshot.updatedAt)}", style = MaterialTheme.typography.bodySmall)
-            }
-            Preview(snapshot, artSeed, opacity / 100f, artBg)
-
-            if (suggestions.isNotEmpty()) {
-                Section("📌 Sugestões para revisar") {
-                    suggestions.forEach { s ->
-                        Column(
-                            Modifier.fillMaxWidth().clickable {
-                                startActivity(
-                                    Intent(this@MainActivity, ConfirmActivity::class.java)
-                                        .putExtra(ConfirmActivity.EXTRA_SUGGESTION_ID, s.id),
-                                )
-                            }.padding(vertical = 6.dp),
-                        ) {
-                            Text(s.title, fontWeight = FontWeight.Bold)
-                            Text(
-                                listOfNotNull(Format.suggestionWhen(s.date, s.time), s.origin).joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            if (inSettings) "Configurações" else "ConsigliereIA",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    },
+                    navigationIcon = {
+                        if (inSettings) {
+                            IconButton(onClick = { inSettings = false }) {
+                                Icon(Icons.Filled.ArrowBack, contentDescription = "Voltar")
+                            }
                         }
+                    },
+                    actions = {
+                        if (!inSettings) {
+                            IconButton(onClick = { refresh() }, enabled = !busy) {
+                                Icon(Icons.Filled.Refresh, contentDescription = "Atualizar")
+                            }
+                            IconButton(onClick = { inSettings = true }) {
+                                Icon(Icons.Filled.Settings, contentDescription = "Configurações")
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                )
+            },
+            bottomBar = {
+                if (!inSettings) {
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceVariant) {
+                        NavigationBarItem(
+                            selected = tab == 0, onClick = { tab = 0 },
+                            icon = { Icon(Icons.Filled.Home, contentDescription = null) }, label = { Text("Hoje") },
+                        )
+                        NavigationBarItem(
+                            selected = tab == 1, onClick = { tab = 1 },
+                            icon = { Icon(Icons.Filled.DateRange, contentDescription = null) }, label = { Text("Agenda") },
+                        )
+                        NavigationBarItem(
+                            selected = tab == 2, onClick = { tab = 2 },
+                            icon = { Icon(Icons.Filled.Face, contentDescription = null) }, label = { Text("Conversa") },
+                        )
                     }
                 }
+            },
+        ) { inner ->
+            Box(Modifier.padding(inner).fillMaxSize()) {
+                when {
+                    inSettings -> Column(
+                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+            Section("Você") {
+                OutlinedTextField(
+                    value = userName,
+                    onValueChange = { userName = it },
+                    label = { Text("Como devo te chamar?") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Button(onClick = {
+                    settings.userName = userName
+                    refresh()
+                }) { Text("Salvar") }
             }
 
             Section("Agenda do celular") {
@@ -410,6 +435,32 @@ class MainActivity : ComponentActivity() {
                 } else {
                     Button(onClick = { calendarPermission.launch(Manifest.permission.READ_CALENDAR) }) {
                         Text("Permitir acesso à agenda")
+                    }
+                }
+                Text("Criar eventos pela conversa", style = MaterialTheme.typography.labelLarge)
+                if (!canWriteCalendar) {
+                    Text(
+                        "Para eu criar eventos direto (\"dentista quinta 15h\"), libere a escrita na agenda.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(onClick = { writePermission.launch(Manifest.permission.WRITE_CALENDAR) }) {
+                        Text("Permitir criar eventos")
+                    }
+                } else {
+                    val calendars = remember(canWriteCalendar, resumeCount) { CalendarWriter.writableCalendars(this@MainActivity) }
+                    val current = calendars.firstOrNull { it.id == targetCal } ?: calendars.firstOrNull()
+                    Text("Novos eventos vão para:", style = MaterialTheme.typography.bodySmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        calendars.forEach { c ->
+                            FilterChip(
+                                selected = current?.id == c.id,
+                                onClick = {
+                                    targetCal = c.id
+                                    settings.targetCalendarId = c.id
+                                },
+                                label = { Text(c.name.ifBlank { c.account }, maxLines = 1) },
+                            )
+                        }
                     }
                 }
             }
@@ -528,6 +579,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+                Preview(snapshot, artSeed, opacity / 100f, artBg)
                 if (artBg) {
                     OutlinedButton(onClick = { artSeed = System.nanoTime() }) { Text("Ver outra paisagem na prévia") }
                 }
@@ -646,22 +698,6 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            Section("Período") {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(3, 7, 14, 30).forEach { d ->
-                        FilterChip(
-                            selected = days == d,
-                            onClick = {
-                                days = d
-                                settings.days = d
-                                refresh()
-                            },
-                            label = { Text("$d dias") },
-                        )
-                    }
-                }
-            }
-
             Section("Levar para outro aparelho") {
                 Text(
                     "Mostre o QR aqui e leia no outro aparelho em Importar. O QR contém seu token e sua chave de IA: " +
@@ -706,6 +742,72 @@ class MainActivity : ComponentActivity() {
                     OutlinedButton(onClick = { connectGoogleTasks() }) { Text("Conectar conta Google") }
                 }
                 tasksMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+                    }
+
+                    tab == 0 -> Column(
+                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+            Banner(artSeed, opacity = 1f)
+
+            DayCard(
+                snapshot = snapshot,
+                briefings = briefings,
+                doneNow = doneNow.values.toList(),
+                toggling = toggling,
+                busy = briefBusy,
+                onPrepare = {
+                    briefNow(if (java.time.LocalTime.now().hour < 15) Briefing.Slot.MORNING else Briefing.Slot.EVENING)
+                },
+                onToggle = { item, done -> toggleTask(item, done) },
+            )
+
+            if (suggestions.isNotEmpty()) {
+                Section("📌 Sugestões para revisar") {
+                    suggestions.forEach { s ->
+                        Column(
+                            Modifier.fillMaxWidth().clickable {
+                                startActivity(
+                                    Intent(this@MainActivity, ConfirmActivity::class.java)
+                                        .putExtra(ConfirmActivity.EXTRA_SUGGESTION_ID, s.id),
+                                )
+                            }.padding(vertical = 6.dp),
+                        ) {
+                            Text(s.title, fontWeight = FontWeight.Bold)
+                            Text(
+                                listOfNotNull(Format.suggestionWhen(s.date, s.time), s.origin).joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            }
+            Text(
+                "Atualizado às ${Format.updatedAt(snapshot.updatedAt)}" + if (busy) " · atualizando…" else "",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+                    }
+
+                    tab == 1 -> AgendaTab(
+                        snapshot = snapshot,
+                        range = range,
+                        onRange = {
+                            range = it
+                            settings.widgetRange = it
+                            refresh()
+                        },
+                        doneNow = doneNow.values.toList(),
+                        toggling = toggling,
+                        onToggle = { item, done -> toggleTask(item, done) },
+                    )
+
+                    else -> ChatPanel(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
+                        onChanged = { snapshot = AgendaRepository.load(this@MainActivity) },
+                    )
+                }
             }
         }
 

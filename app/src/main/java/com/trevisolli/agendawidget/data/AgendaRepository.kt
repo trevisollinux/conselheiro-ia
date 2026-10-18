@@ -17,7 +17,8 @@ object AgendaRepository {
     /** Busca todas as fontes; uma fonte com erro não derruba as outras. */
     suspend fun refresh(context: Context): Snapshot = withContext(Dispatchers.IO) {
         val settings = Settings(context)
-        val days = settings.days
+        // Busca um mês inteiro; o widget e a aba Agenda filtram por dia/semana/mês.
+        val days = 31
         val items = mutableListOf<AgendaItem>()
         val errors = mutableListOf<String>()
 

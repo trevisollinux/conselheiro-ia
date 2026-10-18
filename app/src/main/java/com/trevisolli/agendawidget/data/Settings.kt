@@ -107,6 +107,21 @@ class Settings(context: Context) {
             .filter { it.startsWith("$today|") }.map { it.substringAfter('|') }
     }
 
+    /** Como o assistente te chama ("Bom dia, Gustavo"). */
+    var userName: String
+        get() = prefs.getString("user_name", "").orEmpty()
+        set(value) = prefs.edit().putString("user_name", value.trim()).apply()
+
+    /** Período da lista no widget e na aba Agenda. */
+    var widgetRange: Range
+        get() = Range.entries.firstOrNull { it.name == prefs.getString("widget_range", null) } ?: Range.WEEK
+        set(value) = prefs.edit().putString("widget_range", value.name).apply()
+
+    /** Agenda onde a conversa cria eventos; -1 = escolher automaticamente. */
+    var targetCalendarId: Long
+        get() = prefs.getLong("target_calendar", -1L)
+        set(value) = prefs.edit().putLong("target_calendar", value).apply()
+
     var detectNotifications: Boolean
         get() = prefs.getBoolean("detect_notifications", false)
         set(value) = prefs.edit().putBoolean("detect_notifications", value).apply()
@@ -130,6 +145,7 @@ class Settings(context: Context) {
             .put("aiModel", aiModel)
             .put("detect", detectNotifications)
             .put("notion", notionToken)
+            .put("name", userName)
         return PREFIX + Base64.encodeToString(json.toString().toByteArray(), Base64.NO_WRAP)
     }
 
@@ -149,6 +165,7 @@ class Settings(context: Context) {
         aiModel = json.optString("aiModel")
         detectNotifications = json.optBoolean("detect")
         notionToken = json.optString("notion")
+        userName = json.optString("name")
         notionLastScan = 0
         summaryCacheKey = ""
         return true
@@ -156,5 +173,19 @@ class Settings(context: Context) {
 
     private companion object {
         const val PREFIX = "consigliere1:"
+    }
+}
+
+enum class Range(val label: String, val days: Long) {
+    DAY("Hoje", 0),
+    WEEK("Semana", 7),
+    MONTH("Mês", 31),
+    ;
+
+    /** Itens atrasados sempre entram; o resto até o fim do período. */
+    fun includes(item: AgendaItem, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): Boolean {
+        if (item.overdue) return true
+        val date = java.time.Instant.ofEpochMilli(item.startMillis).atZone(zone).toLocalDate()
+        return !date.isAfter(java.time.LocalDate.now(zone).plusDays(days))
     }
 }

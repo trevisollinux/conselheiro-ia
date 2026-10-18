@@ -40,6 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.trevisolli.agendawidget.data.Settings
+import com.trevisolli.agendawidget.ui.APP_COLORS
+import com.trevisolli.agendawidget.ui.APP_TYPE
 import com.trevisolli.agendawidget.data.TodoistSource
 import com.trevisolli.agendawidget.smart.Brain
 import com.trevisolli.agendawidget.smart.Kind

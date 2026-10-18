@@ -55,6 +55,9 @@ import com.trevisolli.agendawidget.R
 import com.trevisolli.agendawidget.data.AgendaItem
 import com.trevisolli.agendawidget.data.AgendaRepository
 import com.trevisolli.agendawidget.data.Format
+import com.trevisolli.agendawidget.data.Range
+import com.trevisolli.agendawidget.smart.ChatStore
+import com.trevisolli.agendawidget.ChatActivity
 import com.trevisolli.agendawidget.data.Settings
 import com.trevisolli.agendawidget.data.TodoistSource
 import kotlinx.coroutines.Dispatchers
@@ -105,8 +108,12 @@ class AgendaWidget : GlanceAppWidget() {
         suspend fun push(context: Context, snapshot: Snapshot) {
             val json = snapshot.toJson()
             val widget = AgendaWidget()
+            val range = Settings(context).widgetRange.name
             GlanceAppWidgetManager(context).getGlanceIds(AgendaWidget::class.java).forEach { id ->
-                updateAppWidgetState(context, id) { it[SNAPSHOT_KEY] = json }
+                updateAppWidgetState(context, id) {
+                    it[SNAPSHOT_KEY] = json
+                    it[RANGE_KEY] = range
+                }
                 widget.update(context, id)
             }
         }
@@ -118,6 +125,18 @@ class AgendaWidgetReceiver : GlanceAppWidgetReceiver() {
 }
 
 private val TASK_ID = ActionParameters.Key<String>("taskId")
+private val RANGE_PARAM = ActionParameters.Key<String>("range")
+private val RANGE_KEY = stringPreferencesKey("range")
+
+/** Toque em Hoje/Semana/Mês no widget. */
+class RangeAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        val range = Range.entries.firstOrNull { it.name == parameters[RANGE_PARAM] } ?: return
+        Settings(context).widgetRange = range
+        updateAppWidgetState(context, glanceId) { it[RANGE_KEY] = range.name }
+        AgendaWidget().update(context, glanceId)
+    }
+}
 
 /** Toque no círculo: conclui no Todoist e some da lista na hora. */
 class CompleteAction : ActionCallback {
@@ -174,26 +193,39 @@ private fun Content(snapshot: Snapshot) {
 }
 
 @Composable
-private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
+private fun Body(snapshot: Snapshot, ink: Ink, @Suppress("UNUSED_PARAMETER") footer: String?) {
+    val context = LocalContext.current
+    val settings = Settings(context)
+    val range = Range.entries.firstOrNull { it.name == currentState<Preferences>()[RANGE_KEY] } ?: settings.widgetRange
+    val hour = java.time.LocalTime.now().hour
+    val greeting = when (hour) {
+        in 5..11 -> "Bom dia"
+        in 12..17 -> "Boa tarde"
+        else -> "Boa noite"
+    } + settings.userName.takeIf { it.isNotBlank() }?.let { ", $it" }.orEmpty()
+    val lastReply = ChatStore.all(context).lastOrNull { !it.fromUser }
+        ?.takeIf { System.currentTimeMillis() - it.time < 12 * 3600_000L }
+    val chatIntent = Intent(context, ChatActivity::class.java)
+        .setData(Uri.parse("consigliere://chat/text")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val voiceIntent = Intent(context, ChatActivity::class.java)
+        .setData(Uri.parse("consigliere://chat/voice")).putExtra(ChatActivity.EXTRA_VOICE, true)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val visible = snapshot.items.filter { range.includes(it) }
+
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
+        // Topo: saudação grande + resumo do dia (atualiza sozinho)
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Image(
-                provider = ImageProvider(R.drawable.ic_compass),
-                contentDescription = null,
-                colorFilter = ColorFilter.tint(ColorProvider(ink.primary)),
-                modifier = GlanceModifier.size(18.dp),
-            )
-            Spacer(GlanceModifier.width(6.dp))
             Text(
-                text = "ConsigliereIA",
-                style = TextStyle(color = ColorProvider(ink.primary), fontSize = 14.sp, fontWeight = FontWeight.Medium),
+                text = greeting,
+                style = TextStyle(color = ColorProvider(ink.primary), fontSize = 21.sp, fontWeight = FontWeight.Bold),
+                maxLines = 1,
                 modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity<MainActivity>()),
             )
             Image(
@@ -204,11 +236,11 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
             )
         }
         if (snapshot.summary.isNotBlank()) {
-            Spacer(GlanceModifier.height(4.dp))
+            Spacer(GlanceModifier.height(2.dp))
             Text(
                 text = snapshot.summary,
                 style = TextStyle(color = ColorProvider(ink.summary), fontSize = 13.sp, fontWeight = FontWeight.Medium),
-                maxLines = 4,
+                maxLines = 3,
                 modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()),
             )
         }
@@ -221,34 +253,87 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
                 modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()),
             )
         }
-        Spacer(GlanceModifier.height(6.dp))
 
-        if (snapshot.items.isEmpty()) {
-            Text(
-                text = if (snapshot.updatedAt == 0L) "Toque para configurar" else "Nada nos próximos dias",
-                style = TextStyle(color = ColorProvider(ink.primary), fontSize = 16.sp),
-                modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()),
-            )
-        } else {
-            LazyColumn(modifier = GlanceModifier.defaultWeight().fillMaxWidth()) {
-                items(snapshot.items) { item -> ItemRow(item, ink) }
+        // Meio: período + lista
+        Spacer(GlanceModifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Range.entries.forEach { r ->
+                val selected = r == range
+                Text(
+                    text = r.label,
+                    style = TextStyle(
+                        color = ColorProvider(if (selected) ink.primary else ink.secondary),
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                    ),
+                    modifier = GlanceModifier
+                        .background(if (selected) ink.primary.copy(alpha = 0.16f) else Color.Transparent)
+                        .cornerRadius(12.dp)
+                        .padding(horizontal = 10.dp, vertical = 3.dp)
+                        .clickable(actionRunCallback<RangeAction>(actionParametersOf(RANGE_PARAM to r.name))),
+                )
+                Spacer(GlanceModifier.width(4.dp))
             }
         }
-
-        if (footer != null) {
-            Text(
-                text = footer,
-                style = TextStyle(color = ColorProvider(ink.footer), fontSize = 11.sp),
-                maxLines = 1,
-            )
+        Spacer(GlanceModifier.height(2.dp))
+        if (visible.isEmpty()) {
+            Box(modifier = GlanceModifier.defaultWeight().fillMaxWidth()) {
+                Text(
+                    text = if (snapshot.updatedAt == 0L) "Toque para configurar" else "Nada neste período 🍃",
+                    style = TextStyle(color = ColorProvider(ink.primary), fontSize = 15.sp),
+                    modifier = GlanceModifier.padding(top = 8.dp).clickable(actionStartActivity<MainActivity>()),
+                )
+            }
+        } else {
+            LazyColumn(modifier = GlanceModifier.defaultWeight().fillMaxWidth()) {
+                items(visible) { item -> ItemRow(item, ink) }
+            }
         }
 
         if (snapshot.errors.isNotEmpty()) {
             Text(
                 text = snapshot.errors.joinToString("; "),
                 style = TextStyle(color = ColorProvider(ink.overdue), fontSize = 11.sp),
-                maxLines = 2,
+                maxLines = 1,
             )
+        }
+
+        // Embaixo: conversa
+        if (lastReply != null) {
+            Text(
+                text = "🧭 " + lastReply.text.lineSequence().first(),
+                style = TextStyle(color = ColorProvider(ink.secondary), fontSize = 12.sp),
+                maxLines = 1,
+                modifier = GlanceModifier.padding(top = 4.dp).clickable(actionStartActivity(chatIntent)),
+            )
+        }
+        Spacer(GlanceModifier.height(6.dp))
+        Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = GlanceModifier
+                    .defaultWeight()
+                    .background(ink.primary.copy(alpha = 0.12f))
+                    .cornerRadius(20.dp)
+                    .padding(horizontal = 14.dp, vertical = 9.dp)
+                    .clickable(actionStartActivity(chatIntent)),
+            ) {
+                Text(
+                    text = "💬 Fale com o Consigliere…",
+                    style = TextStyle(color = ColorProvider(ink.secondary), fontSize = 13.sp),
+                    maxLines = 1,
+                )
+            }
+            Spacer(GlanceModifier.width(8.dp))
+            Box(
+                modifier = GlanceModifier
+                    .size(38.dp)
+                    .background(Color(0xFF3E7C59))
+                    .cornerRadius(19.dp)
+                    .clickable(actionStartActivity(voiceIntent)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = "🎤", style = TextStyle(fontSize = 16.sp))
+            }
         }
     }
 }

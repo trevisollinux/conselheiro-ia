@@ -12,8 +12,8 @@ android {
         applicationId = "com.trevisolli.agendawidget"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "1.7"
+        versionCode = 21
+        versionName = "1.7.1"
 
         // Só celulares reais (ARM): deixa o APK bem menor.
         ndk {

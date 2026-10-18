@@ -73,7 +73,7 @@ class ConfirmActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val dark = isDarkTheme(Settings(this).appTheme, resources.configuration.isNightModeActive)
+        val dark = isDarkTheme(Settings(this).appTheme, (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES)
         enableEdgeToEdge(
             statusBarStyle = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
             else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),

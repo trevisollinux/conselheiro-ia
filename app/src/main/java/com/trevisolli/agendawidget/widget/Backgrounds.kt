@@ -19,7 +19,8 @@ import com.trevisolli.agendawidget.data.WidgetTheme
 object Backgrounds {
 
     /** Semente da cena: muda no intervalo escolhido (30 min, 1 h, 3 h…). */
-    fun seed(settings: Settings): Long = System.currentTimeMillis() / (settings.rotateMinutes.coerceAtLeast(30) * 60_000L)
+    fun seed(settings: Settings): Long =
+        System.currentTimeMillis() / (settings.rotateMinutes.coerceAtLeast(30) * 60_000L) + settings.sceneNonce * 7919
 
     fun weatherFor(context: Context): LandscapeArt.Weather = when (WeatherSource.load(context)?.mood) {
         WeatherSource.Mood.RAIN -> LandscapeArt.Weather.RAIN

@@ -160,6 +160,10 @@ class CompleteAction : ActionCallback {
 
 class RefreshAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        // Atualiza compromissos e troca a arte: obra nova ou outra paisagem.
+        val s = Settings(context)
+        s.artFetchedAt = 0
+        s.sceneNonce = s.sceneNonce + 1
         RefreshWorker.runNow(context)
     }
 }

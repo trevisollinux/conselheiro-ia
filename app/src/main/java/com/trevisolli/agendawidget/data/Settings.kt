@@ -124,6 +124,15 @@ class Settings(context: Context) {
         get() = prefs.getString("art_caption", "").orEmpty()
         set(value) = prefs.edit().putString("art_caption", value).apply()
 
+    var appTheme: AppTheme
+        get() = AppTheme.entries.firstOrNull { it.name == prefs.getString("app_theme", null) } ?: AppTheme.SYSTEM
+        set(value) = prefs.edit().putString("app_theme", value.name).apply()
+
+    /** Somado à semente da paisagem: o ↻ do widget sorteia outra cena na hora. */
+    var sceneNonce: Long
+        get() = prefs.getLong("scene_nonce", 0)
+        set(value) = prefs.edit().putLong("scene_nonce", value).apply()
+
     /** Opacidade do fundo do widget, em %. */
     var widgetOpacity: Int
         get() = prefs.getInt("widget_opacity", 70)
@@ -299,4 +308,10 @@ enum class ArtStyle(val label: String, val queries: List<String>) {
             "hasImages=true&departmentId=1&artistOrCulture=true&q=Sloan",
         ),
     ),
+}
+
+enum class AppTheme(val label: String) {
+    SYSTEM("Seguir o celular"),
+    LIGHT("Claro"),
+    DARK("Escuro"),
 }

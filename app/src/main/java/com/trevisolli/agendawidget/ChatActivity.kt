@@ -27,8 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.trevisolli.agendawidget.ui.APP_COLORS
-import com.trevisolli.agendawidget.ui.APP_TYPE
+import com.trevisolli.agendawidget.ui.ConsigliereTheme
 import com.trevisolli.agendawidget.ui.ChatPanel
 
 /** Janela de conversa aberta pelo widget (barra "Fale comigo" ou 🎤), por cima da tela inicial. */
@@ -41,7 +40,7 @@ class ChatActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val voice = intent.getBooleanExtra(EXTRA_VOICE, false)
         setContent {
-            MaterialTheme(colorScheme = APP_COLORS, typography = APP_TYPE) {
+            ConsigliereTheme {
                 Box(
                     Modifier
                         .fillMaxSize()

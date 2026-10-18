@@ -7,7 +7,9 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings as AndroidSettings
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import com.trevisolli.agendawidget.ui.isDarkTheme
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -27,12 +29,12 @@ import androidx.compose.material3.TopAppBarDefaults
 import com.trevisolli.agendawidget.data.CalendarWriter
 import com.trevisolli.agendawidget.data.Range
 import com.trevisolli.agendawidget.data.WidgetTheme
+import com.trevisolli.agendawidget.data.AppTheme
 import com.trevisolli.agendawidget.data.ArtStyle
 import com.trevisolli.agendawidget.data.WeatherSource
 import com.trevisolli.agendawidget.widget.Backgrounds
 import com.trevisolli.agendawidget.widget.LandscapeArt
-import com.trevisolli.agendawidget.ui.APP_COLORS
-import com.trevisolli.agendawidget.ui.APP_TYPE
+import com.trevisolli.agendawidget.ui.ConsigliereTheme
 import com.trevisolli.agendawidget.ui.AgendaTab
 import com.trevisolli.agendawidget.ui.ChatPanel
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -140,11 +142,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Android 15 desenha atrás da barra de status; o Scaffold cuida dos espaços.
-        enableEdgeToEdge()
+        val dark = isDarkTheme(Settings(this).appTheme, resources.configuration.isNightModeActive)
+        enableEdgeToEdge(
+            statusBarStyle = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+            else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+            else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+        )
         RefreshWorker.schedule(this)
         Briefing.scheduleAll(this)
         setContent {
-            MaterialTheme(colorScheme = APP_COLORS, typography = APP_TYPE) {
+            ConsigliereTheme {
                 Surface(modifier = Modifier.fillMaxSize()) { AppRoot() }
             }
         }
@@ -392,7 +400,12 @@ class MainActivity : ComponentActivity() {
                     },
                     actions = {
                         if (!inSettings) {
-                            IconButton(onClick = { refresh() }, enabled = !busy) {
+                            IconButton(onClick = {
+                                // ↻ também troca a arte do widget.
+                                settings.artFetchedAt = 0
+                                settings.sceneNonce = settings.sceneNonce + 1
+                                refresh()
+                            }, enabled = !busy) {
                                 Icon(Icons.Filled.Refresh, contentDescription = "Atualizar")
                             }
                             IconButton(onClick = { inSettings = true }) {
@@ -617,6 +630,21 @@ class MainActivity : ComponentActivity() {
                             )
                             Text(b.text, style = MaterialTheme.typography.bodySmall)
                         }
+                    }
+                }
+            }
+
+            Section("Tema do app") {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppTheme.entries.forEach { t ->
+                        FilterChip(
+                            selected = settings.appTheme == t,
+                            onClick = {
+                                settings.appTheme = t
+                                recreate()
+                            },
+                            label = { Text(t.label) },
+                        )
                     }
                 }
             }
@@ -1147,7 +1175,7 @@ class MainActivity : ComponentActivity() {
     private fun Section(title: String, content: @Composable () -> Unit) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 content()
             }
         }

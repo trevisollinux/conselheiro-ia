@@ -8,7 +8,9 @@ import android.os.Bundle
 import android.provider.CalendarContract
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import com.trevisolli.agendawidget.ui.isDarkTheme
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -42,8 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.trevisolli.agendawidget.data.Settings
-import com.trevisolli.agendawidget.ui.APP_COLORS
-import com.trevisolli.agendawidget.ui.APP_TYPE
+import com.trevisolli.agendawidget.ui.ConsigliereTheme
 import com.trevisolli.agendawidget.data.TodoistSource
 import com.trevisolli.agendawidget.smart.Brain
 import com.trevisolli.agendawidget.smart.Kind
@@ -72,7 +73,13 @@ class ConfirmActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        val dark = isDarkTheme(Settings(this).appTheme, resources.configuration.isNightModeActive)
+        enableEdgeToEdge(
+            statusBarStyle = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+            else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+            else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+        )
         val storedId = intent.getStringExtra(EXTRA_SUGGESTION_ID)
         val stored = storedId?.let { SuggestionStore.get(this, it) }
         val isSend = intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_PROCESS_TEXT
@@ -96,7 +103,7 @@ class ConfirmActivity : ComponentActivity() {
             return
         }
         setContent {
-            MaterialTheme(colorScheme = APP_COLORS, typography = APP_TYPE) {
+            ConsigliereTheme {
                 Surface(modifier = Modifier.fillMaxSize()) { Screen(stored, shared, image) }
             }
         }

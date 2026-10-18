@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings as AndroidSettings
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -133,6 +134,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Android 15 desenha atrás da barra de status; o Scaffold cuida dos espaços.
+        enableEdgeToEdge()
         RefreshWorker.schedule(this)
         Briefing.scheduleAll(this)
         setContent {
@@ -751,6 +754,29 @@ class MainActivity : ComponentActivity() {
                     ) {
             Banner(artSeed, opacity = 1f)
 
+            // Atalho visível para as Configurações enquanto falta permissão importante.
+            val missing = listOfNotNull(
+                "ler a agenda".takeIf { !calendarGranted },
+                "criar eventos".takeIf { !canWriteCalendar },
+                "Todoist".takeIf { settings.todoistToken.isBlank() },
+            )
+            if (missing.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable { inSettings = true },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                ) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("⚙️", style = MaterialTheme.typography.headlineSmall)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Falta configurar", fontWeight = FontWeight.Bold)
+                            Text(missing.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+                        }
+                        Text("Abrir ›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
             DayCard(
                 snapshot = snapshot,
                 briefings = briefings,
@@ -782,6 +808,9 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+            }
+            OutlinedButton(onClick = { inSettings = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("⚙️  Configurações")
             }
             Text(
                 "Atualizado às ${Format.updatedAt(snapshot.updatedAt)}" + if (busy) " · atualizando…" else "",

@@ -23,6 +23,7 @@ object LandscapeRenderer {
         cornerPx: Float,
         scene: LandscapeArt.Scene = LandscapeArt.sceneFor(seed),
         weather: LandscapeArt.Weather = LandscapeArt.Weather.CLEAR,
+        darkMode: Boolean = false,
     ): Result {
         val w = width.coerceAtLeast(64)
         val h = height.coerceAtLeast(64)
@@ -30,13 +31,17 @@ object LandscapeRenderer {
         val canvas = Canvas(bmp)
         canvas.clipPath(Path().apply { addRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), cornerPx, cornerPx, Path.Direction.CW) })
         canvas.saveLayerAlpha(0f, 0f, w.toFloat(), h.toFloat(), (opacity.coerceIn(0f, 1f) * 255).toInt())
-        val dark = LandscapeArt.draw(AndroidPainter(canvas, w, h), seed, hour, scene, weather)
+        // No tema escuro a cena ganha véu escuro e o texto fica claro.
+        val dark = LandscapeArt.draw(AndroidPainter(canvas, w, h), seed, hour, scene, weather) || darkMode
         // Véu suave atrás do texto (mais forte em cima, onde ficam título e lista).
         val veil = if (dark) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
         val paint = Paint().apply {
             shader = LinearGradient(
                 0f, 0f, 0f, h.toFloat(),
-                intArrayOf(withAlpha(veil, if (dark) 90 else 120), withAlpha(veil, if (dark) 40 else 60)),
+                intArrayOf(
+                    withAlpha(veil, if (darkMode) 170 else if (dark) 90 else 120),
+                    withAlpha(veil, if (darkMode) 120 else if (dark) 40 else 60),
+                ),
                 null, Shader.TileMode.CLAMP,
             )
         }

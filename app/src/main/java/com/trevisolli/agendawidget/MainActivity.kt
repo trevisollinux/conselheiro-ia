@@ -641,6 +641,8 @@ class MainActivity : ComponentActivity() {
                             selected = settings.appTheme == t,
                             onClick = {
                                 settings.appTheme = t
+                                // Widget acompanha o tema: redesenha já.
+                                RefreshWorker.runNow(this@MainActivity)
                                 recreate()
                             },
                             label = { Text(t.label) },

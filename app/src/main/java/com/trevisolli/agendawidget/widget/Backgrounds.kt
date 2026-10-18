@@ -1,6 +1,8 @@
 package com.trevisolli.agendawidget.widget
 
 import android.content.Context
+import android.content.res.Configuration
+import com.trevisolli.agendawidget.ui.isDarkTheme
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Rect
@@ -36,23 +38,39 @@ object Backgrounds {
         val opacity = settings.widgetOpacity / 100f
         val seed = seedOverride ?: seed(settings)
         val theme = settings.widgetTheme
+        val night = darkMode(context, settings)
         if (theme == WidgetTheme.ART) {
-            artwork(context, settings, width.coerceAtLeast(64), height.coerceAtLeast(64), opacity, cornerPx)?.let { return it }
+            artwork(context, settings, width.coerceAtLeast(64), height.coerceAtLeast(64), opacity, cornerPx, night)?.let { return it }
         }
         return when (theme) {
             WidgetTheme.LANDSCAPE, WidgetTheme.ART -> {
                 val fixed = LandscapeArt.Scene.entries.firstOrNull { it.name == settings.sceneChoice }
                 LandscapeRenderer.render(
                     width, height, seed, hour, opacity, cornerPx,
-                    fixed ?: LandscapeArt.sceneFor(seed), weatherFor(context),
+                    fixed ?: LandscapeArt.sceneFor(seed), weatherFor(context), night,
                 )
             }
-            else -> paper(theme, width.coerceAtLeast(64), height.coerceAtLeast(64), opacity, cornerPx)
+            else -> paper(theme, width.coerceAtLeast(64), height.coerceAtLeast(64), opacity, cornerPx, night)
         }
     }
 
     /** Obra baixada, recortada para preencher o widget, com véu para o texto. Null se ainda não há obra. */
-    private fun artwork(context: Context, settings: Settings, w: Int, h: Int, opacity: Float, corner: Float): LandscapeRenderer.Result? {
+    /** O widget segue o tema do app (claro, escuro ou o do celular). */
+    fun darkMode(context: Context, settings: Settings): Boolean {
+        val systemNight = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        return isDarkTheme(settings.appTheme, systemNight)
+    }
+
+    private fun artwork(
+        context: Context,
+        settings: Settings,
+        w: Int,
+        h: Int,
+        opacity: Float,
+        corner: Float,
+        night: Boolean,
+    ): LandscapeRenderer.Result? {
         val file = ArtSource.imageFile(context)
         if (!file.exists()) return null
         val src = BitmapFactory.decodeFile(file.path) ?: return null
@@ -67,8 +85,8 @@ object Backgrounds {
         val left = (src.width - sw) / 2
         val top = (src.height - sh) / 2
         c.drawBitmap(src, Rect(left.toInt(), top.toInt(), (left + sw).toInt(), (top + sh).toInt()), Rect(0, 0, w, h), Paint(Paint.FILTER_BITMAP_FLAG))
-        val dark = luminance(src) < 0.55f
-        val veil = Paint().apply { color = if (dark) 0x73000000 else 0x8CFFFFFF.toInt() }
+        val dark = night || luminance(src) < 0.55f
+        val veil = Paint().apply { color = if (night) 0xA6000000.toInt() else if (dark) 0x73000000 else 0x8CFFFFFF.toInt() }
         c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), veil)
         c.restore()
         src.recycle()
@@ -95,7 +113,7 @@ object Backgrounds {
         return if (n == 0) 0.5f else (sum / n).toFloat()
     }
 
-    private fun paper(theme: WidgetTheme, w: Int, h: Int, opacity: Float, corner: Float): LandscapeRenderer.Result {
+    private fun paper(theme: WidgetTheme, w: Int, h: Int, opacity: Float, corner: Float, night: Boolean): LandscapeRenderer.Result {
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
         c.clipPath(Path().apply { addRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), corner, corner, Path.Direction.CW) })
@@ -104,7 +122,7 @@ object Backgrounds {
         val unit = w / 360f
         when (theme) {
             WidgetTheme.LIGHT -> {
-                p.color = 0xFFFAFAF7.toInt()
+                p.color = if (night) 0xFF1E1F22.toInt() else 0xFFFAFAF7.toInt()
                 c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), p)
             }
             WidgetTheme.DARK -> {
@@ -113,11 +131,11 @@ object Backgrounds {
             }
             WidgetTheme.NOTEBOOK -> {
                 // Bloco amarelo pautado: faixa no topo, linhas azuis e margem vermelha.
-                p.color = 0xFFFFF4B0.toInt()
+                p.color = if (night) 0xFF26241C.toInt() else 0xFFFFF4B0.toInt()
                 c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), p)
-                p.color = 0xFFEAD77A.toInt()
+                p.color = if (night) 0xFF4A4428.toInt() else 0xFFEAD77A.toInt()
                 c.drawRect(0f, 0f, w.toFloat(), 10 * unit, p)
-                p.color = 0x5574A9D6
+                p.color = if (night) 0x3374A9D6 else 0x5574A9D6
                 p.strokeWidth = 1.2f * unit
                 var y = 64 * unit
                 while (y < h) {
@@ -129,11 +147,15 @@ object Backgrounds {
             }
             else -> {
                 // Post-it verde-menta com dobra no canto.
-                p.shader = LinearGradient(0f, 0f, 0f, h.toFloat(), 0xFFDDF5E3.toInt(), 0xFFC9EBD2.toInt(), Shader.TileMode.CLAMP)
+                p.shader = if (night) {
+                    LinearGradient(0f, 0f, 0f, h.toFloat(), 0xFF1F2E25.toInt(), 0xFF18241D.toInt(), Shader.TileMode.CLAMP)
+                } else {
+                    LinearGradient(0f, 0f, 0f, h.toFloat(), 0xFFDDF5E3.toInt(), 0xFFC9EBD2.toInt(), Shader.TileMode.CLAMP)
+                }
                 c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), p)
                 p.shader = null
                 val fold = 34 * unit
-                p.color = 0xFFB2D9BD.toInt()
+                p.color = if (night) 0xFF2C4235.toInt() else 0xFFB2D9BD.toInt()
                 c.drawPath(
                     Path().apply {
                         moveTo(w - fold, h.toFloat())
@@ -146,6 +168,6 @@ object Backgrounds {
             }
         }
         c.restore()
-        return LandscapeRenderer.Result(bmp, dark = theme == WidgetTheme.DARK, label = theme.label)
+        return LandscapeRenderer.Result(bmp, dark = night || theme == WidgetTheme.DARK, label = theme.label)
     }
 }

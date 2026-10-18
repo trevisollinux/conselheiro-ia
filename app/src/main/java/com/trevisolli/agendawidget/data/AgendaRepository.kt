@@ -1,6 +1,8 @@
 package com.trevisolli.agendawidget.data
 
 import android.content.Context
+import com.trevisolli.agendawidget.smart.Summary
+import com.trevisolli.agendawidget.smart.SuggestionStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -40,7 +42,14 @@ object AgendaRepository {
 
         // Atrasadas primeiro; depois por data, com itens de dia inteiro antes dos com hora.
         items.sortWith(compareBy<AgendaItem>({ !it.overdue }, { it.startMillis }, { !it.dateOnly }, { it.title }))
-        val snapshot = Snapshot(items, errors, System.currentTimeMillis())
+        val summary = Summary.build(context, items, errors)
+        val snapshot = Snapshot(
+            items = items,
+            errors = errors,
+            updatedAt = System.currentTimeMillis(),
+            summary = summary,
+            pendingSuggestions = SuggestionStore.all(context).size,
+        )
         cacheFile(context).writeText(snapshot.toJson())
         snapshot
     }

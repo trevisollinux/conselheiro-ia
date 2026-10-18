@@ -48,11 +48,15 @@ data class Snapshot(
     val items: List<AgendaItem>,
     val errors: List<String>,
     val updatedAt: Long,
+    val summary: String = "",
+    val pendingSuggestions: Int = 0,
 ) {
     fun toJson(): String = JSONObject()
         .put("items", JSONArray().apply { items.forEach { put(it.toJson()) } })
         .put("errors", JSONArray(errors))
         .put("updatedAt", updatedAt)
+        .put("summary", summary)
+        .put("pending", pendingSuggestions)
         .toString()
 
     companion object {
@@ -68,6 +72,8 @@ data class Snapshot(
                     items = List(items.length()) { AgendaItem.fromJson(items.getJSONObject(it)) },
                     errors = List(errors.length()) { errors.getString(it) },
                     updatedAt = o.getLong("updatedAt"),
+                    summary = o.optString("summary"),
+                    pendingSuggestions = o.optInt("pending"),
                 )
             } catch (e: Exception) {
                 EMPTY

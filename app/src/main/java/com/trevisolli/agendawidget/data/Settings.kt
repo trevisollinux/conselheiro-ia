@@ -1,6 +1,9 @@
 package com.trevisolli.agendawidget.data
 
 import android.content.Context
+import android.util.Base64
+import com.trevisolli.agendawidget.smart.AiProvider
+import org.json.JSONObject
 
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -17,4 +20,76 @@ class Settings(context: Context) {
     var days: Int
         get() = prefs.getInt("days", 7)
         set(value) = prefs.edit().putInt("days", value).apply()
+
+    /** false = modo automático (regras no aparelho); true = IA do usuário. */
+    var useAi: Boolean
+        get() = prefs.getBoolean("use_ai", false)
+        set(value) = prefs.edit().putBoolean("use_ai", value).apply()
+
+    var aiProvider: AiProvider
+        get() = AiProvider.entries.firstOrNull { it.name == prefs.getString("ai_provider", null) } ?: AiProvider.CLAUDE
+        set(value) = prefs.edit().putString("ai_provider", value.name).apply()
+
+    var aiKey: String
+        get() = prefs.getString("ai_key", "").orEmpty()
+        set(value) = prefs.edit().putString("ai_key", value.trim()).apply()
+
+    /** Vazio = modelo padrão do provedor. */
+    var aiModel: String
+        get() = prefs.getString("ai_model", "").orEmpty()
+        set(value) = prefs.edit().putString("ai_model", value.trim()).apply()
+
+    val effectiveModel: String
+        get() = aiModel.ifBlank { aiProvider.defaultModel }
+
+    val aiReady: Boolean
+        get() = useAi && aiKey.isNotBlank()
+
+    var detectNotifications: Boolean
+        get() = prefs.getBoolean("detect_notifications", false)
+        set(value) = prefs.edit().putBoolean("detect_notifications", value).apply()
+
+    var summaryCacheKey: String
+        get() = prefs.getString("summary_key", "").orEmpty()
+        set(value) = prefs.edit().putString("summary_key", value).apply()
+
+    var summaryCacheText: String
+        get() = prefs.getString("summary_text", "").orEmpty()
+        set(value) = prefs.edit().putString("summary_text", value).apply()
+
+    /** Conteúdo do QR de backup. Contém token e chave: tratar como senha. */
+    fun exportPayload(): String {
+        val json = JSONObject()
+            .put("todoist", todoistToken)
+            .put("days", days)
+            .put("useAi", useAi)
+            .put("provider", aiProvider.name)
+            .put("aiKey", aiKey)
+            .put("aiModel", aiModel)
+            .put("detect", detectNotifications)
+        return PREFIX + Base64.encodeToString(json.toString().toByteArray(), Base64.NO_WRAP)
+    }
+
+    /** Retorna false se o QR não for do app. */
+    fun importPayload(payload: String): Boolean {
+        if (!payload.startsWith(PREFIX)) return false
+        val json = try {
+            JSONObject(String(Base64.decode(payload.removePrefix(PREFIX), Base64.NO_WRAP)))
+        } catch (e: Exception) {
+            return false
+        }
+        todoistToken = json.optString("todoist")
+        days = json.optInt("days", 7)
+        useAi = json.optBoolean("useAi")
+        aiProvider = AiProvider.entries.firstOrNull { it.name == json.optString("provider") } ?: AiProvider.CLAUDE
+        aiKey = json.optString("aiKey")
+        aiModel = json.optString("aiModel")
+        detectNotifications = json.optBoolean("detect")
+        summaryCacheKey = ""
+        return true
+    }
+
+    private companion object {
+        const val PREFIX = "consigliere1:"
+    }
 }

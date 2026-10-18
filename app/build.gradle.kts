@@ -12,8 +12,8 @@ android {
         applicationId = "com.trevisolli.agendawidget"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 2
+        versionName = "0.2"
     }
 
     // Chave fixa e versionada: o SHA-1 precisa ser estável para o OAuth do Google Tasks.
@@ -63,6 +63,7 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences-core:1.1.1")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 }

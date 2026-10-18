@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Agenda Widget</string>
-    <string name="widget_name">Agenda e tarefas</string>
-    <string name="widget_description">Próximos eventos e tarefas num só lugar</string>
+    <string name="app_name">ConsigliereIA</string>
+    <string name="widget_name">ConsigliereIA</string>
+    <string name="widget_description">Agenda, tarefas e um resumo do seu dia</string>
+    <string name="share_label">ConsigliereIA: criar compromisso</string>
 </resources>

@@ -58,6 +58,8 @@ private val BACKGROUND = Color(0xFF202124)
 private val PRIMARY_TEXT = Color(0xFFFFFFFF)
 private val SECONDARY_TEXT = Color(0xFFBDC1C6)
 private val OVERDUE_TEXT = Color(0xFFF28B82)
+private val SUMMARY_TEXT = Color(0xFF8AB4F8)
+private val SUGGESTION_TEXT = Color(0xFFFDD663)
 
 class AgendaWidget : GlanceAppWidget() {
 
@@ -109,8 +111,14 @@ private fun Content(snapshot: Snapshot) {
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Image(
+                provider = ImageProvider(R.drawable.ic_compass),
+                contentDescription = null,
+                modifier = GlanceModifier.size(18.dp),
+            )
+            Spacer(GlanceModifier.width(6.dp))
             Text(
-                text = "Agenda · Tarefas",
+                text = "ConsigliereIA",
                 style = TextStyle(color = ColorProvider(SECONDARY_TEXT), fontSize = 14.sp),
                 modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity<MainActivity>()),
             )
@@ -118,6 +126,23 @@ private fun Content(snapshot: Snapshot) {
                 provider = ImageProvider(R.drawable.ic_refresh),
                 contentDescription = "Atualizar",
                 modifier = GlanceModifier.size(20.dp).clickable(actionRunCallback<RefreshAction>()),
+            )
+        }
+        if (snapshot.summary.isNotBlank()) {
+            Spacer(GlanceModifier.height(4.dp))
+            Text(
+                text = snapshot.summary,
+                style = TextStyle(color = ColorProvider(SUMMARY_TEXT), fontSize = 13.sp),
+                maxLines = 2,
+            )
+        }
+        if (snapshot.pendingSuggestions > 0) {
+            Spacer(GlanceModifier.height(4.dp))
+            Text(
+                text = "📌 ${snapshot.pendingSuggestions} " +
+                    if (snapshot.pendingSuggestions == 1) "sugestão para revisar" else "sugestões para revisar",
+                style = TextStyle(color = ColorProvider(SUGGESTION_TEXT), fontSize = 13.sp, fontWeight = FontWeight.Bold),
+                modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()),
             )
         }
         Spacer(GlanceModifier.height(6.dp))

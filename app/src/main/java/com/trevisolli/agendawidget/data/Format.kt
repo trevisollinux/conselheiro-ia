@@ -44,6 +44,13 @@ object Format {
         return parts.joinToString(" · ")
     }
 
+    /** Ex.: "Amanhã 09:00", "Quarta, 21/10". */
+    fun suggestionWhen(date: LocalDate?, time: java.time.LocalTime?): String? {
+        if (date == null && time == null) return null
+        val today = LocalDate.now(ZoneId.systemDefault())
+        return listOfNotNull(date?.let { dayLabel(it, today) }, time?.format(this.time)).joinToString(" ")
+    }
+
     fun updatedAt(millis: Long): String {
         if (millis == 0L) return "nunca"
         val dt = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault())

@@ -1,9 +1,11 @@
 package com.trevisolli.agendawidget.data
 
 import org.json.JSONObject
+import java.time.ZonedDateTime
 import java.net.URLEncoder
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 
@@ -48,6 +50,20 @@ object TodoistSource {
             cursor = page.optString("next_cursor").takeIf { !page.isNull("next_cursor") && it.isNotBlank() }
         } while (cursor != null)
         return items
+    }
+
+    /** Cria uma tarefa; com hora vira due_datetime (UTC), sem hora vira due_date. */
+    fun create(token: String, title: String, date: LocalDate?, time: LocalTime?, description: String?) {
+        val body = JSONObject().put("content", title)
+        if (date != null) {
+            if (time != null) {
+                body.put("due_datetime", ZonedDateTime.of(date, time, ZoneId.systemDefault()).toInstant().toString())
+            } else {
+                body.put("due_date", date.toString())
+            }
+        }
+        if (!description.isNullOrBlank()) body.put("description", description.take(1000))
+        Http.postJson("https://api.todoist.com/api/v1/tasks", mapOf("Authorization" to "Bearer $token"), body)
     }
 
     /** Aceita "2026-10-21", "2026-10-21T09:00:00" (hora local) e "2026-10-21T12:00:00Z". */

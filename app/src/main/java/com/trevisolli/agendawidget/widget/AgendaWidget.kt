@@ -228,9 +228,8 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
         ?.takeIf { System.currentTimeMillis() - it.time < 12 * 3600_000L }
     val chatIntent = Intent(context, ChatActivity::class.java)
         .setData(Uri.parse("consigliere://chat/text")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    val voiceIntent = Intent(context, ChatActivity::class.java)
-        .setData(Uri.parse("consigliere://chat/voice")).putExtra(ChatActivity.EXTRA_VOICE, true)
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    // Com IA que ouve áudio, o 🎤 abre o gravador direto; sem, a conversa com o reconhecimento do sistema.
+    val voiceIntent = com.trevisolli.agendawidget.VoiceActivity.intent(context)
     val visible = snapshot.items.filter { range.includes(it) }
 
     Column(

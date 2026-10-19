@@ -35,6 +35,14 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Gravador: toque no widget, fale e pronto -->
+        <activity
+            android:name=".VoiceActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <!-- "Compartilhar" de qualquer app → revisar e criar compromisso/tarefa -->
         <activity
             android:name=".ConfirmActivity"
@@ -86,6 +94,17 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/agenda_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.VoiceWidgetReceiver"
+            android:exported="true"
+            android:label="@string/voice_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/voice_widget_info" />
         </receiver>
     </application>
 </manifest>

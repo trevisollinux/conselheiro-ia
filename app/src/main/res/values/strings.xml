@@ -3,5 +3,7 @@
     <string name="app_name">ConsigliereIA</string>
     <string name="widget_name">ConsigliereIA</string>
     <string name="widget_description">Agenda, tarefas e um resumo do seu dia</string>
+    <string name="voice_widget_name">Falar com o Consigliere</string>
+    <string name="voice_widget_description">Toque, fale e ele anota na agenda ou no Todoist</string>
     <string name="share_label">ConsigliereIA</string>
 </resources>

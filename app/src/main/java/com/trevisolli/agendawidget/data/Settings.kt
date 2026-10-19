@@ -48,7 +48,33 @@ class Settings(context: Context) {
 
     /** Pausada após um 429: nesse intervalo tudo usa as regras, sem erro na tela. */
     val aiReady: Boolean
-        get() = useAi && aiKey.isNotBlank() && com.trevisolli.agendawidget.smart.AiClient.pausedUntil == 0L
+        get() = useAi && aiKey.isNotBlank() && com.trevisolli.agendawidget.smart.AiClient.pausedUntil(effectiveModel) == 0L
+
+    /** Modelo leve para o automático (resumo, notificações, briefings); vazio = escolha do app. */
+    var aiLightModel: String
+        get() = prefs.getString("ai_light_model", "").orEmpty()
+        set(value) = prefs.edit().putString("ai_light_model", value.trim()).apply()
+
+    /** Flash-Lite descoberto na conta do Gemini, e quando foi procurado. */
+    var geminiLiteAuto: String
+        get() = prefs.getString("gemini_lite_auto", "").orEmpty()
+        set(value) = prefs.edit().putString("gemini_lite_auto", value).apply()
+
+    var geminiLiteCheckedAt: Long
+        get() = prefs.getLong("gemini_lite_checked", 0)
+        set(value) = prefs.edit().putLong("gemini_lite_checked", value).apply()
+
+    val lightModel: String
+        get() = aiLightModel.ifBlank {
+            when (aiProvider) {
+                com.trevisolli.agendawidget.smart.AiProvider.CLAUDE -> "claude-haiku-5-5"
+                com.trevisolli.agendawidget.smart.AiProvider.GEMINI -> geminiLiteAuto.ifBlank { effectiveModel }
+                com.trevisolli.agendawidget.smart.AiProvider.OPENAI -> effectiveModel
+            }
+        }
+
+    val aiLightReady: Boolean
+        get() = useAi && aiKey.isNotBlank() && com.trevisolli.agendawidget.smart.AiClient.pausedUntil(lightModel) == 0L
 
     /** Token de integração interna do Notion ("Internal Integration Secret"). */
     var notionToken: String

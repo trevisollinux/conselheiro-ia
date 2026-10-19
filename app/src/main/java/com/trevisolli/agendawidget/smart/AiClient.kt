@@ -34,17 +34,35 @@ object AiClient {
         this.prefs = prefs
     }
 
-    val pausedUntil: Long
-        get() = prefs?.getLong("ai_paused_until", 0L)?.takeIf { it > System.currentTimeMillis() } ?: 0L
+    /** A cota é por modelo: o leve pode estar pausado e o principal não (e vice-versa). */
+    fun pausedUntil(model: String): Long =
+        prefs?.getLong("ai_paused_until:$model", 0L)?.takeIf { it > System.currentTimeMillis() } ?: 0L
 
     fun clearPause() {
-        prefs?.edit()?.remove("ai_paused_until")?.apply()
+        val p = prefs ?: return
+        p.edit().apply { p.all.keys.filter { it.startsWith("ai_paused_until") }.forEach { remove(it) } }.apply()
+    }
+
+    /** Flash-Lite mais novo disponível para a chave (o nome muda a cada geração). */
+    fun discoverGeminiLite(key: String): String? {
+        val res = Http.get("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", mapOf("x-goog-api-key" to key))
+        val models = res.optJSONArray("models") ?: return null
+        val version = Regex("gemini-(\\d+(?:\\.\\d+)?)")
+        val skip = Regex("preview|exp|tts|image|live|audio|thinking")
+        return List(models.length()) { models.getJSONObject(it) }
+            .filter { m ->
+                val methods = m.optJSONArray("supportedGenerationMethods")
+                methods != null && (0 until methods.length()).any { methods.optString(it) == "generateContent" }
+            }
+            .map { it.optString("name").removePrefix("models/") }
+            .filter { "flash-lite" in it && !skip.containsMatchIn(it) }
+            .maxByOrNull { version.find(it)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0 }
     }
 
     private val RETRY = Regex("\"retryDelay\"\\s*:\\s*\"(\\d+)")
 
     /** Por minuto: espera o que o provedor pediu (mín. 5 min). Por dia: 3 h. Sem detalhe: 30 min. */
-    private fun pauseFor(message: String): Long {
+    private fun pauseFor(model: String, message: String): Long {
         val retry = RETRY.find(message)?.groupValues?.get(1)?.toLongOrNull()
         val minutes = when {
             message.contains("PerDay", ignoreCase = true) || message.contains("per day", ignoreCase = true) -> 180L
@@ -52,7 +70,7 @@ object AiClient {
             else -> 30L
         }
         val until = System.currentTimeMillis() + minutes * 60_000
-        prefs?.edit()?.putLong("ai_paused_until", until)?.apply()
+        prefs?.edit()?.putLong("ai_paused_until:$model", until)?.apply()
         return until
     }
 
@@ -64,11 +82,11 @@ object AiClient {
         provider: AiProvider, key: String, model: String, system: String, user: String,
         jpeg: ByteArray? = null, audio: Pair<ByteArray, String>? = null,
     ): String {
-        pausedUntil.takeIf { it > 0 }?.let { throw RateLimited(it) }
+        pausedUntil(model).takeIf { it > 0 }?.let { throw RateLimited(it) }
         return try {
             completeOnce(provider, key, model, system, user, jpeg, audio)
         } catch (e: IOException) {
-            if (e !is RateLimited && e.message.orEmpty().startsWith("HTTP 429")) throw RateLimited(pauseFor(e.message.orEmpty()))
+            if (e !is RateLimited && e.message.orEmpty().startsWith("HTTP 429")) throw RateLimited(pauseFor(model, e.message.orEmpty()))
             throw e
         }
     }
@@ -114,16 +132,17 @@ object AiClient {
 
     /** Transcrição pela OpenAI (o Gemini ouve o áudio direto no pedido). */
     fun transcribeOpenAi(key: String, audio: ByteArray, fileName: String, mime: String): String {
-        pausedUntil.takeIf { it > 0 }?.let { throw RateLimited(it) }
+        val model = "gpt-4o-mini-transcribe"
+        pausedUntil(model).takeIf { it > 0 }?.let { throw RateLimited(it) }
         val res = try {
             Http.postMultipart(
                 "https://api.openai.com/v1/audio/transcriptions",
                 mapOf("Authorization" to "Bearer $key"),
-                mapOf("model" to "gpt-4o-mini-transcribe", "language" to "pt"),
+                mapOf("model" to model, "language" to "pt"),
                 "file", fileName, mime, audio,
             )
         } catch (e: IOException) {
-            if (e.message.orEmpty().startsWith("HTTP 429")) throw RateLimited(pauseFor(e.message.orEmpty()))
+            if (e.message.orEmpty().startsWith("HTTP 429")) throw RateLimited(pauseFor(model, e.message.orEmpty()))
             throw e
         }
         return res.optString("text").trim()

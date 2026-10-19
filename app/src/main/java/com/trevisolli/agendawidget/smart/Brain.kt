@@ -41,9 +41,10 @@ object Brain {
     }
 
     /** Usa a IA; null se ela disser que não há compromisso. Lança exceção em erro de rede/chave. */
-    fun ai(context: Context, text: String, origin: String): Suggestion? {
+    /** [light]: usa o modelo leve (leitura automática de notificações e notas). */
+    fun ai(context: Context, text: String, origin: String, light: Boolean = false): Suggestion? {
         val s = Settings(context)
-        val raw = AiClient.complete(s.aiProvider, s.aiKey, s.effectiveModel, EXTRACT_SYSTEM, todayContext() + "\n\nMensagem:\n" + text)
+        val raw = AiClient.complete(s.aiProvider, s.aiKey, if (light) s.lightModel else s.effectiveModel, EXTRACT_SYSTEM, todayContext() + "\n\nMensagem:\n" + text)
         val json = AiClient.extractJson(raw) ?: throw IllegalStateException("resposta da IA sem JSON")
         return fromJson(json, text, origin)
     }
@@ -90,9 +91,9 @@ object Brain {
         val today = LocalDate.now()
         if (r.date != null && r.date.isBefore(today)) return null
         if ((r.date == null || r.date == today) && r.time != null && r.time.isBefore(LocalTime.now())) return null
-        if (!Settings(context).aiReady) return rules(text, origin)
+        if (!Settings(context).aiLightReady) return rules(text, origin)
         return try {
-            ai(context, text, origin)
+            ai(context, text, origin, light = true)
         } catch (e: Exception) {
             rules(text, origin)
         }

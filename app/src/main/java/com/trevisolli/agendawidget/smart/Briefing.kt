@@ -71,10 +71,10 @@ object Briefing {
             Slot.EVENING -> eveningRules(snapshot.items, completed, today, zone)
         } + (weather?.let { "\n🌤 ${it.label}" } ?: "") + (advice?.let { "\n$it" } ?: "") +
             InboxStore.countsLine(inbox)?.let { "\n$it" }.orEmpty()
-        if (!settings.aiReady) return ruleText
+        if (!settings.aiLightReady) return ruleText
         return try {
             val text = AiClient.complete(
-                settings.aiProvider, settings.aiKey, settings.effectiveModel,
+                settings.aiProvider, settings.aiKey, settings.lightModel,
                 SYSTEM,
                 aiPrompt(slot, snapshot.items, completed, today, zone) +
                     (weather?.let { WeatherSource.forecastLine(it) + "\n" } ?: "") +

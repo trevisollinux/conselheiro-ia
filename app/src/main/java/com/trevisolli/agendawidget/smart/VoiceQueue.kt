@@ -36,7 +36,7 @@ object VoiceQueue {
 
     fun schedule(context: Context) {
         // Se a IA está pausada pelo limite, nem tenta antes da hora.
-        val wait = maxOf(60_000L, AiClient.pausedUntil - System.currentTimeMillis())
+        val wait = maxOf(60_000L, AiClient.pausedUntil(com.trevisolli.agendawidget.data.Settings(context).effectiveModel) - System.currentTimeMillis())
         val request = OneTimeWorkRequestBuilder<VoiceQueueWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setInitialDelay(wait, TimeUnit.MILLISECONDS)

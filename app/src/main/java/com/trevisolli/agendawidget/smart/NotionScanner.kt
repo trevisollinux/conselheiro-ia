@@ -48,9 +48,9 @@ object NotionScanner {
 
                 val origin = "Notion · ${page.title}".take(60)
                 val suggestion = (
-                    if (settings.aiReady) {
+                    if (settings.aiLightReady) {
                         try {
-                            Brain.ai(context, line, origin)
+                            Brain.ai(context, line, origin, light = true)
                         } catch (e: Exception) {
                             Brain.rules(line, origin)
                         }

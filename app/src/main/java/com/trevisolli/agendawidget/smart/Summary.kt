@@ -58,7 +58,8 @@ object Summary {
         val weather = WeatherSource.load(context)
         val advice = weather?.let { WeatherSource.advice(it, items) }
         val ruleText = rules(items) + (advice?.let { " $it" } ?: "")
-        if (!settings.aiReady) return ruleText
+        LightModel.refresh(settings)
+        if (!settings.aiLightReady) return ruleText
 
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
@@ -79,7 +80,7 @@ object Summary {
             (weather?.let { "\n" + WeatherSource.forecastLine(it) } ?: "") +
             (advice?.let { "\nConselho de tempo já calculado: $it" } ?: "")
         return try {
-            val text = AiClient.complete(settings.aiProvider, settings.aiKey, settings.effectiveModel, SUMMARY_SYSTEM, prompt)
+            val text = AiClient.complete(settings.aiProvider, settings.aiKey, settings.lightModel, SUMMARY_SYSTEM, prompt)
                 .lines().firstOrNull { it.isNotBlank() }?.trim()?.take(200)
             if (text.isNullOrBlank()) return ruleText
             settings.summaryCacheKey = key

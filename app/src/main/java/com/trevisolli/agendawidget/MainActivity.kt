@@ -178,6 +178,7 @@ class MainActivity : ComponentActivity() {
         var provider by remember { mutableStateOf(settings.aiProvider) }
         var aiKey by remember { mutableStateOf(settings.aiKey) }
         var aiModel by remember { mutableStateOf(settings.aiModel) }
+        var aiLight by remember { mutableStateOf(settings.aiLightModel) }
         var aiTest by remember { mutableStateOf<String?>(null) }
 
         var detect by remember { mutableStateOf(settings.detectNotifications) }
@@ -233,6 +234,7 @@ class MainActivity : ComponentActivity() {
             provider = settings.aiProvider
             aiKey = settings.aiKey
             aiModel = settings.aiModel
+            aiLight = settings.aiLightModel
             detect = settings.detectNotifications
             notionToken = settings.notionToken
             userName = settings.userName
@@ -304,6 +306,7 @@ class MainActivity : ComponentActivity() {
             settings.aiProvider = provider
             settings.aiKey = aiKey
             settings.aiModel = aiModel
+            settings.aiLightModel = aiLight
             settings.summaryCacheKey = ""
             if (!useAi) {
                 aiTest = null
@@ -321,6 +324,11 @@ class MainActivity : ComponentActivity() {
                         AiClient.complete(provider, aiKey.trim(), settings.effectiveModel, "Responda em português.", "Diga apenas: funcionando")
                     }
                     val switched = AiClient.redirects[provider]
+                    // Descobre o modelo leve (Gemini) já no teste, para mostrar qual ficou.
+                    withContext(Dispatchers.IO) {
+                        settings.geminiLiteCheckedAt = 0
+                        com.trevisolli.agendawidget.smart.LightModel.refresh(settings)
+                    }
                     if (switched != null && switched != settings.effectiveModel) {
                         // Guarda o modelo novo para não errar de novo.
                         settings.aiModel = switched
@@ -328,7 +336,7 @@ class MainActivity : ComponentActivity() {
                         "✅ ${provider.label} respondeu: ${answer.take(60)}\n(o modelo antigo saiu de linha; troquei para $switched)"
                     } else {
                         "✅ ${provider.label} respondeu: ${answer.take(60)}"
-                    }
+                    } + "\nPrincipal: ${settings.effectiveModel} · Leve: ${settings.lightModel}"
                 } catch (e: Exception) {
                     "❌ ${e.message?.take(200)}"
                 }
@@ -848,25 +856,38 @@ class MainActivity : ComponentActivity() {
                     OutlinedTextField(
                         value = aiModel,
                         onValueChange = { aiModel = it },
-                        label = { Text("Modelo (opcional)") },
+                        label = { Text("Modelo principal (conversa, áudio, prints)") },
                         placeholder = { Text(provider.defaultModel) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = aiLight,
+                        onValueChange = { aiLight = it },
+                        label = { Text("Modelo leve (resumo, notificações, briefings)") },
+                        placeholder = { Text(if (provider == settings.aiProvider) settings.lightModel else "automático") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        "Vazio = automático: no Gemini, o Flash-Lite mais novo da sua conta (cota bem maior); no Claude, o Haiku.",
+                        style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
                         "Usa a sua chave; o uso é cobrado na sua conta da ${provider.label}.",
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    val paused = AiClient.pausedUntil
-                    if (paused > 0) {
-                        val hora = java.time.Instant.ofEpochMilli(paused).atZone(java.time.ZoneId.systemDefault())
-                            .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
-                        Text(
-                            "⏸ Limite grátis atingido. IA pausada até $hora; enquanto isso, modo automático. " +
-                                "Um modelo flash-lite costuma ter mais cota.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
+                    listOf("Principal" to settings.effectiveModel, "Leve" to settings.lightModel).distinctBy { it.second }.forEach { (nome, modelo) ->
+                        val paused = AiClient.pausedUntil(modelo)
+                        if (paused > 0) {
+                            val hora = java.time.Instant.ofEpochMilli(paused).atZone(java.time.ZoneId.systemDefault())
+                                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                            Text(
+                                "⏸ $nome ($modelo): limite grátis atingido, pausado até $hora; enquanto isso, modo automático.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                 }
                 Button(onClick = { saveAiAndTest() }) { Text(if (useAi) "Salvar e testar" else "Salvar") }

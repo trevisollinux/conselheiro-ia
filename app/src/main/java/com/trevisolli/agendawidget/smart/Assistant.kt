@@ -44,22 +44,42 @@ object Assistant {
         return s.useAi && s.aiKey.isNotBlank() && s.aiProvider != AiProvider.CLAUDE
     }
 
-    /** Áudio gravado no app: a IA transcreve e já executa o pedido. */
+    /** Áudio gravado no app: a IA transcreve e já executa. Se a IA estiver fora, guarda e tenta depois. */
     suspend fun handleAudio(context: Context, audio: ByteArray, mime: String): ChatMessage = withContext(Dispatchers.IO) {
-        val s = Settings(context)
         try {
-            if (s.aiProvider == AiProvider.OPENAI) {
-                val text = AiClient.transcribeOpenAi(s.aiKey, audio, "voz.m4a", mime)
-                if (text.isBlank()) throw java.io.IOException("não ouvi nada")
-                return@withContext process(context, "🎤 $text", text, null)
-            }
-            process(context, null, null, audio to mime)
+            hear(context, audio, mime)
+        } catch (e: java.io.IOException) {
+            VoiceQueue.add(context, audio, mime)
+            ChatStore.add(context, ChatMessage(fromUser = true, text = "🎤 (áudio guardado)"))
+            val answer = ChatMessage(
+                fromUser = false,
+                text = "⏳ A IA está fora agora (${e.message?.take(60)}). Guardei o áudio e anoto sozinho quando ela voltar; aviso por notificação.",
+            )
+            ChatStore.add(context, answer)
+            answer
         } catch (e: Exception) {
             ChatStore.add(context, ChatMessage(fromUser = true, text = "🎤 (áudio)"))
             val answer = ChatMessage(fromUser = false, text = "⚠️ Não consegui ouvir o áudio: ${e.message?.take(120)}")
             ChatStore.add(context, answer)
             answer
         }
+    }
+
+    /** Sem rede de segurança: o erro sobe (usado também pela fila de áudios). */
+    suspend fun hear(context: Context, audio: ByteArray, mime: String): ChatMessage = withContext(Dispatchers.IO) {
+        val s = Settings(context)
+        if (s.aiProvider == AiProvider.OPENAI) {
+            val text = AiClient.transcribeOpenAi(s.aiKey, audio, "voz.m4a", mime)
+            if (text.isBlank()) throw IllegalStateException("não ouvi nada")
+            process(context, "🎤 $text", text, null)
+        } else {
+            process(context, null, null, audio to mime)
+        }
+    }
+
+    /** Fala já transcrita no aparelho: IA se estiver no ar, senão as regras. */
+    suspend fun handleSpoken(context: Context, text: String): ChatMessage = withContext(Dispatchers.IO) {
+        process(context, "🎤 $text", text, null)
     }
 
     /** Processa uma mensagem do usuário e devolve a resposta (já salva no histórico). */

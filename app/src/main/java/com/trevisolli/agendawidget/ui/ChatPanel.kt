@@ -1,13 +1,7 @@
 package com.trevisolli.agendawidget.ui
 
-import android.Manifest
 import android.content.ActivityNotFoundException
-import android.content.pm.PackageManager
-import androidx.compose.runtime.DisposableEffect
-import androidx.core.content.ContextCompat
-import com.trevisolli.agendawidget.data.Settings
-import com.trevisolli.agendawidget.smart.AiProvider
-import com.trevisolli.agendawidget.smart.VoiceRecorder
+import com.trevisolli.agendawidget.VoiceActivity
 import android.content.Intent
 import android.speech.RecognizerIntent
 import android.widget.Toast
@@ -103,54 +97,20 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
         res.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { send(it) }
     }
 
-    // Gravação no próprio app (Gemini ouve o áudio; OpenAI transcreve). Funciona mesmo sem o Google no aparelho.
-    var recorder by remember { mutableStateOf<VoiceRecorder?>(null) }
-    var recSeconds by remember { mutableStateOf(0) }
-
-    fun stopAndSend() {
-        val r = recorder ?: return
-        recorder = null
-        val audio = r.stop()
-        if (audio == null) {
-            Toast.makeText(context, "Áudio muito curto", Toast.LENGTH_SHORT).show()
-            return
-        }
-        busy = true
-        messages = messages + ChatMessage(fromUser = true, text = "🎤 …")
-        scope.launch {
-            Assistant.handleAudio(context, audio, r.mime)
-            messages = ChatStore.all(context)
-            busy = false
-            onChanged()
-        }
+    // Gravador (transcreve no aparelho ou manda o áudio para a IA); ao voltar, recarrega a conversa.
+    val recorderScreen = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        messages = ChatStore.all(context)
+        onChanged()
     }
-
-    fun startRecording() {
-        val r = VoiceRecorder(context, forOpenAi = Settings(context).aiProvider == AiProvider.OPENAI)
-        try {
-            r.start()
-        } catch (e: Exception) {
-            r.cancel()
-            Toast.makeText(context, "Não consegui usar o microfone", Toast.LENGTH_LONG).show()
-            return
+    // O gravador roda em outra tarefa: o resultado pode chegar antes; recarrega também ao voltar.
+    val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && !busy) messages = ChatStore.all(context)
         }
-        recorder = r
-        recSeconds = 0
-        scope.launch {
-            while (recorder === r) {
-                kotlinx.coroutines.delay(1000)
-                if (recorder !== r) break
-                recSeconds++
-                if (recSeconds >= 60) stopAndSend()
-            }
-        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
-
-    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) startRecording() else Toast.makeText(context, "Sem o microfone não dá para gravar", Toast.LENGTH_LONG).show()
-    }
-
-    DisposableEffect(Unit) { onDispose { recorder?.cancel() } }
 
     fun systemListen() {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
@@ -170,12 +130,10 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
 
     fun listen() {
         if (busy) return
-        if (recorder != null) return stopAndSend()
-        if (!Assistant.canHear(context)) return systemListen()
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            startRecording()
+        if (VoiceActivity.available(context)) {
+            recorderScreen.launch(Intent(context, VoiceActivity::class.java))
         } else {
-            micPermission.launch(Manifest.permission.RECORD_AUDIO)
+            systemListen()
         }
     }
 
@@ -272,20 +230,7 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
             }
         }
 
-        if (recorder != null) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
-                TextButton(onClick = { recorder?.cancel(); recorder = null }) { Text("Cancelar") }
-                Text(
-                    "🔴 Gravando… 0:%02d".format(recSeconds),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                Box(
-                    Modifier.size(52.dp).clip(CircleShape).background(MaterialTheme.colorScheme.error).clickable { stopAndSend() },
-                    contentAlignment = Alignment.Center,
-                ) { Text("➤", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onError) }
-            }
-        } else Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },

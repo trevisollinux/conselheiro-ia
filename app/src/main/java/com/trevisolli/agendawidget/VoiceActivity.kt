@@ -6,6 +6,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import androidx.lifecycle.lifecycleScope
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -62,9 +66,11 @@ import kotlinx.coroutines.launch
 /** Gravador aberto pelo widget: já começa gravando; toque para enviar e veja o que foi criado. */
 class VoiceActivity : ComponentActivity() {
     companion object {
-        /** Sem IA que ouça áudio, cai na conversa com o reconhecimento do sistema. */
+        /** Reconhecimento do aparelho (o mesmo do teclado) ou, sem ele, áudio para a IA. */
+        fun available(context: Context) = SpeechRecognizer.isRecognitionAvailable(context) || Assistant.canHear(context)
+
         fun intent(context: Context): Intent =
-            if (Assistant.canHear(context)) {
+            if (available(context)) {
                 Intent(context, VoiceActivity::class.java).setData(Uri.parse("consigliere://voice"))
             } else {
                 Intent(context, ChatActivity::class.java)
@@ -73,8 +79,10 @@ class VoiceActivity : ComponentActivity() {
     }
 
     private var recorder: VoiceRecorder? = null
-    private var phase by mutableStateOf("rec") // rec, think, done
+    private var speech: SpeechRecognizer? = null
+    private var phase by mutableStateOf("rec") // rec (gravando áudio), live (transcrevendo), think, done
     private var seconds by mutableIntStateOf(0)
+    private var heard by mutableStateOf("")
     private var answer by mutableStateOf<ChatMessage?>(null)
 
     private val micPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
@@ -94,12 +102,25 @@ class VoiceActivity : ComponentActivity() {
         setContent { ConsigliereTheme { Screen() } }
     }
 
+    /** Primeiro tenta transcrever no aparelho (grátis, sem IA); se não houver, grava o áudio. */
     private fun start() {
+        answer = null
+        heard = ""
+        seconds = 0
+        if (!startLive()) startRecorder()
+    }
+
+    private fun startRecorder() {
+        if (!Assistant.canHear(this)) {
+            Toast.makeText(this, "Sem reconhecimento de voz no aparelho e sem IA para ouvir o áudio", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
         val r = VoiceRecorder(this, forOpenAi = Settings(this).aiProvider == AiProvider.OPENAI)
         try {
             r.start()
             recorder = r
-            seconds = 0
+            phase = "rec"
         } catch (e: Exception) {
             r.cancel()
             Toast.makeText(this, "Não consegui usar o microfone", Toast.LENGTH_LONG).show()
@@ -107,8 +128,100 @@ class VoiceActivity : ComponentActivity() {
         }
     }
 
+    private fun startLive(): Boolean {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return false
+        val sr = try {
+            SpeechRecognizer.createSpeechRecognizer(this)
+        } catch (e: Exception) {
+            return false
+        }
+        sr.setRecognitionListener(object : RecognitionListener {
+            override fun onPartialResults(b: Bundle?) {
+                b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.takeIf { it.isNotBlank() }?.let { heard = it }
+            }
+
+            override fun onResults(b: Bundle?) {
+                val text = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.takeIf { it.isNotBlank() } ?: heard
+                sendText(text)
+            }
+
+            override fun onError(error: Int) {
+                if (phase != "live") return
+                stopLive()
+                when {
+                    heard.isNotBlank() -> sendText(heard)
+                    error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
+                        Toast.makeText(this@VoiceActivity, "Não ouvi nada", Toast.LENGTH_SHORT).show()
+                        finish()
+                    }
+                    // Serviço do aparelho falhou: grava o áudio para a IA.
+                    else -> startRecorder()
+                }
+            }
+
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
+            .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+        return try {
+            speech = sr
+            phase = "live"
+            sr.startListening(intent)
+            true
+        } catch (e: Exception) {
+            stopLive()
+            false
+        }
+    }
+
+    private fun stopLive() {
+        speech?.let { runCatching { it.cancel() }; it.destroy() }
+        speech = null
+    }
+
+    /** Texto transcrito no aparelho: vai para a IA se estiver no ar, senão para as regras. */
+    private fun sendText(text: String) {
+        if (phase != "live") return
+        stopLive()
+        if (text.isBlank()) {
+            finish()
+            return
+        }
+        phase = "think"
+        lifecycleScope.launch {
+            answer = Assistant.handleSpoken(this@VoiceActivity, text)
+            phase = "done"
+        }
+    }
+
+    private fun sendAudio() {
+        val r = recorder ?: return
+        recorder = null
+        val audio = r.stop()
+        if (audio == null) {
+            Toast.makeText(this, "Áudio muito curto", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+        phase = "think"
+        lifecycleScope.launch {
+            answer = Assistant.handleAudio(this@VoiceActivity, audio, r.mime)
+            phase = "done"
+        }
+    }
+
     override fun onDestroy() {
         recorder?.cancel()
+        stopLive()
         super.onDestroy()
     }
 
@@ -116,28 +229,12 @@ class VoiceActivity : ComponentActivity() {
     private fun Screen() {
         val scope = rememberCoroutineScope()
 
-        fun send() {
-            val r = recorder ?: return
-            recorder = null
-            val audio = r.stop()
-            if (audio == null) {
-                Toast.makeText(this, "Áudio muito curto", Toast.LENGTH_SHORT).show()
-                finish()
-                return
-            }
-            phase = "think"
-            scope.launch {
-                answer = Assistant.handleAudio(this@VoiceActivity, audio, r.mime)
-                phase = "done"
-            }
-        }
-
         // Cronômetro; para sozinho em 60 s.
         LaunchedEffect(phase) {
             while (phase == "rec") {
                 delay(1000)
                 if (recorder != null) seconds++
-                if (seconds >= 60) send()
+                if (seconds >= 60) sendAudio()
             }
         }
         // Resultado some sozinho depois de um tempo.
@@ -170,6 +267,24 @@ class VoiceActivity : ComponentActivity() {
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     when (phase) {
+                        "live" -> {
+                            Text(
+                                heard.ifBlank { "Fale… ex.: \"amanhã médico às 15h para a Helena\"" },
+                                style = if (heard.isBlank()) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium,
+                                textAlign = TextAlign.Center,
+                            )
+                            val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
+                                initialValue = 1f, targetValue = 1.12f,
+                                animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "scale",
+                            )
+                            Box(
+                                Modifier.size(96.dp).scale(pulse).clip(CircleShape).background(MaterialTheme.colorScheme.error)
+                                    .clickable { speech?.stopListening() },
+                                contentAlignment = Alignment.Center,
+                            ) { Text("➤", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onError) }
+                            Text("🔴 Ouvindo · envia quando você parar de falar", style = MaterialTheme.typography.titleSmall)
+                            TextButton(onClick = { finish() }) { Text("Cancelar") }
+                        }
                         "rec" -> {
                             Text("Fale… ex.: \"amanhã médico às 15h para a Helena\"", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
                             val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
@@ -177,7 +292,7 @@ class VoiceActivity : ComponentActivity() {
                                 animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "scale",
                             )
                             Box(
-                                Modifier.size(96.dp).scale(pulse).clip(CircleShape).background(MaterialTheme.colorScheme.error).clickable { send() },
+                                Modifier.size(96.dp).scale(pulse).clip(CircleShape).background(MaterialTheme.colorScheme.error).clickable { sendAudio() },
                                 contentAlignment = Alignment.Center,
                             ) { Text("➤", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onError) }
                             Text("🔴 0:%02d · toque para enviar".format(seconds), style = MaterialTheme.typography.titleMedium)
@@ -199,12 +314,7 @@ class VoiceActivity : ComponentActivity() {
                                         }
                                     }) { Text("Desfazer") }
                                 }
-                                TextButton(onClick = {
-                                    // Gravar outro na sequência.
-                                    answer = null
-                                    phase = "rec"
-                                    start()
-                                }) { Text("🎤 Outro") }
+                                TextButton(onClick = { start() }) { Text("🎤 Outro") }
                                 TextButton(onClick = { finish() }) { Text("OK") }
                             }
                         }

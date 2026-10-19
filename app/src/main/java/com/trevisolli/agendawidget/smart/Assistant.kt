@@ -32,20 +32,56 @@ object Assistant {
     /** Ação pedida, antes de executar. */
     private sealed class Action {
         data class Event(val title: String, val date: LocalDate, val time: LocalTime?, val minutes: Int) : Action()
-        data class Task(val title: String, val date: LocalDate?, val time: LocalTime?) : Action()
+        data class Task(val title: String, val date: LocalDate?, val time: LocalTime?, val repeat: String? = null) : Action()
         data class Complete(val title: String) : Action()
     }
 
-    private data class Plan(val reply: String?, val actions: List<Action>)
+    private data class Plan(val reply: String?, val actions: List<Action>, val heard: String? = null)
+
+    /** Quem entende áudio: Gemini ouve direto; OpenAI transcreve antes. Claude não recebe áudio. */
+    fun canHear(context: Context): Boolean {
+        val s = Settings(context)
+        return s.useAi && s.aiKey.isNotBlank() && s.aiProvider != AiProvider.CLAUDE
+    }
+
+    /** Áudio gravado no app: a IA transcreve e já executa o pedido. */
+    suspend fun handleAudio(context: Context, audio: ByteArray, mime: String): ChatMessage = withContext(Dispatchers.IO) {
+        val s = Settings(context)
+        try {
+            if (s.aiProvider == AiProvider.OPENAI) {
+                val text = AiClient.transcribeOpenAi(s.aiKey, audio, "voz.m4a", mime)
+                if (text.isBlank()) throw java.io.IOException("não ouvi nada")
+                return@withContext process(context, "🎤 $text", text, null)
+            }
+            process(context, null, null, audio to mime)
+        } catch (e: Exception) {
+            ChatStore.add(context, ChatMessage(fromUser = true, text = "🎤 (áudio)"))
+            val answer = ChatMessage(fromUser = false, text = "⚠️ Não consegui ouvir o áudio: ${e.message?.take(120)}")
+            ChatStore.add(context, answer)
+            answer
+        }
+    }
 
     /** Processa uma mensagem do usuário e devolve a resposta (já salva no histórico). */
     suspend fun handle(context: Context, text: String): ChatMessage = withContext(Dispatchers.IO) {
+        process(context, text, text, null)
+    }
+
+    /** [shown]: o que aparece no balão do usuário; com áudio, vem da transcrição. */
+    private suspend fun process(context: Context, shown: String?, text: String?, audio: Pair<ByteArray, String>?): ChatMessage {
         val history = ChatStore.all(context).takeLast(8)
-        ChatStore.add(context, ChatMessage(fromUser = true, text = text))
+        if (shown != null) ChatStore.add(context, ChatMessage(fromUser = true, text = shown))
         val settings = Settings(context)
         val items = AgendaRepository.load(context).items
 
-        val plan = if (settings.aiReady) {
+        val plan = if (audio != null) {
+            // Sem fallback: erro sobe para handleAudio.
+            aiPlan(context, "", items, history, audio).also {
+                ChatStore.add(context, ChatMessage(fromUser = true, text = "🎤 " + (it.heard ?: "(áudio)")))
+            }
+        } else if (text == null) {
+            Plan(null, emptyList())
+        } else if (settings.aiReady) {
             try {
                 aiPlan(context, text, items, history)
             } catch (e: Exception) {
@@ -74,9 +110,13 @@ object Assistant {
                         if (settings.todoistToken.isBlank()) {
                             problems += "conecte o Todoist nas Configurações para eu criar tarefas"
                         } else {
-                            val id = TodoistSource.create(settings.todoistToken, a.title, a.date, a.time, null)
+                            val id = TodoistSource.create(settings.todoistToken, a.title, a.date, a.time, null, a.repeat)
                             if (id != null) undo += Undo(Undo.TASK, id)
-                            done += "✅ ${a.title}" + (a.date?.let { " · ${whenText(it, a.time)}" } ?: "")
+                            done += "✅ ${a.title}" + when {
+                                a.repeat != null -> " · 🔁 recorrente"
+                                a.date != null -> " · ${whenText(a.date, a.time)}"
+                                else -> ""
+                            }
                         }
                     }
                     is Action.Complete -> {
@@ -115,7 +155,7 @@ object Assistant {
         }
         val answer = ChatMessage(fromUser = false, text = reply, undo = undo)
         ChatStore.add(context, answer)
-        answer
+        return answer
     }
 
     /** Desfaz o que uma resposta criou. */
@@ -214,16 +254,22 @@ object Assistant {
             "Você pode executar ações. Responda APENAS com um objeto JSON, sem texto fora dele: " +
             "{\"reply\": string, \"actions\": [ ... ]}. Tipos de ação: " +
             "{\"type\":\"create_event\",\"title\":string,\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\" ou null,\"duration_min\":número}; " +
-            "{\"type\":\"create_task\",\"title\":string,\"date\":\"YYYY-MM-DD\" ou null,\"time\":\"HH:MM\" ou null}; " +
+            "{\"type\":\"create_task\",\"title\":string,\"date\":\"YYYY-MM-DD\" ou null,\"time\":\"HH:MM\" ou null," +
+            "\"repeat\": null ou regra do Todoist EM INGLÊS quando repetir (\"every day at 8am\", \"every monday at 9am\", \"every month on the 5th\")}; " +
             "{\"type\":\"complete_task\",\"title\": título exato de uma tarefa da lista}. " +
             "Regras: se o usuário falar em agenda/calendário, consulta, reunião, exame ou algo para comparecer, use create_event. " +
             "Se for algo a fazer (comprar, pagar, ligar, lembrar), use create_task. Pode criar várias ações. " +
             "Títulos curtos, sem a data. Datas relativas (amanhã, sexta) a partir de hoje. " +
             "Se for pergunta sobre a agenda, o tempo ou as mensagens recebidas (WhatsApp, e-mail), responda com base nos dados " +
             "fornecidos e deixe actions vazio. Ao criar algo ao ar livre com chuva prevista, avise no reply. " +
-            "O reply confirma em até 2 frases; não repita a lista do que foi criado (o app mostra)."
+            "O reply confirma em até 2 frases; não repita a lista do que foi criado (o app mostra). " +
+            "Coisas que se repetem (todo dia, toda semana) viram create_task com repeat. " +
+            "Se a mensagem vier em ÁUDIO anexo, inclua \"heard\": a transcrição fiel do que foi dito."
 
-    private fun aiPlan(context: Context, text: String, items: List<AgendaItem>, history: List<ChatMessage>): Plan {
+    private fun aiPlan(
+        context: Context, text: String, items: List<AgendaItem>, history: List<ChatMessage>,
+        audio: Pair<ByteArray, String>? = null,
+    ): Plan {
         val s = Settings(context)
         val today = LocalDate.now()
         val prompt = buildString {
@@ -239,9 +285,9 @@ object Assistant {
                 append("Conversa recente:\n")
                 history.forEach { append(if (it.fromUser) "Usuário: " else "Você: ").append(it.text.take(200)).append("\n") }
             }
-            append("Nova mensagem do usuário: ").append(text)
+            if (audio != null) append("Nova mensagem do usuário: no ÁUDIO anexo (pt-BR).") else append("Nova mensagem do usuário: ").append(text)
         }
-        val raw = AiClient.complete(s.aiProvider, s.aiKey, s.effectiveModel, SYSTEM, prompt)
+        val raw = AiClient.complete(s.aiProvider, s.aiKey, s.effectiveModel, SYSTEM, prompt, audio = audio)
         val json = AiClient.extractJson(raw) ?: return Plan(raw.take(400), emptyList())
         val actions = mutableListOf<Action>()
         val arr = json.optJSONArray("actions") ?: JSONArray()
@@ -255,10 +301,13 @@ object Assistant {
                 ?.let { runCatching { LocalTime.parse(it.padStart(5, '0')) }.getOrNull() }
             when (a.optString("type")) {
                 "create_event" -> actions += Action.Event(title, date ?: today, time, a.optInt("duration_min", 60).coerceIn(5, 1440))
-                "create_task" -> actions += Action.Task(title, date, time)
+                "create_task" -> actions += Action.Task(
+                    title, date, time,
+                    a.optString("repeat").takeIf { !a.isNull("repeat") && it.startsWith("every", ignoreCase = true) },
+                )
                 "complete_task" -> actions += Action.Complete(title)
             }
         }
-        return Plan(json.optString("reply").ifBlank { null }, actions)
+        return Plan(json.optString("reply").ifBlank { null }, actions, json.optString("heard").takeIf { !json.isNull("heard") && it.isNotBlank() })
     }
 }

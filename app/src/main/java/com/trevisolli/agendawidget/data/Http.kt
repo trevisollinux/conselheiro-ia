@@ -14,6 +14,47 @@ internal object Http {
     fun postJson(url: String, headers: Map<String, String>, body: JSONObject): JSONObject =
         request("POST", url, headers, body)
 
+    /** Envia um arquivo + campos de texto (multipart/form-data). */
+    fun postMultipart(
+        url: String, headers: Map<String, String>, fields: Map<String, String>,
+        fileField: String, fileName: String, mime: String, bytes: ByteArray,
+    ): JSONObject {
+        val boundary = "----consigliere" + System.currentTimeMillis()
+        val out = java.io.ByteArrayOutputStream()
+        fun line(s: String) = out.write((s + "\r\n").toByteArray())
+        fields.forEach { (k, v) ->
+            line("--$boundary")
+            line("Content-Disposition: form-data; name=\"$k\"")
+            line("")
+            line(v)
+        }
+        line("--$boundary")
+        line("Content-Disposition: form-data; name=\"$fileField\"; filename=\"$fileName\"")
+        line("Content-Type: $mime")
+        line("")
+        out.write(bytes)
+        line("")
+        line("--$boundary--")
+        val conn = URL(url).openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 20_000
+            conn.readTimeout = 120_000
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
+            conn.outputStream.use { it.write(out.toByteArray()) }
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                val err = conn.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                throw IOException("HTTP $code ${err.take(3000)}")
+            }
+            return JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     fun delete(url: String, headers: Map<String, String>): JSONObject = request("DELETE", url, headers, null)
 
     /** GET JSON sem autenticação (APIs públicas). */

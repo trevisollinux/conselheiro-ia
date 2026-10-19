@@ -59,28 +59,36 @@ object AiClient {
     private val SUGGESTED = Regex("use (?:models/)?([A-Za-z0-9][A-Za-z0-9._-]+)")
 
     /** [jpeg]: imagem opcional (print), já reduzida. */
-    fun complete(provider: AiProvider, key: String, model: String, system: String, user: String, jpeg: ByteArray? = null): String {
+    /** [audio]: áudio opcional (bytes, mime), só no Gemini. */
+    fun complete(
+        provider: AiProvider, key: String, model: String, system: String, user: String,
+        jpeg: ByteArray? = null, audio: Pair<ByteArray, String>? = null,
+    ): String {
         pausedUntil.takeIf { it > 0 }?.let { throw RateLimited(it) }
         return try {
-            completeOnce(provider, key, model, system, user, jpeg)
+            completeOnce(provider, key, model, system, user, jpeg, audio)
         } catch (e: IOException) {
             if (e !is RateLimited && e.message.orEmpty().startsWith("HTTP 429")) throw RateLimited(pauseFor(e.message.orEmpty()))
             throw e
         }
     }
 
-    private fun completeOnce(provider: AiProvider, key: String, model: String, system: String, user: String, jpeg: ByteArray?): String {
+    private fun completeOnce(
+        provider: AiProvider, key: String, model: String, system: String, user: String,
+        jpeg: ByteArray?, audio: Pair<ByteArray, String>?,
+    ): String {
         val image = jpeg?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
+        val sound = audio?.let { Base64.encodeToString(it.first, Base64.NO_WRAP) to it.second }
         val first = redirects[provider] ?: model
         return try {
-            withRetryOnTimeout(provider) { call(provider, key, first, system, user, image) }
+            withRetryOnTimeout(provider) { call(provider, key, first, system, user, image, sound) }
         } catch (e: IOException) {
             // Modelo aposentado: tenta uma vez com o que o próprio provedor sugeriu.
             val msg = e.message.orEmpty()
             val suggested = SUGGESTED.find(msg)?.groupValues?.get(1)?.trimEnd('.')
             if (!msg.startsWith("HTTP 404") || suggested == null || suggested == first) throw e
             redirects[provider] = suggested
-            withRetryOnTimeout(provider) { call(provider, key, suggested, system, user, image) }
+            withRetryOnTimeout(provider) { call(provider, key, suggested, system, user, image, sound) }
         }
     }
 
@@ -97,12 +105,29 @@ object AiClient {
         }
     }
 
-    private fun call(provider: AiProvider, key: String, model: String, system: String, user: String, image: String?): String =
+    private fun call(provider: AiProvider, key: String, model: String, system: String, user: String, image: String?, sound: Pair<String, String>?): String =
         when (provider) {
             AiProvider.CLAUDE -> claude(key, model, system, user, image)
             AiProvider.OPENAI -> openAi(key, model, system, user, image)
-            AiProvider.GEMINI -> gemini(key, model, system, user, image)
+            AiProvider.GEMINI -> gemini(key, model, system, user, image, sound)
         }.trim()
+
+    /** Transcrição pela OpenAI (o Gemini ouve o áudio direto no pedido). */
+    fun transcribeOpenAi(key: String, audio: ByteArray, fileName: String, mime: String): String {
+        pausedUntil.takeIf { it > 0 }?.let { throw RateLimited(it) }
+        val res = try {
+            Http.postMultipart(
+                "https://api.openai.com/v1/audio/transcriptions",
+                mapOf("Authorization" to "Bearer $key"),
+                mapOf("model" to "gpt-4o-mini-transcribe", "language" to "pt"),
+                "file", fileName, mime, audio,
+            )
+        } catch (e: IOException) {
+            if (e.message.orEmpty().startsWith("HTTP 429")) throw RateLimited(pauseFor(e.message.orEmpty()))
+            throw e
+        }
+        return res.optString("text").trim()
+    }
 
     private fun claude(key: String, model: String, system: String, user: String, image: String?): String {
         val content = JSONArray()
@@ -167,10 +192,13 @@ object AiClient {
         return res.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content")
     }
 
-    private fun gemini(key: String, model: String, system: String, user: String, image: String?): String {
+    private fun gemini(key: String, model: String, system: String, user: String, image: String?, sound: Pair<String, String>? = null): String {
         val parts = JSONArray()
         if (image != null) {
             parts.put(JSONObject().put("inlineData", JSONObject().put("mimeType", "image/jpeg").put("data", image)))
+        }
+        if (sound != null) {
+            parts.put(JSONObject().put("inlineData", JSONObject().put("mimeType", sound.second).put("data", sound.first)))
         }
         parts.put(JSONObject().put("text", user))
         val body = JSONObject()

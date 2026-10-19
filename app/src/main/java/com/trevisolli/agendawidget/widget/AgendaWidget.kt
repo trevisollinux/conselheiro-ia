@@ -226,18 +226,17 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
     } + settings.userName.takeIf { it.isNotBlank() }?.let { ", $it" }.orEmpty()
     val lastReply = ChatStore.all(context).lastOrNull { !it.fromUser }
         ?.takeIf { System.currentTimeMillis() - it.time < 12 * 3600_000L }
-    val chatIntent = Intent(context, ChatActivity::class.java)
-        .setData(Uri.parse("consigliere://chat/text")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    // Com IA que ouve áudio, o 🎤 abre o gravador direto; sem, a conversa com o reconhecimento do sistema.
-    val voiceIntent = com.trevisolli.agendawidget.VoiceActivity.intent(context)
+    val openChat = chatIntent(context)
     val visible = snapshot.items.filter { range.includes(it) }
 
+    // Glance desenha no máximo 10 filhos por coluna: as partes ficam em colunas próprias.
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         // Topo: saudação grande + resumo do dia (atualiza sozinho)
+        Column(modifier = GlanceModifier.fillMaxWidth()) {
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -296,6 +295,8 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
             )
         }
 
+        }
+
         // Meio: período + lista
         Spacer(GlanceModifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -341,57 +342,32 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
             }
         }
 
-        if (snapshot.errors.isNotEmpty()) {
-            Text(
-                text = snapshot.errors.joinToString("; "),
-                style = TextStyle(color = ColorProvider(ink.overdue), fontSize = 11.sp),
-                maxLines = 1,
-            )
-        }
-        if (footer != null) {
-            Text(
-                text = "🖼 $footer",
-                style = TextStyle(color = ColorProvider(ink.footer), fontSize = 10.sp),
-                maxLines = 1,
-            )
-        }
-
-        // Embaixo: conversa
-        if (lastReply != null) {
-            Text(
-                text = "🧭 " + lastReply.text.lineSequence().first(),
-                style = TextStyle(color = ColorProvider(ink.secondary), fontSize = 12.sp),
-                maxLines = 1,
-                modifier = GlanceModifier.padding(top = 4.dp).clickable(actionStartActivity(chatIntent)),
-            )
-        }
-        Spacer(GlanceModifier.height(6.dp))
-        Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = GlanceModifier
-                    .defaultWeight()
-                    .background(ink.primary.copy(alpha = 0.12f))
-                    .cornerRadius(20.dp)
-                    .padding(horizontal = 14.dp, vertical = 9.dp)
-                    .clickable(actionStartActivity(chatIntent)),
-            ) {
+        // Embaixo: avisos, última resposta e a barra de conversa
+        Column(modifier = GlanceModifier.fillMaxWidth()) {
+            if (snapshot.errors.isNotEmpty()) {
                 Text(
-                    text = "💬 Fale com o Consigliere…",
-                    style = TextStyle(color = ColorProvider(ink.secondary), fontSize = 13.sp),
+                    text = snapshot.errors.joinToString("; "),
+                    style = TextStyle(color = ColorProvider(ink.overdue), fontSize = 11.sp),
                     maxLines = 1,
                 )
             }
-            Spacer(GlanceModifier.width(8.dp))
-            Box(
-                modifier = GlanceModifier
-                    .size(38.dp)
-                    .background(Color(0xFF3E7C59))
-                    .cornerRadius(19.dp)
-                    .clickable(actionStartActivity(voiceIntent)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(text = "🎤", style = TextStyle(fontSize = 16.sp))
+            if (footer != null) {
+                Text(
+                    text = "🖼 $footer",
+                    style = TextStyle(color = ColorProvider(ink.footer), fontSize = 10.sp),
+                    maxLines = 1,
+                )
             }
+            if (lastReply != null) {
+                Text(
+                    text = "🧭 " + lastReply.text.lineSequence().first(),
+                    style = TextStyle(color = ColorProvider(ink.secondary), fontSize = 12.sp),
+                    maxLines = 1,
+                    modifier = GlanceModifier.padding(top = 4.dp).clickable(actionStartActivity(openChat)),
+                )
+            }
+            Spacer(GlanceModifier.height(6.dp))
+            ChatBar(context, ink.primary.copy(alpha = 0.14f), ink.secondary)
         }
     }
 }

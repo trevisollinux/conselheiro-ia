@@ -28,38 +28,43 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.trevisolli.agendawidget.R
-import com.trevisolli.agendawidget.VoiceActivity
+import com.trevisolli.agendawidget.data.Settings
+import com.trevisolli.agendawidget.smart.ChatStore
+import androidx.glance.layout.padding
 
-/** Widget-gravador: um botão redondo; toque, fale e o Consigliere anota. */
+/** Barra de conversa: escreva ou toque no microfone. Estreito, vira só o botão redondo. */
 class VoiceWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val intent = VoiceActivity.intent(context)
         provideContent {
             val size = LocalSize.current
-            val side = minOf(size.width, size.height)
-            val circle = (side.value * 0.86f).dp
-            Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Box(
-                    modifier = GlanceModifier
-                        .size(circle)
-                        .cornerRadius(circle / 2)
-                        .background(Color(0xFF3E7C59))
-                        .clickable(actionStartActivity(intent)),
-                    contentAlignment = Alignment.Center,
+            val dark = Backgrounds.darkMode(context, Settings(context))
+            val panel = if (dark) Color(0xE61E2422) else Color(0xEBF7F5EF)
+            val field = if (dark) Color(0x22FFFFFF) else Color(0x14000000)
+            val hint = if (dark) Color(0xFFD6DEE5) else Color(0xFF3D4E47)
+            if (size.width.value < 150) {
+                Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    MicButton(context, (minOf(size.width, size.height).value * 0.8f).dp)
+                }
+            } else {
+                val last = ChatStore.all(context).lastOrNull { !it.fromUser }
+                    ?.takeIf { System.currentTimeMillis() - it.time < 12 * 3600_000L && size.height.value >= 100 }
+                Column(
+                    modifier = GlanceModifier.fillMaxSize().background(panel).cornerRadius(28.dp)
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Image(
-                            provider = ImageProvider(R.drawable.ic_mic),
-                            contentDescription = "Falar",
-                            colorFilter = ColorFilter.tint(ColorProvider(Color.White)),
-                            modifier = GlanceModifier.size((circle.value * 0.42f).dp),
+                    if (last != null) {
+                        Text(
+                            "🧭 " + last.text.lineSequence().first(),
+                            style = TextStyle(color = ColorProvider(hint), fontSize = 12.sp),
+                            maxLines = 2,
+                            modifier = GlanceModifier.padding(start = 6.dp, bottom = 6.dp)
+                                .clickable(actionStartActivity(chatIntent(context))),
                         )
-                        if (side.value >= 90) {
-                            Text("Falar", style = TextStyle(color = ColorProvider(Color.White), fontSize = 12.sp, fontWeight = FontWeight.Medium))
-                        }
                     }
+                    ChatBar(context, field, hint, height = 44.dp)
                 }
             }
         }

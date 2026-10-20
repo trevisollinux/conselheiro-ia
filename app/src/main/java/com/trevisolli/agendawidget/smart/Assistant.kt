@@ -118,7 +118,7 @@ object Assistant {
             try {
                 when (a) {
                     is Action.Event -> {
-                        val id = CalendarWriter.insert(context, a.title, a.date, a.time, a.minutes, "Criado pelo ConsigliereIA")
+                        val id = CalendarWriter.insert(context, a.title, a.date, a.time, a.minutes, "Criado pelo Consigliere")
                         if (id != null) {
                             undo += Undo(Undo.EVENT, id.toString())
                             done += "📅 ${a.title} · ${whenText(a.date, a.time)}"
@@ -270,7 +270,7 @@ object Assistant {
     // ---------- Modo IA ----------
 
     private const val SYSTEM =
-        "Você é o ConsigliereIA, assistente pessoal de agenda e tarefas. Fala português do Brasil, curto e simpático. " +
+        "Você é o Consigliere, assistente pessoal de agenda e tarefas. Fala português do Brasil, curto e simpático. " +
             "Você pode executar ações. Responda APENAS com um objeto JSON, sem texto fora dele: " +
             "{\"reply\": string, \"actions\": [ ... ]}. Tipos de ação: " +
             "{\"type\":\"create_event\",\"title\":string,\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\" ou null,\"duration_min\":número}; " +

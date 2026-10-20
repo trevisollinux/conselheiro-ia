@@ -68,7 +68,7 @@ private val EXAMPLES = listOf(
     "Lembrar de pagar conta amanhã",
 )
 
-/** Conversa com o ConsigliereIA, por texto ou voz. Usada na aba Conversa e na janela aberta pelo widget. */
+/** Conversa com o Consigliere, por texto ou voz. Usada na aba Conversa e na janela aberta pelo widget. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChanged: () -> Unit = {}) {
@@ -116,7 +116,7 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
-            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Fale com o ConsigliereIA")
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Fale com o Consigliere")
         try {
             voice.launch(intent)
         } catch (e: ActivityNotFoundException) {
@@ -259,25 +259,38 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
 @Composable
 private fun Bubble(m: ChatMessage, onUndo: (() -> Unit)?) {
     val hhmm = DateTimeFormatter.ofPattern("HH:mm")
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (m.fromUser) Arrangement.End else Arrangement.Start) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = if (m.fromUser) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Top,
+    ) {
+        if (!m.fromUser) {
+            // O mascote "fala" as respostas.
+            androidx.compose.foundation.Image(
+                androidx.compose.ui.res.painterResource(com.trevisolli.agendawidget.R.drawable.mascot),
+                contentDescription = null,
+                modifier = Modifier.size(36.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+        }
         Column(horizontalAlignment = if (m.fromUser) Alignment.End else Alignment.Start) {
             Box(
                 Modifier
-                    .widthIn(max = 300.dp)
+                    .widthIn(max = 290.dp)
                     .clip(
                         if (m.fromUser) {
-                            RoundedCornerShape(18.dp, 4.dp, 18.dp, 18.dp)
+                            RoundedCornerShape(22.dp, 6.dp, 22.dp, 22.dp)
                         } else {
-                            RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp)
+                            RoundedCornerShape(6.dp, 22.dp, 22.dp, 22.dp)
                         },
                     )
-                    .background(if (m.fromUser) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .background(if (m.fromUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
                 Text(
                     m.text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (m.fromUser) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onPrimaryContainer,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (m.fromUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {

@@ -31,7 +31,7 @@ import com.trevisolli.agendawidget.ChatActivity
 import com.trevisolli.agendawidget.R
 import com.trevisolli.agendawidget.VoiceActivity
 
-internal val MIC_GREEN = Color(0xFF3E7C59)
+internal val MIC_GREEN = Color(0xFF8A2B3D)
 
 internal fun chatIntent(context: Context): Intent = Intent(context, ChatActivity::class.java)
     .setData(Uri.parse("consigliere://chat/text")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

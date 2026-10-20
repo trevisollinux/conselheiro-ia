@@ -360,7 +360,7 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
             }
             if (lastReply != null) {
                 Text(
-                    text = "🧭 " + lastReply.text.lineSequence().first(),
+                    text = "🎩 " + lastReply.text.lineSequence().first(),
                     style = TextStyle(color = ColorProvider(ink.secondary), fontSize = 12.sp),
                     maxLines = 1,
                     modifier = GlanceModifier.padding(top = 4.dp).clickable(actionStartActivity(openChat)),

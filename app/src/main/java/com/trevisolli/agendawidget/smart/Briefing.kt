@@ -138,7 +138,7 @@ object Briefing {
     }
 
     private const val SYSTEM =
-        "Você é o ConsigliereIA, um conselheiro pessoal calmo e acolhedor, direto e sem enrolação. " +
+        "Você é o Consigliere, um conselheiro pessoal calmo e acolhedor, direto e sem enrolação. " +
             "Escreva em português do Brasil, no máximo 5 linhas curtas, usando tópicos com '•' quando listar. " +
             "Manhã: o plano do dia e a prioridade número 1. Fim do dia: o que foi feito, o que ficou e o que vem amanhã. " +
             "Se o tempo pedir, dê o conselho prático (guarda-chuva, calor). Se houver mensagens recebidas, destaque no máximo 3 " +
@@ -205,9 +205,9 @@ object Briefing {
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_IMMUTABLE,
         )
-        val title = if (slot == Slot.MORNING) "ConsigliereIA · Bom dia" else "ConsigliereIA · Fim do dia"
+        val title = if (slot == Slot.MORNING) "Consigliere · Bom dia" else "Consigliere · Fim do dia"
         val notification = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(R.drawable.ic_compass)
+            .setSmallIcon(R.drawable.ic_launcher_monochrome)
             .setContentTitle(title)
             .setContentText(text.lineSequence().first())
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))

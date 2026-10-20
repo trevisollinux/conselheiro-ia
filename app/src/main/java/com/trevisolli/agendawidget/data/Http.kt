@@ -73,7 +73,7 @@ internal object Http {
         }
     }
 
-    private const val USER_AGENT = "ConsigliereIA/1.0 (app pessoal)"
+    private const val USER_AGENT = "Consigliere/1.0 (app pessoal)"
 
     private fun request(method: String, url: String, headers: Map<String, String>, body: JSONObject?): JSONObject {
         val conn = URL(url).openConnection() as HttpURLConnection

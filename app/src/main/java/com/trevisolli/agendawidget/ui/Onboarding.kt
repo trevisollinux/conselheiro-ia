@@ -68,7 +68,7 @@ import com.trevisolli.agendawidget.widget.AgendaWidgetReceiver
 fun AppLogo(size: Dp) {
     Box(
         Modifier.size(size).clip(RoundedCornerShape(size * 0.28f))
-            .background(Brush.linearGradient(listOf(Color(0xFF4C9A6E), Color(0xFF1E4636)))),
+            .background(Brush.linearGradient(listOf(Color(0xFF9A3346), Color(0xFF3E0F1B)))),
         contentAlignment = Alignment.Center,
     ) {
         Image(painterResource(R.drawable.ic_launcher_foreground), contentDescription = null, modifier = Modifier.size(size * 1.5f))
@@ -135,9 +135,11 @@ fun Onboarding(onDone: () -> Unit) {
             ) {
                 when (s) {
                     0 -> {
-                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { AppLogo(96.dp) }
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            Image(painterResource(R.drawable.mascot), contentDescription = null, modifier = Modifier.size(150.dp))
+                        }
                         Text(
-                            "Seu dia, num relance",
+                            "Seu conselheiro pessoal",
                             style = MaterialTheme.typography.headlineMedium,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth(),
@@ -209,7 +211,7 @@ fun Onboarding(onDone: () -> Unit) {
                         }
                     }
                     else -> {
-                        StepTitle("🏠", "Coloque na tela inicial", "O ConsigliereIA brilha no widget: o dia inteiro sem abrir app nenhum.")
+                        StepTitle("🏠", "Coloque na tela inicial", "O Consigliere brilha no widget: o dia inteiro sem abrir app nenhum.")
                         Button(onClick = {
                             val mgr = AppWidgetManager.getInstance(context)
                             if (mgr.isRequestPinAppWidgetSupported) {
@@ -217,7 +219,7 @@ fun Onboarding(onDone: () -> Unit) {
                             } else {
                                 Toast.makeText(
                                     context,
-                                    "Segure num espaço vazio da tela inicial → Widgets → ConsigliereIA",
+                                    "Segure num espaço vazio da tela inicial → Widgets → Consigliere",
                                     Toast.LENGTH_LONG,
                                 ).show()
                             }

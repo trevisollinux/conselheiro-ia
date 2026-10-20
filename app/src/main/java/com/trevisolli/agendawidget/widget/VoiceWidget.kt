@@ -57,7 +57,7 @@ class VoiceWidget : GlanceAppWidget() {
                 ) {
                     if (last != null) {
                         Text(
-                            "🧭 " + last.text.lineSequence().first(),
+                            "🎩 " + last.text.lineSequence().first(),
                             style = TextStyle(color = ColorProvider(hint), fontSize = 12.sp),
                             maxLines = 2,
                             modifier = GlanceModifier.padding(start = 6.dp, bottom = 6.dp)

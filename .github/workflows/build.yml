@@ -59,9 +59,9 @@ jobs:
           # quem baixar nunca pega um arquivo pela metade.
           VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           TAG="v${VERSION}-${GITHUB_RUN_NUMBER}"
-          cp app/build/outputs/apk/debug/app-debug.apk "ConsigliereIA-${VERSION}.apk"
-          gh release create "$TAG" "ConsigliereIA-${VERSION}.apk" --draft \
-            --title "ConsigliereIA ${VERSION}" \
+          cp app/build/outputs/apk/debug/app-debug.apk "Consigliere-${VERSION}.apk"
+          gh release create "$TAG" "Consigliere-${VERSION}.apk" --draft \
+            --title "Consigliere ${VERSION}" \
             --notes "Build ${GITHUB_SHA::7}. Baixe o APK no celular e instale por cima."
           gh release edit "$TAG" --draft=false --latest
           # Remove a release antiga "latest" do esquema anterior, se ainda existir.

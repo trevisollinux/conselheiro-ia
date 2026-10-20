@@ -47,7 +47,7 @@ object Summary {
     }
 
     private const val SUMMARY_SYSTEM =
-        "Você é o ConsigliereIA, um conselheiro pessoal direto. Recebe a agenda e as tarefas do usuário e escreve UMA frase " +
+        "Você é o Consigliere, um conselheiro pessoal direto. Recebe a agenda e as tarefas do usuário e escreve UMA frase " +
             "em português do Brasil, com no máximo 150 caracteres, dizendo como está o dia e o que priorizar. " +
             "Se o tempo pedir (chuva no horário de um compromisso, calor forte), inclua o conselho prático, ex.: leve guarda-chuva. " +
             "Sem saudação, sem emojis em excesso (no máximo 1), sem markdown."

@@ -52,7 +52,7 @@ object VoiceQueue {
             context, 7, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
         )
         val n = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(R.drawable.ic_mic)
+            .setSmallIcon(R.drawable.ic_launcher_monochrome)
             .setContentTitle("🎤 Áudio anotado")
             .setContentText(text.lineSequence().first())
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))

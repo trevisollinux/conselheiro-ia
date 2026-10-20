@@ -27,7 +27,7 @@ object Support {
     /** Denunciar uma resposta da IA (exigência da Play Store para apps com IA generativa). */
     fun report(context: Context, answer: String) = contact(
         context,
-        "ConsigliereIA: denúncia de resposta da IA",
+        "Consigliere: denúncia de resposta da IA",
         "Conte o que houve de errado (opcional):\n\n\n--- Resposta denunciada ---\n$answer\n\nVersão ${BuildConfig.VERSION_NAME}",
     )
 }

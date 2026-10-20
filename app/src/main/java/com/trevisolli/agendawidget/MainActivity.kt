@@ -1,5 +1,8 @@
 package com.trevisolli.agendawidget
 
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.res.painterResource
 import android.Manifest
 import android.content.Intent
 import android.graphics.Bitmap
@@ -261,7 +264,7 @@ class MainActivity : ComponentActivity() {
                 backupMessage = "Configurações importadas."
                 refresh()
             } else {
-                backupMessage = "Esse QR não é do ConsigliereIA."
+                backupMessage = "Esse QR não é do Consigliere."
             }
         }
 
@@ -395,7 +398,7 @@ class MainActivity : ComponentActivity() {
                                 Spacer(Modifier.width(10.dp))
                             }
                             Text(
-                                if (inSettings) "Configurações" else "ConsigliereIA",
+                                if (inSettings) "Configurações" else "Consigliere",
                                 style = MaterialTheme.typography.headlineSmall,
                                 color = MaterialTheme.colorScheme.primary,
                             )
@@ -857,7 +860,7 @@ class MainActivity : ComponentActivity() {
                         title = { Text("Ler suas notificações") },
                         text = {
                             Text(
-                                "Para sugerir compromissos, o ConsigliereIA lê o texto das notificações que chegam " +
+                                "Para sugerir compromissos, o Consigliere lê o texto das notificações que chegam " +
                                     "(WhatsApp, Gmail, SMS…). A leitura acontece no celular. Se \"Minha IA\" estiver ligada, " +
                                     "só as mensagens que parecem ter data e hora são enviadas ao provedor de IA que você " +
                                     "escolheu, com a sua chave. Nada é guardado em servidores nossos. Você pode desligar quando quiser.",
@@ -887,9 +890,9 @@ class MainActivity : ComponentActivity() {
                     Text("✅ Acesso liberado.")
                 }
             }
-            Section("Compartilhar com o ConsigliereIA") {
+            Section("Compartilhar com o Consigliere") {
                 Text(
-                    "Em qualquer app, toque em Compartilhar → ConsigliereIA para virar evento ou tarefa. Vale para texto e print.",
+                    "Em qualquer app, toque em Compartilhar → Consigliere para virar evento ou tarefa. Vale para texto e print.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -934,7 +937,7 @@ class MainActivity : ComponentActivity() {
                         scanQr.launch(
                             ScanOptions()
                                 .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                                .setPrompt("Aponte para o QR do ConsigliereIA")
+                                .setPrompt("Aponte para o QR do Consigliere")
                                 .setBeepEnabled(false)
                                 .setOrientationLocked(false),
                         )
@@ -953,12 +956,12 @@ class MainActivity : ComponentActivity() {
             }
             }
             Section("Sobre") {
-                Text("ConsigliereIA ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
+                Text("Consigliere ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = {
                         startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Support.PRIVACY_URL)))
                     }) { Text("Privacidade") }
-                    OutlinedButton(onClick = { Support.contact(this@MainActivity, "ConsigliereIA: contato", "") }) { Text("Fale conosco") }
+                    OutlinedButton(onClick = { Support.contact(this@MainActivity, "Consigliere: contato", "") }) { Text("Fale conosco") }
                 }
             }
 
@@ -968,8 +971,6 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-            Banner(artSeed, opacity = 1f)
-
             // Atalho visível para as Configurações enquanto falta permissão importante.
             val missing = listOfNotNull(
                 "ler a agenda".takeIf { !calendarGranted },
@@ -982,10 +983,10 @@ class MainActivity : ComponentActivity() {
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
                 ) {
                     Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("⚙️", style = MaterialTheme.typography.headlineSmall)
+                        Text("🎩", style = MaterialTheme.typography.headlineSmall)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Falta configurar", fontWeight = FontWeight.Bold)
+                            Text("Vamos terminar de configurar?", fontWeight = FontWeight.Bold)
                             Text(missing.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
                         }
                         Text("Abrir ›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
@@ -1076,7 +1077,7 @@ class MainActivity : ComponentActivity() {
         return Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)
     }
 
-    /** O ConsigliereIA "falando" o resumo do dia, com a lista de hoje para marcar logo abaixo. */
+    /** O Consigliere "falando" o resumo do dia, com a lista de hoje para marcar logo abaixo. */
     @Composable
     private fun DayCard(
         snapshot: Snapshot,
@@ -1095,73 +1096,107 @@ class MainActivity : ComponentActivity() {
         val dayItems = snapshot.items.filter { it.overdue || dateOf(it.startMillis) == today }
         val tasks = dayItems.filter { it.source != Source.CALENDAR && it.taskId !in doneIds }
         val events = dayItems.filter { it.source == Source.CALENDAR }
+        val overdue = tasks.count { it.overdue }
         val hhmm = DateTimeFormatter.ofPattern("HH:mm")
+        val locale = java.util.Locale("pt", "BR")
+        val name = Settings(this).userName
+        val hour = java.time.LocalTime.now().hour
+        val hello = when (hour) {
+            in 5..11 -> "Buongiorno"
+            in 12..17 -> "Buon pomeriggio"
+            else -> "Buonasera"
+        } + if (name.isNotBlank()) ", $name" else ""
+        val weather = WeatherSource.load(this)
 
+        // Cabeçalho: mascote + saudação
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+            Image(painterResource(R.drawable.mascot), contentDescription = null, modifier = Modifier.size(72.dp))
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(hello, style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    today.format(DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", locale)).replaceFirstChar { it.uppercase() } +
+                        (weather?.let { " · ${it.label}" } ?: ""),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        // Conselho do dia
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
         ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Seu dia", style = MaterialTheme.typography.titleMedium)
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "✦ CONSELHO DO DIA" + (brief?.let { " · ${it.slot.label.lowercase()}" } ?: ""),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.secondary,
+                )
+                Text(
+                    brief?.text ?: snapshot.summary.ifBlank { "Ainda não preparei o resumo de hoje." },
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Button(
+                    onClick = onPrepare,
+                    enabled = !busy,
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                ) { Text(if (busy) "Escrevendo…" else if (brief == null) "Preparar meu dia" else "Conversar de novo") }
+            }
+        }
 
-                // Balão de conversa
-                Row(verticalAlignment = Alignment.Top) {
-                    Box(
-                        Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
-                        contentAlignment = Alignment.Center,
-                    ) { Text("🧭") }
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        val who = brief?.let {
-                            "ConsigliereIA · ${it.slot.label}, ${Instant.ofEpochMilli(it.time).atZone(zone).format(hhmm)}"
-                        } ?: "ConsigliereIA"
-                        Text(who, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.height(4.dp))
-                        Box(
-                            Modifier
-                                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomEnd = 18.dp, bottomStart = 18.dp))
-                                .background(MaterialTheme.colorScheme.primaryContainer)
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                        ) {
-                            Text(
-                                brief?.text ?: snapshot.summary.ifBlank { "Ainda não preparei o resumo de hoje." },
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            )
-                        }
-                        TextButton(onClick = onPrepare, enabled = !busy) {
-                            Text(if (busy) "Escrevendo…" else if (brief == null) "Preparar meu dia" else "Conversar de novo")
-                        }
-                    }
-                }
+        // Números do dia em pílulas coloridas
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Pill("${events.size}", if (events.size == 1) "compromisso" else "compromissos", Color(0xFFE6E0F5), Modifier.weight(1f))
+            Pill("${tasks.size - overdue}", if (tasks.size - overdue == 1) "tarefa" else "tarefas", Color(0xFFFCE3CF), Modifier.weight(1f))
+            if (overdue > 0) Pill("$overdue", if (overdue == 1) "atrasada" else "atrasadas", Color(0xFFF6D9D4), Modifier.weight(1f))
+            else Pill("${doneNow.size}", if (doneNow.size == 1) "feita" else "feitas", Color(0xFFD9EEDF), Modifier.weight(1f))
+        }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
-                Text("Para hoje", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-
+        // Para hoje
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Para hoje", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 4.dp))
                 if (tasks.isEmpty() && events.isEmpty() && doneNow.isEmpty()) {
-                    Text("Nada pendente para hoje. Aproveite 🍃", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Nada pendente. Aproveite o dia 🍃",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp),
+                    )
                 }
                 events.forEach { e ->
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
-                        Box(Modifier.size(10.dp).background(Color(e.color), CircleShape))
-                        Spacer(Modifier.width(14.dp))
-                        Text(
-                            if (e.dateOnly) "dia todo" else Instant.ofEpochMilli(e.startMillis).atZone(zone).format(hhmm),
-                            style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier.width(64.dp),
-                        )
-                        Text(e.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                    ItemRowCard(tint = Color(e.color).copy(alpha = 0.14f)) {
+                        Box(
+                            Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Color(e.color).copy(alpha = 0.25f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                if (e.dateOnly) "dia" else Instant.ofEpochMilli(e.startMillis).atZone(zone).format(hhmm),
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(e.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                            Text("Agenda", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
                 tasks.forEach { t ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (t.taskId != null) {
-                            Checkbox(checked = false, enabled = toggling != t.taskId, onCheckedChange = { onToggle(t, true) })
-                        } else {
-                            Spacer(Modifier.width(48.dp))
-                        }
-                        Column {
-                            Text(t.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    ItemRowCard(tint = if (t.overdue) MaterialTheme.colorScheme.error.copy(alpha = 0.08f) else MaterialTheme.colorScheme.background) {
+                        Checkbox(
+                            checked = false,
+                            enabled = toggling != t.taskId && t.taskId != null,
+                            onCheckedChange = { onToggle(t, true) },
+                            colors = CheckboxDefaults.colors(uncheckedColor = MaterialTheme.colorScheme.primary),
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(t.title, style = MaterialTheme.typography.titleSmall)
                             Text(
                                 if (t.overdue) "Atrasada · ${Format.subtitle(t).substringAfter("Atrasada · ")}" else t.source.label,
                                 style = MaterialTheme.typography.bodySmall,
@@ -1171,7 +1206,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 doneNow.forEach { t ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    ItemRowCard(tint = Color(0xFFD9EEDF).copy(alpha = 0.5f)) {
                         Checkbox(checked = true, enabled = toggling != t.taskId, onCheckedChange = { onToggle(t, false) })
                         Text(
                             t.title,
@@ -1183,13 +1218,33 @@ class MainActivity : ComponentActivity() {
                 }
                 if (doneNow.isNotEmpty()) {
                     Text(
-                        "Concluída sem querer? Desmarque que ela volta no Todoist.",
+                        "Concluiu sem querer? Desmarque que ela volta no Todoist.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp),
                     )
                 }
             }
         }
+    }
+
+    @Composable
+    private fun Pill(number: String, label: String, color: Color, modifier: Modifier = Modifier) {
+        Column(
+            modifier.clip(RoundedCornerShape(22.dp)).background(color).padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Text(number, style = MaterialTheme.typography.headlineSmall, color = Color(0xFF2A2124))
+            Text(label, style = MaterialTheme.typography.labelMedium, color = Color(0xFF5A4B4E))
+        }
+    }
+
+    @Composable
+    private fun ItemRowCard(tint: Color, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(tint).padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content,
+        )
     }
 
     @Composable
@@ -1201,7 +1256,7 @@ class MainActivity : ComponentActivity() {
             Image(art.bitmap.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             Column(Modifier.align(Alignment.CenterStart).padding(start = 20.dp)) {
                 Text(
-                    "ConsigliereIA",
+                    "Consigliere",
                     style = MaterialTheme.typography.headlineMedium,
                     color = if (art.dark) Color(0xFFFFF8EC) else Color(0xFF1C2A24),
                 )

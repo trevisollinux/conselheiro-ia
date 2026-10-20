@@ -111,7 +111,7 @@ class NotificationWatcher : NotificationListenerService() {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             val notification = NotificationCompat.Builder(context, CHANNEL)
-                .setSmallIcon(R.drawable.ic_compass)
+                .setSmallIcon(R.drawable.ic_launcher_monochrome)
                 .setContentTitle("📌 ${s.title}")
                 .setContentText(listOfNotNull(Format.suggestionWhen(s.date, s.time), s.origin).joinToString(" · "))
                 .setContentIntent(pending)

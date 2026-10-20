@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">ConsigliereIA</string>
+    <string name="app_name">Consigliere</string>
     <string name="widget_name">Meu dia</string>
     <string name="widget_description">Agenda, tarefas e um resumo do seu dia</string>
     <string name="voice_widget_name">Conversa rápida</string>
     <string name="voice_widget_description">Escreva ou fale e ele anota na agenda ou no Todoist</string>
-    <string name="share_label">ConsigliereIA</string>
+    <string name="share_label">Consigliere</string>
 </resources>

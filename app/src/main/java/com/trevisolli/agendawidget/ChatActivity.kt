@@ -60,7 +60,7 @@ class ChatActivity : ComponentActivity() {
                         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp).navigationBarsPadding()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    "🧭 ConsigliereIA",
+                                    "Consigliere",
                                     style = MaterialTheme.typography.titleMedium,
                                     modifier = Modifier.weight(1f),
                                 )

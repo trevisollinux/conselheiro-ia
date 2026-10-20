@@ -118,6 +118,15 @@ object TodoistSource {
         Http.postJson("https://api.todoist.com/api/v1/tasks/" + URLEncoder.encode(id, "UTF-8"), mapOf("Authorization" to "Bearer $token"), body)
     }
 
+    /** Subtarefas abertas de uma tarefa (id, texto). */
+    fun subtasks(token: String, parentId: String): List<Pair<String, String>> {
+        val res = Http.getJson("https://api.todoist.com/api/v1/tasks?parent_id=" + URLEncoder.encode(parentId, "UTF-8") + "&limit=200", token)
+        val arr = res.optJSONArray("results") ?: return emptyList()
+        return List(arr.length()) { arr.getJSONObject(it) }
+            .sortedBy { it.optInt("child_order") }
+            .map { it.optString("id") to it.optString("content") }
+    }
+
     fun delete(token: String, id: String) {
         Http.delete("https://api.todoist.com/api/v1/tasks/" + URLEncoder.encode(id, "UTF-8"), mapOf("Authorization" to "Bearer $token"))
     }

@@ -34,13 +34,15 @@ object VoiceQueue {
 
     fun pending(context: Context): List<File> = dir(context).listFiles()?.sortedBy { it.name }.orEmpty()
 
-    fun schedule(context: Context) {
-        // Se a IA está pausada pelo limite, nem tenta antes da hora.
-        val wait = maxOf(60_000L, AiClient.pausedUntil(com.trevisolli.agendawidget.data.Settings(context).effectiveModel) - System.currentTimeMillis())
+    /** [now]: tenta já (botão "Tentar agora"); senão espera 1 min ou o fim da pausa por limite. */
+    fun schedule(context: Context, now: Boolean = false) {
+        val paused = AiClient.pausedUntil(com.trevisolli.agendawidget.data.Settings(context).effectiveModel) - System.currentTimeMillis()
+        val wait = if (now) 0L else maxOf(60_000L, paused)
+        // Linear de 2 em 2 min: sobrecarga (503) costuma passar em minutos, não em horas.
         val request = OneTimeWorkRequestBuilder<VoiceQueueWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setInitialDelay(wait, TimeUnit.MILLISECONDS)
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.MINUTES)
+            .setBackoffCriteria(BackoffPolicy.LINEAR, 2, TimeUnit.MINUTES)
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork("voice-queue", ExistingWorkPolicy.REPLACE, request)
     }
@@ -73,8 +75,8 @@ class VoiceQueueWorker(context: Context, params: WorkerParameters) : CoroutineWo
                 file.delete()
                 VoiceQueue.notify(ctx, answer.text)
             } catch (e: IOException) {
-                // IA ainda fora: tenta mais tarde (desiste depois de ~1 dia).
-                return if (runAttemptCount < 8) Result.retry() else Result.failure()
+                // IA ainda fora: tenta mais tarde (2, 4, 6… min; o refresh de 30 min também reagenda).
+                return if (runAttemptCount < 20) Result.retry() else Result.failure()
             } catch (e: Exception) {
                 file.delete()
                 VoiceQueue.notify(ctx, "Não consegui entender um áudio guardado: ${e.message?.take(80)}")

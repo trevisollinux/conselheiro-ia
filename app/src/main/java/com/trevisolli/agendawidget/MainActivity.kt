@@ -219,6 +219,7 @@ class MainActivity : ComponentActivity() {
         var toggling by remember { mutableStateOf<String?>(null) }
 
         var showQr by remember { mutableStateOf<Bitmap?>(null) }
+        var detail by remember { mutableStateOf<AgendaItem?>(null) }
         var tab by remember { mutableStateOf(0) }
         var inSettings by remember { mutableStateOf(false) }
         var showAdvanced by remember { mutableStateOf(false) }
@@ -1031,6 +1032,26 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val waitingAudio = remember(resumeCount, snapshot) { com.trevisolli.agendawidget.smart.VoiceQueue.pending(this@MainActivity).size }
+            if (waitingAudio > 0) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                ) {
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "⏳ " + if (waitingAudio == 1) "1 áudio esperando a IA" else "$waitingAudio áudios esperando a IA",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        TextButton(onClick = {
+                            com.trevisolli.agendawidget.smart.VoiceQueue.schedule(this@MainActivity, now = true)
+                            scope.launch { snackbar.showSnackbar("Tentando de novo…") }
+                        }) { Text("Tentar agora") }
+                    }
+                }
+            }
+
             DayCard(
                 snapshot = snapshot,
                 briefings = briefings,
@@ -1041,6 +1062,7 @@ class MainActivity : ComponentActivity() {
                     briefNow(if (java.time.LocalTime.now().hour < 15) Briefing.Slot.MORNING else Briefing.Slot.EVENING)
                 },
                 onToggle = { item, done -> toggleTask(item, done) },
+                onOpen = { detail = it },
             )
 
             if (suggestions.isNotEmpty()) {
@@ -1107,6 +1129,7 @@ class MainActivity : ComponentActivity() {
                         onToggle = { item, done -> toggleTask(item, done) },
                         onMove = { item, to -> moveItem(item, to) },
                         ranges = shownRanges,
+                        onOpen = { detail = it },
                     )
 
                     else -> ChatPanel(
@@ -1116,6 +1139,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        detail?.let { item -> com.trevisolli.agendawidget.ui.ItemDetail(item, onDismiss = { detail = null }) }
 
         showQr?.let { bmp ->
             AlertDialog(
@@ -1149,6 +1174,7 @@ class MainActivity : ComponentActivity() {
         busy: Boolean,
         onPrepare: () -> Unit,
         onToggle: (AgendaItem, Boolean) -> Unit,
+        onOpen: (AgendaItem) -> Unit = {},
     ) {
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
@@ -1197,9 +1223,11 @@ class MainActivity : ComponentActivity() {
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.secondary,
                 )
+                val advice = brief?.text ?: snapshot.summary.ifBlank { "Ainda não preparei o resumo de hoje." }
                 Text(
-                    brief?.text ?: snapshot.summary.ifBlank { "Ainda não preparei o resumo de hoje." },
-                    style = MaterialTheme.typography.titleLarge,
+                    advice,
+                    // Texto longo (resumo da manhã) em corpo normal; frase curta em destaque.
+                    style = if (advice.length > 120) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
                 Button(
@@ -1213,7 +1241,7 @@ class MainActivity : ComponentActivity() {
 
         // Números do dia em pílulas coloridas
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            Pill("${events.size}", if (events.size == 1) "compromisso" else "compromissos", Color(0xFFE6E0F5), Modifier.weight(1f))
+            Pill("${events.size}", if (events.size == 1) "evento" else "eventos", Color(0xFFE6E0F5), Modifier.weight(1f))
             Pill("${tasks.size - overdue}", if (tasks.size - overdue == 1) "tarefa" else "tarefas", Color(0xFFFCE3CF), Modifier.weight(1f))
             if (overdue > 0) Pill("$overdue", if (overdue == 1) "atrasada" else "atrasadas", Color(0xFFF6D9D4), Modifier.weight(1f))
             else Pill("${doneNow.size}", if (doneNow.size == 1) "feita" else "feitas", Color(0xFFD9EEDF), Modifier.weight(1f))
@@ -1232,7 +1260,7 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 events.forEach { e ->
-                    ItemRowCard(tint = Color(e.color).copy(alpha = 0.14f)) {
+                    ItemRowCard(tint = Color(e.color).copy(alpha = 0.14f), onClick = { onOpen(e) }) {
                         Box(
                             Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Color(e.color).copy(alpha = 0.25f)),
                             contentAlignment = Alignment.Center,
@@ -1250,7 +1278,10 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 tasks.forEach { t ->
-                    ItemRowCard(tint = if (t.overdue) MaterialTheme.colorScheme.error.copy(alpha = 0.08f) else MaterialTheme.colorScheme.background) {
+                    ItemRowCard(
+                        tint = if (t.overdue) MaterialTheme.colorScheme.error.copy(alpha = 0.08f) else MaterialTheme.colorScheme.background,
+                        onClick = { onOpen(t) },
+                    ) {
                         Checkbox(
                             checked = false,
                             enabled = toggling != t.taskId && t.taskId != null,
@@ -1301,9 +1332,15 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun ItemRowCard(tint: Color, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    private fun ItemRowCard(
+        tint: Color,
+        onClick: (() -> Unit)? = null,
+        content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
+    ) {
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(tint).padding(horizontal = 10.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(tint)
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
         )

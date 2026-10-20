@@ -1,6 +1,7 @@
 package com.trevisolli.agendawidget.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -74,6 +75,7 @@ fun AgendaTab(
     onToggle: (AgendaItem, Boolean) -> Unit,
     onMove: (AgendaItem, LocalDate) -> Unit,
     ranges: List<Range> = Range.entries,
+    onOpen: (AgendaItem) -> Unit = {},
 ) {
     val zone = ZoneId.systemDefault()
     val today = LocalDate.now(zone)
@@ -178,6 +180,7 @@ fun AgendaTab(
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = movable(item).fillMaxWidth().clip(RoundedCornerShape(20.dp))
+                            .clickable { onOpen(item) }
                             .background(if (item.overdue) MaterialTheme.colorScheme.error.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surfaceContainerHighest)
                             .padding(horizontal = 4.dp, vertical = 4.dp),
                     ) {
@@ -199,6 +202,7 @@ fun AgendaTab(
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = movable(item).fillMaxWidth().clip(RoundedCornerShape(20.dp))
+                            .clickable { onOpen(item) }
                             .background(Color(item.color).copy(alpha = 0.12f))
                             .padding(horizontal = 10.dp, vertical = 8.dp),
                     ) {

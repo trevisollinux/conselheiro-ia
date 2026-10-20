@@ -3,6 +3,10 @@ name: Build APK
 on:
   push:
     branches: [main]
+    # Mudança só de documentação não gera versão nova.
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
   workflow_dispatch:
 
 permissions:

@@ -1,67 +1,84 @@
-# ConsigliereIA
+# Consigliere
 
-Widget Android que junta agenda e tarefas numa lista curta, com resumo do dia e conversa por texto ou voz:
+Seu conselheiro pessoal no Android: agenda e tarefas juntas num widget, um resumo do que importa no dia
+e um assistente que anota por você, por texto ou voz.
 
-- **Agenda do celular**: todas as agendas sincronizadas (Google, vivo…), lidas localmente, sem login.
-- **Todoist**: tarefas atrasadas e dos próximos dias (token pessoal da API).
+## O que ele faz
 
-Mostra atrasadas primeiro (em vermelho), depois tudo em ordem de data. Tocar num item abre o evento ou a tarefa no app de origem.
-O widget atualiza a cada 30 min, quando a agenda muda e pelo botão ↻.
+- **Agenda + Todoist numa lista só:** eventos de todas as agendas do celular (Google e outras, lidas localmente,
+  sem login) e tarefas do Todoist, com atrasadas em destaque.
+- **Conselho do dia:** um resumo curto do que priorizar, com aviso de tempo quando afeta um compromisso
+  ("leve guarda-chuva").
+- **Conversa por texto ou voz:** "dentista quinta às 15h" vira evento; "lembrar de pagar o MEI amanhã" vira tarefa;
+  "terminei a ração da Amelie" conclui; "o que tenho amanhã?" responde. Tudo com **Desfazer**.
+  - **Listas:** "lista de compras: leite, pão e ovos" vira uma tarefa com subtarefas no Todoist.
+  - **Repetição:** "dar o remédio todo dia às 8h" vira tarefa recorrente.
+- **Voz:** usa o reconhecimento de voz do aparelho (o mesmo do teclado), que funciona sem IA. Sem esse serviço,
+  grava o áudio e a IA transcreve. Se a IA estiver fora, o áudio fica guardado e é processado depois, com notificação.
+- **Mover de dia:** no widget, o **»** joga o item para o dia seguinte (atrasada vem para hoje). No app, na aba
+  Agenda, segure o item e solte num dia da barra. Recorrentes e convites de outras pessoas ficam de fora.
+- **Sugestões 📌 (opcional):** lê notificações de WhatsApp, Telegram, Gmail, Outlook e SMS e sugere só o que parece
+  compromisso **seu**. Grupos ficam de fora por padrão; nada é criado sem você confirmar; sugestões vencidas somem.
+- **Compartilhar:** em qualquer app, Compartilhar → Consigliere (texto ou print) abre a tela para criar o evento ou
+  a tarefa. Também aparece no menu de texto selecionado.
+- **Resumos da manhã e da noite:** no app ("Preparar meu dia"), com notificação opcional.
+- **Notion (opcional):** procura datas nas páginas compartilhadas com a integração.
+- **Tempo:** Open-Meteo, pela cidade digitada ou pela localização aproximada.
 
-Para mudar de dia: no widget, o **»** joga o item para o dia seguinte (atrasada vem para hoje); no app, na aba Agenda, segure o item e solte num dia da barra. Recorrentes e convites de outras pessoas ficam de fora.
+## Widgets
+
+- **Meu dia:** saudação com o mascote, conselho do dia, lista Hoje/Semana/Mês agrupada por dia, ↻ e a barra
+  "Escreva ou fale". Fundos: **Noir**, **Creme**, paisagens geradas (mudam com o tempo e a hora), obras de arte
+  do Met Museum (domínio público, por estilo), caderno e post-it.
+- **Conversa rápida:** barra no estilo da busca do Google: mascote, "Consigliere", microfone e atalho para o app.
+  Estreito, vira só o botão do microfone.
+
+O widget atualiza a cada 30 min, quando a agenda muda e pelo ↻ (que também troca a arte).
 
 ## Inteligência: dois modos
 
 - **Automático (sem IA):** regras no próprio celular. Entendem "amanhã às 9h", "sexta 14:30", "dia 21/10",
-  "22 de outubro", "8 da noite", "meio-dia"… Grátis e nada sai do aparelho.
-- **Minha IA:** você escolhe **Claude**, **ChatGPT** ou **Gemini** e cola a sua chave de API. O app chama a API
-  direto do celular (sem servidor no meio); o custo vai para a sua conta.
-  - Claude: console.anthropic.com → API Keys (modelo padrão `claude-opus-5-5`)
-  - ChatGPT: platform.openai.com → API keys (padrão `gpt-5-mini`)
-  - Gemini: aistudio.google.com → Get API key (padrão `gemini-3.8-flash`)
-  - O campo "Modelo" permite trocar por outro (ex.: `claude-haiku-5-5`, mais barato).
+  "8 da noite", listas com ":" e vírgulas… Grátis e nada sai do aparelho.
+- **Minha IA:** **Gemini**, **Claude** ou **ChatGPT** com a sua chave. O app chama a API direto do celular,
+  sem servidor no meio.
+  - **Modelo principal** (conversa, áudio, prints) e **modelo leve** (resumo, briefings, notificações, Notion).
+    Vazio = automático: no Gemini, o Flash-Lite mais novo da conta (cota grátis bem maior); no Claude, o Haiku.
+  - Limite atingido (429): a IA daquele modelo pausa sozinha e o app usa as regras até a cota voltar.
+    Sobrecarga (503) tem uma nova tentativa automática.
+  - Chaves: aistudio.google.com (Gemini, tem cota grátis), console.anthropic.com (Claude), platform.openai.com.
 
-Onde a inteligência é usada:
+## Instalar (APK de teste)
 
-1. **Resumo do dia** no topo do widget ("Hoje: 2 compromissos · 1 atrasada. Próximo: Exame 09:00").
-   Com IA, só é recalculado quando a lista muda.
-2. **Compartilhar → "ConsigliereIA: criar compromisso"** em qualquer app: abre uma tela com título, data e hora
-   preenchidos para criar o evento na agenda ou a tarefa no Todoist.
-3. **Ler mensagens** (opcional): lê as notificações de WhatsApp, Telegram, Gmail, Outlook e SMS. Quando uma mensagem
-   parece um compromisso, aparece uma sugestão para confirmar. Nada é criado sozinho. Com IA ligada, as regras
-   filtram antes e só as mensagens candidatas vão para a IA.
+1. Cada push na `main` gera o APK pelo GitHub Actions e publica em
+   [Releases → latest](https://github.com/trevisollinux/conselheiro-ia/releases/latest) (`Consigliere-<versão>.apk`).
+2. No celular, baixe e instale por cima da versão anterior (permita "instalar apps desconhecidos").
+3. No primeiro uso, as boas-vindas guiam agenda, Todoist, IA e colocam o widget na tela inicial.
+4. Para o widget atualizar sozinho: Configurações → Avançado → Bateria → "sem restrições".
 
-## Levar para outro aparelho
+**Todoist:** Configurações → Integrações → Desenvolvedor → copie o **Token da API**.
 
-Configurações → "Levar para outro aparelho" → **Exportar (QR)** num aparelho e **Importar** no outro.
-O QR contém o token do Todoist e a chave de IA.
-
-## Instalar
-
-1. Cada push na `main` gera o APK pelo GitHub Actions.
-2. No celular, abra a release **latest** do repositório e baixe `agenda-widget.apk`.
-3. Instale (permita "instalar apps desconhecidos" para o navegador ou o app do GitHub).
-4. Abra o **Agenda Widget**, configure as fontes e adicione o widget **Agenda e tarefas** na tela inicial.
-5. Em celulares vivo: Configurações → Bateria → libere o app em "sem restrições", e permita a inicialização automática.
-
-## Todoist
-
-Todoist → Configurações → Integrações → Desenvolvedor → copie o **Token da API** e cole no app.
+**Levar para outro aparelho:** Configurações → Avançado → **Exportar (QR)** num aparelho e **Importar** no outro.
+O QR contém o token do Todoist e a chave de IA: trate como senha.
 
 ## Play Store
 
-O build de loja (`bundleRelease`, arquivo `.aab`) é assinado com a chave de upload guardada nos
-segredos do GitHub (`UPLOAD_KEYSTORE_BASE64`, `UPLOAD_KEYSTORE_PASSWORD`, `UPLOAD_KEY_ALIAS`, `UPLOAD_KEY_PASSWORD`).
-Sem os segredos, o CI gera só o APK de uso pessoal. A chave em `app/agenda.keystore` é pública
-(repositório aberto) e serve só para o APK de teste; nunca a use na loja.
-
-Política de privacidade: `docs/privacidade.html` (GitHub Pages).
+- O build de loja (`bundleRelease`, `.aab`) é assinado com a chave de upload guardada nos segredos do GitHub
+  (`UPLOAD_KEYSTORE_BASE64`, `UPLOAD_KEYSTORE_PASSWORD`, `UPLOAD_KEY_ALIAS`, `UPLOAD_KEY_PASSWORD`) e sai como
+  artefato do workflow. Sem os segredos, o CI gera só o APK de teste.
+- A chave em `app/agenda.keystore` é pública (repositório aberto) e serve só para o APK de teste; nunca a use na loja.
+- Política de privacidade: [`docs/privacidade.html`](docs/privacidade.html), publicada pelo GitHub Pages
+  (Settings → Pages → `main` / `docs`).
+- Já atende às exigências da loja: aviso antes de ler notificações e botão ⚑ para denunciar respostas da IA.
 
 ## Estrutura
 
-- `data/CalendarSource.kt`: eventos via `CalendarContract.Instances`
-- `data/TodoistSource.kt`: `GET /api/v1/tasks/filter?query=overdue | next N days`
-- `data/AgendaRepository.kt`: junta, ordena e guarda o cache
-- `widget/AgendaWidget.kt`: widget em Jetpack Glance
-- `widget/RefreshWorker.kt`: atualização periódica e ao mudar a agenda (WorkManager)
-- `MainActivity.kt`: tela de configuração e prévia
+`app/src/main/java/com/trevisolli/agendawidget/`
+
+- `MainActivity.kt`: abas Hoje, Agenda e Conversa; configurações (Essencial, Personalizar, Avançado, Sobre)
+- `ChatActivity.kt`, `VoiceActivity.kt`, `ConfirmActivity.kt`: conversa por cima da tela inicial, gravador, revisão de sugestões e compartilhamentos
+- `ui/`: tema da marca (`Theme.kt`), boas-vindas (`Onboarding.kt`), aba Agenda com arrastar (`AgendaTab.kt`), conversa (`ChatPanel.kt`)
+- `data/`: agenda do celular (`CalendarSource`, `CalendarWriter`), Todoist, mover de dia (`Mover`), tempo, arte do Met, configurações
+- `smart/`: IA (`AiClient`, `LightModel`), assistente (`Assistant`), regras em português (`RuleParser`), resumo, briefings,
+  leitura de notificações, Notion, voz (`VoiceRecorder`, `VoiceQueue`)
+- `widget/`: widgets em Jetpack Glance (`AgendaWidget`, `VoiceWidget`, `ChatBar`), fundos e paisagens, atualização (`RefreshWorker`)
+- `tools/fetch_art.py`: baixa a coleção de arte de reserva usada quando o Met está fora do ar

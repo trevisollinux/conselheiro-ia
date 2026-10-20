@@ -163,6 +163,15 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun AppRoot() {
         val settings = remember { Settings(this) }
+        var onboarded by remember { mutableStateOf(settings.onboarded) }
+        if (!onboarded) {
+            com.trevisolli.agendawidget.ui.Onboarding(onDone = {
+                settings.onboarded = true
+                onboarded = true
+                RefreshWorker.runNow(this)
+            })
+            return
+        }
         val scope = rememberCoroutineScope()
         val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
         var snapshot by remember { mutableStateOf(AgendaRepository.load(this)) }
@@ -206,6 +215,7 @@ class MainActivity : ComponentActivity() {
         var showQr by remember { mutableStateOf<Bitmap?>(null) }
         var tab by remember { mutableStateOf(0) }
         var inSettings by remember { mutableStateOf(false) }
+        var showAdvanced by remember { mutableStateOf(false) }
         BackHandler(enabled = inSettings) { inSettings = false }
         var userName by remember { mutableStateOf(settings.userName) }
         var range by remember { mutableStateOf(settings.widgetRange) }
@@ -379,11 +389,17 @@ class MainActivity : ComponentActivity() {
             topBar = {
                 TopAppBar(
                     title = {
-                        Text(
-                            if (inSettings) "Configurações" else "ConsigliereIA",
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (!inSettings) {
+                                com.trevisolli.agendawidget.ui.AppLogo(32.dp)
+                                Spacer(Modifier.width(10.dp))
+                            }
+                            Text(
+                                if (inSettings) "Configurações" else "ConsigliereIA",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     },
                     navigationIcon = {
                         if (inSettings) {
@@ -435,6 +451,7 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
+            GroupTitle("Essencial")
             Section("Você") {
                 OutlinedTextField(
                     value = userName,
@@ -448,66 +465,6 @@ class MainActivity : ComponentActivity() {
                     refresh()
                 }) { Text("Salvar") }
             }
-
-            Section("Tempo") {
-                Text(
-                    "A paisagem acompanha o tempo e o resumo avisa de chuva nos seus compromissos.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                OutlinedTextField(
-                    value = cityInput,
-                    onValueChange = { cityInput = it },
-                    label = { Text("Sua cidade (ou use a localização)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-                    if (!granted) {
-                        cityStatus = "Sem permissão de localização. Digite a cidade."
-                        return@rememberLauncherForActivityResult
-                    }
-                    cityStatus = "Localizando…"
-                    scope.launch {
-                        cityStatus = try {
-                            val place = WeatherSource.useDeviceLocation(this@MainActivity)
-                            if (place == null) {
-                                "Não consegui a localização agora. Ligue a localização ou digite a cidade."
-                            } else {
-                                withContext(Dispatchers.IO) { WeatherSource.refresh(this@MainActivity) }
-                                cityInput = place
-                                "📍 $place · " + (WeatherSource.load(this@MainActivity)?.label ?: "")
-                            }
-                        } catch (e: Exception) {
-                            "Erro: ${e.message?.take(80)}"
-                        }
-                        refresh()
-                    }
-                }
-                OutlinedButton(onClick = { locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION) }) {
-                    Text("📍 Usar minha localização")
-                }
-                Button(onClick = {
-                    cityStatus = "Procurando…"
-                    scope.launch {
-                        cityStatus = try {
-                            val found = withContext(Dispatchers.IO) {
-                                WeatherSource.setCity(this@MainActivity, cityInput)?.also { WeatherSource.refresh(this@MainActivity) }
-                            }
-                            if (found == null) {
-                                if (cityInput.isBlank()) "Tempo desligado." else "Cidade não encontrada."
-                            } else {
-                                cityInput = found
-                                "✅ $found · " + (WeatherSource.load(this@MainActivity)?.label ?: "")
-                            }
-                        } catch (e: Exception) {
-                            "Erro: ${e.message?.take(80)}"
-                        }
-                        refresh()
-                    }
-                }) { Text("Salvar cidade") }
-                cityStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            }
-
             Section("Agenda do celular") {
                 if (calendarGranted) {
                     Text("Conectada (todas as agendas visíveis, inclusive Google).")
@@ -543,7 +500,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-
             Section("Todoist") {
                 OutlinedTextField(
                     value = token,
@@ -572,62 +528,76 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-
-            Section("Resumos automáticos") {
+            Section("Inteligência") {
                 Text(
-                    "Plano do dia de manhã e balanço no fim do dia, no topo da aba Hoje.",
+                    "Usada no resumo do dia e para entender mensagens compartilhadas ou recebidas.",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Também avisar por notificação", modifier = Modifier.weight(1f))
-                    Switch(checked = notifyBrief, onCheckedChange = {
-                        notifyBrief = it
-                        settings.briefNotify = it
-                    })
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = !useAi, onClick = { useAi = false }, label = { Text("Automático (sem IA)") })
+                    FilterChip(selected = useAi, onClick = { useAi = true }, label = { Text("Minha IA") })
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("☀️ Manhã", modifier = Modifier.weight(1f))
-                    Switch(checked = morningOn, onCheckedChange = { morningOn = it; saveBriefSchedule() })
-                }
-                if (morningOn) {
+                if (!useAi) {
+                    Text(
+                        "Regras no próprio celular: entende \"amanhã às 9h\", \"sexta 14:30\", \"dia 21/10\"… Grátis e privado.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(6, 7, 8, 9, 10).forEach { h ->
-                            FilterChip(selected = morningHour == h, onClick = { morningHour = h; saveBriefSchedule() }, label = { Text("${h}h") })
+                        AiProvider.entries.forEach { p ->
+                            FilterChip(selected = provider == p, onClick = { provider = p }, label = { Text(p.label) })
                         }
                     }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🌙 Fim do dia", modifier = Modifier.weight(1f))
-                    Switch(checked = eveningOn, onCheckedChange = { eveningOn = it; saveBriefSchedule() })
-                }
-                if (eveningOn) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(16, 17, 18, 19, 20, 21).forEach { h ->
-                            FilterChip(selected = eveningHour == h, onClick = { eveningHour = h; saveBriefSchedule() }, label = { Text("${h}h") })
-                        }
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { briefNow(Briefing.Slot.MORNING) }, enabled = !briefBusy) { Text("Testar manhã") }
-                    OutlinedButton(onClick = { briefNow(Briefing.Slot.EVENING) }, enabled = !briefBusy) { Text("Testar fim do dia") }
-                }
-                if (briefBusy) Text("Escrevendo…")
-                if (briefings.isNotEmpty()) {
-                    Text("Últimos resumos", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                    val fmt = DateTimeFormatter.ofPattern("dd/MM HH:mm")
-                    briefings.take(3).forEach { b ->
-                        Column(Modifier.padding(vertical = 4.dp)) {
+                    OutlinedTextField(
+                        value = aiKey,
+                        onValueChange = { aiKey = it },
+                        label = { Text("Chave da API (${provider.label})") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text("Onde pegar: ${provider.keyHint}", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = aiModel,
+                        onValueChange = { aiModel = it },
+                        label = { Text("Modelo principal (conversa, áudio, prints)") },
+                        placeholder = { Text(provider.defaultModel) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = aiLight,
+                        onValueChange = { aiLight = it },
+                        label = { Text("Modelo leve (resumo, notificações, briefings)") },
+                        placeholder = { Text(if (provider == settings.aiProvider) settings.lightModel else "automático") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        "Vazio = automático: no Gemini, o Flash-Lite mais novo da sua conta (cota bem maior); no Claude, o Haiku.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        "Usa a sua chave; o uso é cobrado na sua conta da ${provider.label}.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    listOf("Principal" to settings.effectiveModel, "Leve" to settings.lightModel).distinctBy { it.second }.forEach { (nome, modelo) ->
+                        val paused = AiClient.pausedUntil(modelo)
+                        if (paused > 0) {
+                            val hora = java.time.Instant.ofEpochMilli(paused).atZone(java.time.ZoneId.systemDefault())
+                                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
                             Text(
-                                "${b.slot.label} · ${Instant.ofEpochMilli(b.time).atZone(ZoneId.systemDefault()).format(fmt)}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
+                                "⏸ $nome ($modelo): limite grátis atingido, pausado até $hora; enquanto isso, modo automático.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
                             )
-                            Text(b.text, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
+                Button(onClick = { saveAiAndTest() }) { Text(if (useAi) "Salvar e testar" else "Salvar") }
+                aiTest?.let { Text(it) }
             }
-
+            GroupTitle("Personalizar")
             Section("Tema do app") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AppTheme.entries.forEach { t ->
@@ -644,7 +614,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-
             Section("Visual do widget") {
                 Text("Fundo", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -749,108 +718,126 @@ class MainActivity : ComponentActivity() {
                     TextButton(onClick = { artSeed = System.nanoTime() }) { Text("Ver outra paisagem") }
                 }
             }
-
-            Section("Notion") {
+            Section("Tempo") {
+                Text(
+                    "A paisagem acompanha o tempo e o resumo avisa de chuva nos seus compromissos.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 OutlinedTextField(
-                    value = notionToken,
-                    onValueChange = { notionToken = it },
-                    label = { Text("Token da integração") },
+                    value = cityInput,
+                    onValueChange = { cityInput = it },
+                    label = { Text("Sua cidade (ou use a localização)") },
                     singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Text(
-                    "1) notion.so/profile/integrations → Nova integração (interna) → copie o \"Internal Integration Secret\".\n" +
-                        "2) Em cada página ou banco de notas que ele pode ler: ••• → Conexões → adicione a integração.\n" +
-                        "A cada atualização ele olha as páginas editadas e sugere o que tiver data (ex.: \"Dentista 22/10 15h\").",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = {
-                        settings.notionToken = notionToken
-                        settings.notionLastScan = 0
+                val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                    if (!granted) {
+                        cityStatus = "Sem permissão de localização. Digite a cidade."
+                        return@rememberLauncherForActivityResult
+                    }
+                    cityStatus = "Localizando…"
+                    scope.launch {
+                        cityStatus = try {
+                            val place = WeatherSource.useDeviceLocation(this@MainActivity)
+                            if (place == null) {
+                                "Não consegui a localização agora. Ligue a localização ou digite a cidade."
+                            } else {
+                                withContext(Dispatchers.IO) { WeatherSource.refresh(this@MainActivity) }
+                                cityInput = place
+                                "📍 $place · " + (WeatherSource.load(this@MainActivity)?.label ?: "")
+                            }
+                        } catch (e: Exception) {
+                            "Erro: ${e.message?.take(80)}"
+                        }
                         refresh()
-                    }) { Text("Salvar e ler agora") }
-                    if (settings.notionToken.isNotBlank()) {
-                        OutlinedButton(onClick = {
-                            notionToken = ""
-                            settings.notionToken = ""
-                            refresh()
-                        }) { Text("Remover") }
                     }
                 }
+                OutlinedButton(onClick = { locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION) }) {
+                    Text("📍 Usar minha localização")
+                }
+                Button(onClick = {
+                    cityStatus = "Procurando…"
+                    scope.launch {
+                        cityStatus = try {
+                            val found = withContext(Dispatchers.IO) {
+                                WeatherSource.setCity(this@MainActivity, cityInput)?.also { WeatherSource.refresh(this@MainActivity) }
+                            }
+                            if (found == null) {
+                                if (cityInput.isBlank()) "Tempo desligado." else "Cidade não encontrada."
+                            } else {
+                                cityInput = found
+                                "✅ $found · " + (WeatherSource.load(this@MainActivity)?.label ?: "")
+                            }
+                        } catch (e: Exception) {
+                            "Erro: ${e.message?.take(80)}"
+                        }
+                        refresh()
+                    }
+                }) { Text("Salvar cidade") }
+                cityStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
-
-            Section("Inteligência") {
+            Section("Resumos automáticos") {
                 Text(
-                    "Usada no resumo do dia e para entender mensagens compartilhadas ou recebidas.",
+                    "Plano do dia de manhã e balanço no fim do dia, no topo da aba Hoje.",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = !useAi, onClick = { useAi = false }, label = { Text("Automático (sem IA)") })
-                    FilterChip(selected = useAi, onClick = { useAi = true }, label = { Text("Minha IA") })
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Também avisar por notificação", modifier = Modifier.weight(1f))
+                    Switch(checked = notifyBrief, onCheckedChange = {
+                        notifyBrief = it
+                        settings.briefNotify = it
+                    })
                 }
-                if (!useAi) {
-                    Text(
-                        "Regras no próprio celular: entende \"amanhã às 9h\", \"sexta 14:30\", \"dia 21/10\"… Grátis e privado.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("☀️ Manhã", modifier = Modifier.weight(1f))
+                    Switch(checked = morningOn, onCheckedChange = { morningOn = it; saveBriefSchedule() })
+                }
+                if (morningOn) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AiProvider.entries.forEach { p ->
-                            FilterChip(selected = provider == p, onClick = { provider = p }, label = { Text(p.label) })
-                        }
-                    }
-                    OutlinedTextField(
-                        value = aiKey,
-                        onValueChange = { aiKey = it },
-                        label = { Text("Chave da API (${provider.label})") },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text("Onde pegar: ${provider.keyHint}", style = MaterialTheme.typography.bodySmall)
-                    OutlinedTextField(
-                        value = aiModel,
-                        onValueChange = { aiModel = it },
-                        label = { Text("Modelo principal (conversa, áudio, prints)") },
-                        placeholder = { Text(provider.defaultModel) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = aiLight,
-                        onValueChange = { aiLight = it },
-                        label = { Text("Modelo leve (resumo, notificações, briefings)") },
-                        placeholder = { Text(if (provider == settings.aiProvider) settings.lightModel else "automático") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text(
-                        "Vazio = automático: no Gemini, o Flash-Lite mais novo da sua conta (cota bem maior); no Claude, o Haiku.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Text(
-                        "Usa a sua chave; o uso é cobrado na sua conta da ${provider.label}.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    listOf("Principal" to settings.effectiveModel, "Leve" to settings.lightModel).distinctBy { it.second }.forEach { (nome, modelo) ->
-                        val paused = AiClient.pausedUntil(modelo)
-                        if (paused > 0) {
-                            val hora = java.time.Instant.ofEpochMilli(paused).atZone(java.time.ZoneId.systemDefault())
-                                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
-                            Text(
-                                "⏸ $nome ($modelo): limite grátis atingido, pausado até $hora; enquanto isso, modo automático.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                            )
+                        listOf(6, 7, 8, 9, 10).forEach { h ->
+                            FilterChip(selected = morningHour == h, onClick = { morningHour = h; saveBriefSchedule() }, label = { Text("${h}h") })
                         }
                     }
                 }
-                Button(onClick = { saveAiAndTest() }) { Text(if (useAi) "Salvar e testar" else "Salvar") }
-                aiTest?.let { Text(it) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🌙 Fim do dia", modifier = Modifier.weight(1f))
+                    Switch(checked = eveningOn, onCheckedChange = { eveningOn = it; saveBriefSchedule() })
+                }
+                if (eveningOn) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(16, 17, 18, 19, 20, 21).forEach { h ->
+                            FilterChip(selected = eveningHour == h, onClick = { eveningHour = h; saveBriefSchedule() }, label = { Text("${h}h") })
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { briefNow(Briefing.Slot.MORNING) }, enabled = !briefBusy) { Text("Testar manhã") }
+                    OutlinedButton(onClick = { briefNow(Briefing.Slot.EVENING) }, enabled = !briefBusy) { Text("Testar fim do dia") }
+                }
+                if (briefBusy) Text("Escrevendo…")
+                if (briefings.isNotEmpty()) {
+                    Text("Últimos resumos", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                    val fmt = DateTimeFormatter.ofPattern("dd/MM HH:mm")
+                    briefings.take(3).forEach { b ->
+                        Column(Modifier.padding(vertical = 4.dp)) {
+                            Text(
+                                "${b.slot.label} · ${Instant.ofEpochMilli(b.time).atZone(ZoneId.systemDefault()).format(fmt)}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(b.text, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
             }
-
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { showAdvanced = !showAdvanced }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Avançado", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                Text(if (showAdvanced) "Ocultar ▲" else "Mostrar ▼", color = MaterialTheme.colorScheme.primary)
+            }
+            if (showAdvanced) {
             Section("Ler mensagens (WhatsApp, Gmail…)") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Detectar compromissos nas notificações", modifier = Modifier.weight(1f))
@@ -900,24 +887,42 @@ class MainActivity : ComponentActivity() {
                     Text("✅ Acesso liberado.")
                 }
             }
-
-            Section("Sobre") {
-                Text("ConsigliereIA ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = {
-                        startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Support.PRIVACY_URL)))
-                    }) { Text("Privacidade") }
-                    OutlinedButton(onClick = { Support.contact(this@MainActivity, "ConsigliereIA: contato", "") }) { Text("Fale conosco") }
-                }
-            }
-
             Section("Compartilhar com o ConsigliereIA") {
                 Text(
                     "Em qualquer app, toque em Compartilhar → ConsigliereIA para virar evento ou tarefa. Vale para texto e print.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-
+            Section("Notion") {
+                OutlinedTextField(
+                    value = notionToken,
+                    onValueChange = { notionToken = it },
+                    label = { Text("Token da integração") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "1) notion.so/profile/integrations → Nova integração (interna) → copie o \"Internal Integration Secret\".\n" +
+                        "2) Em cada página ou banco de notas que ele pode ler: ••• → Conexões → adicione a integração.\n" +
+                        "A cada atualização ele olha as páginas editadas e sugere o que tiver data (ex.: \"Dentista 22/10 15h\").",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        settings.notionToken = notionToken
+                        settings.notionLastScan = 0
+                        refresh()
+                    }) { Text("Salvar e ler agora") }
+                    if (settings.notionToken.isNotBlank()) {
+                        OutlinedButton(onClick = {
+                            notionToken = ""
+                            settings.notionToken = ""
+                            refresh()
+                        }) { Text("Remover") }
+                    }
+                }
+            }
             Section("Levar para outro aparelho") {
                 Text(
                     "Leve suas configurações por QR. Ele contém suas chaves: não mostre a ninguém.",
@@ -937,7 +942,6 @@ class MainActivity : ComponentActivity() {
                 }
                 backupMessage?.let { Text(it) }
             }
-
             Section("Bateria") {
                 Text(
                     "Deixe o app \"sem restrições\" para o widget atualizar sozinho.",
@@ -946,6 +950,16 @@ class MainActivity : ComponentActivity() {
                 OutlinedButton(onClick = {
                     startActivity(Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
                 }) { Text("Abrir configurações de bateria") }
+            }
+            }
+            Section("Sobre") {
+                Text("ConsigliereIA ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Support.PRIVACY_URL)))
+                    }) { Text("Privacidade") }
+                    OutlinedButton(onClick = { Support.contact(this@MainActivity, "ConsigliereIA: contato", "") }) { Text("Fale conosco") }
+                }
             }
 
                     }
@@ -1010,9 +1024,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-            }
-            OutlinedButton(onClick = { inSettings = true }, modifier = Modifier.fillMaxWidth()) {
-                Text("⚙️  Configurações")
             }
             Text(
                 "Atualizado às ${Format.updatedAt(snapshot.updatedAt)}" + if (busy) " · atualizando…" else "",
@@ -1201,6 +1212,11 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    @Composable
+    private fun GroupTitle(text: String) {
+        Text(text, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp))
     }
 
     @Composable

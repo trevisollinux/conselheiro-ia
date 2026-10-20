@@ -12,6 +12,11 @@ class Settings(context: Context) {
         com.trevisolli.agendawidget.smart.AiClient.attach(prefs)
     }
 
+    /** Boas-vindas vistas. Quem já usava o app (com algo configurado) não vê de novo. */
+    var onboarded: Boolean
+        get() = prefs.getBoolean("onboarded", false) || todoistToken.isNotBlank() || aiKey.isNotBlank()
+        set(value) = prefs.edit().putBoolean("onboarded", value).apply()
+
     var todoistToken: String
         get() = prefs.getString("todoist_token", "").orEmpty()
         set(value) = prefs.edit().putString("todoist_token", value.trim()).apply()

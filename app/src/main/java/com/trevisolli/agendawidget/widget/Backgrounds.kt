@@ -86,7 +86,7 @@ object Backgrounds {
         val top = (src.height - sh) / 2
         c.drawBitmap(src, Rect(left.toInt(), top.toInt(), (left + sw).toInt(), (top + sh).toInt()), Rect(0, 0, w, h), Paint(Paint.FILTER_BITMAP_FLAG))
         val dark = night || luminance(src) < 0.55f
-        val veil = Paint().apply { color = if (night) 0xA6000000.toInt() else if (dark) 0x73000000 else 0x8CFFFFFF.toInt() }
+        val veil = Paint().apply { color = if (night) 0x8C000000.toInt() else if (dark) 0x40000000 else 0x4DFFFFFF }
         c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), veil)
         c.restore()
         src.recycle()

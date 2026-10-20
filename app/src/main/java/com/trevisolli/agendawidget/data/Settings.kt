@@ -103,7 +103,8 @@ class Settings(context: Context) {
     /** Fundo do widget. Migra o antigo liga/desliga da paisagem. */
     var widgetTheme: WidgetTheme
         get() = WidgetTheme.entries.firstOrNull { it.name == prefs.getString("widget_theme", null) }
-            ?: if (artBackground) WidgetTheme.LANDSCAPE else WidgetTheme.DARK
+            // Instalação nova: Noir. Quem usava a paisagem antiga continua nela.
+            ?: if (prefs.contains("art_bg") && artBackground) WidgetTheme.LANDSCAPE else WidgetTheme.DARK
         set(value) = prefs.edit().putString("widget_theme", value.name).apply()
 
     /** Cena fixa da paisagem; vazio = muda sozinha. */

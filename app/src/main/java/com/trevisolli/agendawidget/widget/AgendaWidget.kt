@@ -209,23 +209,35 @@ private fun Content(snapshot: Snapshot) {
             modifier = GlanceModifier.fillMaxSize(),
         )
         // Legenda só para obras de arte (título — artista).
-        Body(snapshot, if (art.dark) LIGHT_INK else DARK_INK, art.label.takeIf { settings.widgetTheme == WidgetTheme.ART && it.isNotBlank() })
+        Body(
+            snapshot, if (art.dark) LIGHT_INK else DARK_INK,
+            art.label.takeIf { settings.widgetTheme == WidgetTheme.ART && it.isNotBlank() },
+            frosted = settings.widgetTheme == WidgetTheme.ART || settings.widgetTheme == WidgetTheme.LANDSCAPE,
+        )
     }
 }
 
 @Composable
-private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
+private fun Body(snapshot: Snapshot, ink: Ink, footer: String?, frosted: Boolean = false) {
+    val panel = if (ink === LIGHT_INK) Color(0x59141114) else Color(0x80FFFBF4)
     val context = LocalContext.current
     val settings = Settings(context)
     val range = Range.entries.firstOrNull { it.name == currentState<Preferences>()[RANGE_KEY] } ?: settings.widgetRange
     val hour = java.time.LocalTime.now().hour
-    val greeting = when (hour) {
+    // Saudação que cabe: "Buon pomeriggio, Gustavo" → "Ciao, Gustavo" → "Buon pomeriggio".
+    val salute = when (hour) {
         in 5..11 -> "Buongiorno"
         in 12..17 -> "Buon pomeriggio"
         else -> "Buonasera"
-    } + settings.userName.takeIf { it.isNotBlank() }?.let { ", $it" }.orEmpty()
-    val lastReply = ChatStore.all(context).lastOrNull { !it.fromUser }
-        ?.takeIf { System.currentTimeMillis() - it.time < 12 * 3600_000L }
+    }
+    val name = settings.userName.trim().substringBefore(' ')
+    val room = (LocalSize.current.width.value - 32 - 40) / 11.5f
+    val greeting = listOf("$salute, $name", "Ciao, $name", salute)
+        .filter { name.isNotBlank() || !it.contains(",") }
+        .firstOrNull { it.length <= room } ?: if (name.isNotBlank()) "Ciao, $name" else salute
+    val locale = java.util.Locale("pt", "BR")
+    val dateLine = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMM", locale))
+        .replace(".", "") + (com.trevisolli.agendawidget.data.WeatherSource.load(context)?.label?.lowercase()?.let { " · $it" } ?: "")
     val openChat = chatIntent(context)
     val visible = snapshot.items.filter { range.includes(it) }
 
@@ -237,40 +249,37 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
     ) {
         // Topo: saudação grande + resumo do dia (atualiza sozinho)
         Column(modifier = GlanceModifier.fillMaxWidth()) {
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Mascote + saudação em serifa (marca Consigliere).
-            Image(
-                provider = ImageProvider(R.drawable.mascot),
-                contentDescription = null,
-                modifier = GlanceModifier.size(30.dp).clickable(actionStartActivity<MainActivity>()),
-            )
-            Spacer(GlanceModifier.width(6.dp))
+        // Linha pequena: data e tempo, com ↻ sempre visível à direita.
+        Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = greeting,
-                style = TextStyle(
-                    color = ColorProvider(ink.primary), fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                    fontFamily = androidx.glance.text.FontFamily.Serif,
-                ),
-                maxLines = 1,
-                modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()),
-            )
-            Text(
-                text = "  " + java.time.LocalDate.now().let {
-                    it.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale("pt", "BR")).removeSuffix(".") +
-                        " " + it.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM"))
-                },
-                style = TextStyle(color = ColorProvider(ink.secondary), fontSize = 13.sp),
+                text = dateLine,
+                style = TextStyle(color = ColorProvider(ink.secondary), fontSize = 12.sp, fontWeight = FontWeight.Medium),
                 maxLines = 1,
                 modifier = GlanceModifier.defaultWeight(),
             )
             Image(
                 provider = ImageProvider(R.drawable.ic_refresh),
                 contentDescription = "Atualizar",
-                colorFilter = ColorFilter.tint(ColorProvider(ink.primary)),
-                modifier = GlanceModifier.size(20.dp).clickable(actionRunCallback<RefreshAction>()),
+                colorFilter = ColorFilter.tint(ColorProvider(ink.secondary)),
+                modifier = GlanceModifier.size(18.dp).clickable(actionRunCallback<RefreshAction>()),
+            )
+        }
+        // Mascote + saudação grande em serifa.
+        Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Image(
+                provider = ImageProvider(R.drawable.mascot),
+                contentDescription = null,
+                modifier = GlanceModifier.size(32.dp).clickable(actionStartActivity<MainActivity>()),
+            )
+            Spacer(GlanceModifier.width(6.dp))
+            Text(
+                text = greeting,
+                style = TextStyle(
+                    color = ColorProvider(ink.primary), fontSize = 21.sp, fontWeight = FontWeight.Bold,
+                    fontFamily = androidx.glance.text.FontFamily.Serif,
+                ),
+                maxLines = 1,
+                modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity<MainActivity>()),
             )
         }
         if (snapshot.summary.isNotBlank()) {
@@ -307,8 +316,13 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
 
         }
 
-        // Meio: período + lista
+        // Meio: período + lista (em painel fosco quando o fundo é imagem)
         Spacer(GlanceModifier.height(8.dp))
+        Column(
+            modifier = GlanceModifier.defaultWeight().fillMaxWidth()
+                .background(if (frosted) panel else Color.Transparent).cornerRadius(18.dp)
+                .padding(horizontal = if (frosted) 10.dp else 0.dp, vertical = if (frosted) 8.dp else 0.dp),
+        ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Range.entries.forEach { r ->
                 val selected = r == range
@@ -328,7 +342,7 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
                 Spacer(GlanceModifier.width(4.dp))
             }
         }
-        Spacer(GlanceModifier.height(2.dp))
+        Spacer(GlanceModifier.height(6.dp))
         if (visible.isEmpty()) {
             Box(modifier = GlanceModifier.defaultWeight().fillMaxWidth()) {
                 Text(
@@ -345,11 +359,13 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
                         is Row_.Header -> HeaderRow(row, ink)
                         is Row_.Item -> Column {
                             ItemRow(row.item, ink, row.today)
-                            Spacer(GlanceModifier.height(3.dp))
+                            Spacer(GlanceModifier.height(2.dp))
                         }
                     }
                 }
             }
+        }
+
         }
 
         // Embaixo: avisos, última resposta e a barra de conversa
@@ -363,17 +379,13 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
             }
             if (footer != null) {
                 Text(
-                    text = "🖼 $footer",
-                    style = TextStyle(color = ColorProvider(ink.footer), fontSize = 10.sp),
+                    text = footer,
+                    style = TextStyle(
+                        color = ColorProvider(ink.footer), fontSize = 9.sp,
+                        textAlign = androidx.glance.text.TextAlign.End,
+                    ),
                     maxLines = 1,
-                )
-            }
-            if (lastReply != null) {
-                Text(
-                    text = "🎩 " + lastReply.text.lineSequence().first(),
-                    style = TextStyle(color = ColorProvider(ink.secondary), fontSize = 12.sp),
-                    maxLines = 1,
-                    modifier = GlanceModifier.padding(top = 4.dp).clickable(actionStartActivity(openChat)),
+                    modifier = GlanceModifier.fillMaxWidth().padding(top = 2.dp),
                 )
             }
             Spacer(GlanceModifier.height(6.dp))
@@ -410,75 +422,82 @@ private fun groupRows(items: List<AgendaItem>): List<Row_> {
 
 @Composable
 private fun HeaderRow(h: Row_.Header, ink: Ink) {
-    Text(
-        text = h.label,
-        style = TextStyle(
-            color = ColorProvider(if (h.overdue) ink.overdue else if (h.today) ink.summary else ink.secondary),
-            fontSize = if (h.today) 13.sp else 11.sp,
-            fontWeight = FontWeight.Bold,
-        ),
-        maxLines = 1,
-        modifier = GlanceModifier.padding(top = 8.dp, bottom = 2.dp),
-    )
+    // Título do dia com filete fino ao lado, como no app.
+    val color = if (h.overdue) ink.overdue else if (h.today) ink.summary else ink.secondary
+    Row(
+        modifier = GlanceModifier.fillMaxWidth().padding(top = 8.dp, bottom = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = h.label,
+            style = TextStyle(color = ColorProvider(color), fontSize = if (h.today) 13.sp else 11.sp, fontWeight = FontWeight.Bold),
+            maxLines = 1,
+        )
+        Spacer(GlanceModifier.width(8.dp))
+        Box(GlanceModifier.defaultWeight().height(1.dp).background(color.copy(alpha = 0.3f))) {}
+    }
 }
 
 @Composable
 private fun ItemRow(item: AgendaItem, ink: Ink, today: Boolean = false) {
-    // Hoje com fundo destacado; atrasadas com fundo avermelhado; o resto discreto.
+    // Uma linha: horário fixo à esquerda, marcador, título e » na ponta direita.
     val highlight = when {
         item.overdue -> ink.overdue.copy(alpha = 0.12f)
-        today -> ink.summary.copy(alpha = 0.14f)
+        today -> ink.summary.copy(alpha = 0.12f)
         else -> Color.Transparent
     }
+    val zone = java.time.ZoneId.systemDefault()
+    val start = java.time.Instant.ofEpochMilli(item.startMillis).atZone(zone)
+    val timeText = when {
+        item.overdue -> start.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM"))
+        item.dateOnly -> if (item.source == Source.CALENDAR) "dia" else ""
+        else -> start.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+    }
     var modifier = GlanceModifier.fillMaxWidth().background(highlight).cornerRadius(12.dp)
-        .padding(horizontal = 6.dp, vertical = if (today || item.overdue) 5.dp else 3.dp)
+        .padding(start = 4.dp, end = 2.dp, top = 5.dp, bottom = 5.dp)
     openIntent(item)?.let { modifier = modifier.clickable(actionStartActivity(it)) }
-    Column(modifier = modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = timeText,
+            style = TextStyle(
+                color = ColorProvider(if (item.overdue) ink.overdue else ink.secondary),
+                fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            ),
+            maxLines = 1,
+            modifier = GlanceModifier.width(40.dp),
+        )
+        Box(modifier = GlanceModifier.width(22.dp), contentAlignment = Alignment.CenterStart) {
             if (item.taskId != null) {
                 // Tarefa do Todoist: círculo tocável para concluir.
                 Image(
                     provider = ImageProvider(R.drawable.ic_task_circle),
                     contentDescription = "Concluir",
-                    modifier = GlanceModifier.size(18.dp)
+                    modifier = GlanceModifier.size(16.dp)
                         .clickable(actionRunCallback<CompleteAction>(actionParametersOf(TASK_ID to item.taskId))),
                 )
-                Spacer(GlanceModifier.width(6.dp))
             } else {
-                Box(
-                    modifier = GlanceModifier.size(10.dp).cornerRadius(5.dp).background(Color(item.color)),
-                ) {}
-                Spacer(GlanceModifier.width(8.dp))
-            }
-            Text(
-                text = item.title,
-                style = TextStyle(
-                    color = ColorProvider(ink.primary),
-                    fontSize = if (today || item.overdue) 16.sp else 14.sp,
-                    fontWeight = if (today || item.overdue) FontWeight.Bold else FontWeight.Medium,
-                ),
-                maxLines = 1,
-                modifier = GlanceModifier.defaultWeight(),
-            )
-            if (item.moveKey != null) {
-                // » joga para o próximo dia (atrasada vem para hoje).
-                Text(
-                    text = "»",
-                    style = TextStyle(color = ColorProvider(ink.secondary), fontSize = 18.sp, fontWeight = FontWeight.Bold),
-                    modifier = GlanceModifier.padding(horizontal = 8.dp)
-                        .clickable(actionRunCallback<MoveAction>(actionParametersOf(MOVE_KEY to item.moveKey))),
-                )
+                Box(modifier = GlanceModifier.size(8.dp).cornerRadius(4.dp).background(Color(item.color))) {}
             }
         }
         Text(
-            text = Format.shortSubtitle(item).ifBlank { " " },
+            text = item.title,
             style = TextStyle(
-                color = ColorProvider(if (item.overdue) ink.overdue else ink.secondary),
-                fontSize = 13.sp,
+                color = ColorProvider(ink.primary),
+                fontSize = if (today || item.overdue) 15.sp else 14.sp,
+                fontWeight = if (today || item.overdue) FontWeight.Bold else FontWeight.Medium,
             ),
             maxLines = 1,
-            modifier = GlanceModifier.padding(start = if (item.taskId != null) 24.dp else 18.dp),
+            modifier = GlanceModifier.defaultWeight(),
         )
+        if (item.moveKey != null) {
+            // » joga para o próximo dia (atrasada vem para hoje).
+            Text(
+                text = "»",
+                style = TextStyle(color = ColorProvider(ink.secondary.copy(alpha = 0.7f)), fontSize = 15.sp),
+                modifier = GlanceModifier.padding(start = 8.dp, end = 4.dp)
+                    .clickable(actionRunCallback<MoveAction>(actionParametersOf(MOVE_KEY to item.moveKey))),
+            )
+        }
     }
 }
 

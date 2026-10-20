@@ -225,6 +225,7 @@ class MainActivity : ComponentActivity() {
         BackHandler(enabled = inSettings) { inSettings = false }
         var userName by remember { mutableStateOf(settings.userName) }
         var range by remember { mutableStateOf(settings.widgetRange) }
+        var shownRanges by remember { mutableStateOf(settings.visibleRanges) }
         var targetCal by remember { mutableStateOf(settings.targetCalendarId) }
         var canWriteCalendar by remember { mutableStateOf(CalendarWriter.canWrite(this)) }
         var backupMessage by remember { mutableStateOf<String?>(null) }
@@ -620,6 +621,30 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            Section("Períodos da lista") {
+                Text(
+                    "Escolha os botões que aparecem no widget e na aba Agenda.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    com.trevisolli.agendawidget.data.Range.entries.forEach { r ->
+                        FilterChip(
+                            selected = r in shownRanges,
+                            onClick = {
+                                val next = if (r in shownRanges) shownRanges - r else (shownRanges + r).sortedBy { it.ordinal }
+                                if (next.isNotEmpty()) {
+                                    shownRanges = next
+                                    settings.visibleRanges = next
+                                    range = settings.widgetRange
+                                    refresh()
+                                }
+                            },
+                            label = { Text(r.label) },
+                        )
+                    }
+                }
+            }
+
             Section("Visual do widget") {
                 Text("Fundo", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1081,6 +1106,7 @@ class MainActivity : ComponentActivity() {
                         toggling = toggling,
                         onToggle = { item, done -> toggleTask(item, done) },
                         onMove = { item, to -> moveItem(item, to) },
+                        ranges = shownRanges,
                     )
 
                     else -> ChatPanel(

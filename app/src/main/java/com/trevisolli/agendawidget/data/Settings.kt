@@ -211,8 +211,17 @@ class Settings(context: Context) {
         set(value) = prefs.edit().putString("user_name", value.trim()).apply()
 
     /** Período da lista no widget e na aba Agenda. */
+    /** Quais períodos aparecem nos botões do widget e da aba Agenda. */
+    var visibleRanges: List<Range>
+        get() {
+            val saved = prefs.getString("visible_ranges", null)?.split(",")?.mapNotNull { n -> Range.entries.firstOrNull { it.name == n } }
+            return saved?.takeIf { it.isNotEmpty() }?.sortedBy { it.ordinal } ?: listOf(Range.DAY, Range.TOMORROW, Range.WEEK, Range.MONTH)
+        }
+        set(value) = prefs.edit().putString("visible_ranges", value.joinToString(",") { it.name }).apply()
+
     var widgetRange: Range
-        get() = Range.entries.firstOrNull { it.name == prefs.getString("widget_range", null) } ?: Range.WEEK
+        get() = (Range.entries.firstOrNull { it.name == prefs.getString("widget_range", null) } ?: Range.WEEK)
+            .let { r -> if (r in visibleRanges) r else visibleRanges.first() }
         set(value) = prefs.edit().putString("widget_range", value.name).apply()
 
     /** Agenda onde a conversa cria eventos; -1 = escolher automaticamente. */
@@ -289,17 +298,21 @@ class Settings(context: Context) {
     }
 }
 
-enum class Range(val label: String, val days: Long) {
-    DAY("Hoje", 0),
-    WEEK("Semana", 7),
-    MONTH("Mês", 31),
+/** Períodos da lista: [from]..[to] dias a partir de hoje. */
+enum class Range(val label: String, val from: Long, val to: Long) {
+    DAY("Hoje", 0, 0),
+    TOMORROW("Amanhã", 1, 1),
+    THREE("3 dias", 0, 2),
+    WEEK("Semana", 0, 7),
+    MONTH("Mês", 0, 31),
     ;
 
-    /** Itens atrasados sempre entram; o resto até o fim do período. */
+    /** Atrasados entram nos períodos que começam hoje; o resto, se cair dentro do período. */
     fun includes(item: AgendaItem, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): Boolean {
-        if (item.overdue) return true
+        if (item.overdue) return from == 0L
         val date = java.time.Instant.ofEpochMilli(item.startMillis).atZone(zone).toLocalDate()
-        return !date.isAfter(java.time.LocalDate.now(zone).plusDays(days))
+        val today = java.time.LocalDate.now(zone)
+        return !date.isBefore(today.plusDays(from)) && !date.isAfter(today.plusDays(to))
     }
 }
 

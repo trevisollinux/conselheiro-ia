@@ -222,7 +222,8 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?, frosted: Boolean
     val panel = if (ink === LIGHT_INK) Color(0x59141114) else Color(0x80FFFBF4)
     val context = LocalContext.current
     val settings = Settings(context)
-    val range = Range.entries.firstOrNull { it.name == currentState<Preferences>()[RANGE_KEY] } ?: settings.widgetRange
+    val ranges = settings.visibleRanges
+    val range = Range.entries.firstOrNull { it.name == currentState<Preferences>()[RANGE_KEY] }?.takeIf { it in ranges } ?: settings.widgetRange
     val hour = java.time.LocalTime.now().hour
     // Saudação que cabe: "Buon pomeriggio, Gustavo" → "Ciao, Gustavo" → "Buon pomeriggio".
     val salute = when (hour) {
@@ -324,7 +325,7 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?, frosted: Boolean
                 .padding(horizontal = if (frosted) 10.dp else 0.dp, vertical = if (frosted) 8.dp else 0.dp),
         ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Range.entries.forEach { r ->
+            ranges.forEach { r ->
                 val selected = r == range
                 Text(
                     text = r.label,
@@ -336,7 +337,7 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?, frosted: Boolean
                     modifier = GlanceModifier
                         .background(if (selected) ink.primary.copy(alpha = 0.16f) else Color.Transparent)
                         .cornerRadius(12.dp)
-                        .padding(horizontal = 10.dp, vertical = 3.dp)
+                        .padding(horizontal = if (ranges.size > 4) 7.dp else 10.dp, vertical = 3.dp)
                         .clickable(actionRunCallback<RangeAction>(actionParametersOf(RANGE_PARAM to r.name))),
                 )
                 Spacer(GlanceModifier.width(4.dp))

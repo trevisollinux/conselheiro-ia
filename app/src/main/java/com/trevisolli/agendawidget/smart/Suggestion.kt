@@ -59,11 +59,21 @@ object SuggestionStore {
         if (!f.exists()) return emptyList()
         return try {
             val arr = JSONArray(f.readText())
-            List(arr.length()) { Suggestion.fromJson(arr.getJSONObject(it)) }
+            List(arr.length()) { Suggestion.fromJson(arr.getJSONObject(it)) }.filterNot { expired(it) }
         } catch (e: Exception) {
             emptyList()
         }
     }
+
+    /** Some sozinha: data que já passou, ou sem data e com mais de 5 dias. */
+    private fun expired(s: Suggestion): Boolean {
+        val today = LocalDate.now()
+        if (s.date != null) return s.date.isBefore(today) || (s.date == today && s.time != null && s.time.isBefore(LocalTime.now().minusHours(1)))
+        return System.currentTimeMillis() - s.createdAt > 5 * 86_400_000L
+    }
+
+    @Synchronized
+    fun clear(context: Context) = save(context, emptyList())
 
     fun get(context: Context, id: String): Suggestion? = all(context).firstOrNull { it.id == id }
 

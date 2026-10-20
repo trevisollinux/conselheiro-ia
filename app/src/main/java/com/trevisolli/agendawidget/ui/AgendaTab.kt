@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
@@ -162,14 +163,19 @@ fun AgendaTab(
             item {
                 Text(
                     label,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleLarge,
                     color = if (label == "Atrasadas") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(top = 12.dp),
                 )
             }
             items(list) { item ->
                 if (item.taskId != null || item.dateOnly && item.source.name != "CALENDAR") {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = movable(item).fillMaxWidth()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = movable(item).fillMaxWidth().clip(RoundedCornerShape(20.dp))
+                            .background(if (item.overdue) MaterialTheme.colorScheme.error.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surfaceContainerHighest)
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                    ) {
                         if (item.taskId != null) {
                             Checkbox(checked = false, enabled = toggling != item.taskId, onCheckedChange = { onToggle(item, true) })
                         } else {
@@ -185,16 +191,24 @@ fun AgendaTab(
                         }
                     }
                 } else {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = movable(item).fillMaxWidth().padding(vertical = 6.dp)) {
-                        Spacer(Modifier.width(18.dp))
-                        Box(Modifier.size(10.dp).background(Color(item.color), CircleShape))
-                        Spacer(Modifier.width(14.dp))
-                        Text(
-                            if (item.dateOnly) "dia todo" else Instant.ofEpochMilli(item.startMillis).atZone(zone).format(hhmm),
-                            style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier.width(64.dp),
-                        )
-                        Text(item.title, style = MaterialTheme.typography.bodyLarge)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = movable(item).fillMaxWidth().clip(RoundedCornerShape(20.dp))
+                            .background(Color(item.color).copy(alpha = 0.12f))
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                    ) {
+                        Box(
+                            Modifier.size(width = 56.dp, height = 40.dp).clip(RoundedCornerShape(14.dp))
+                                .background(Color(item.color).copy(alpha = 0.28f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                if (item.dateOnly) "dia" else Instant.ofEpochMilli(item.startMillis).atZone(zone).format(hhmm),
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Text(item.title, style = MaterialTheme.typography.titleSmall)
                     }
                 }
             }

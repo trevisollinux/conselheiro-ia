@@ -87,8 +87,12 @@ object TodoistSource {
     /** Cria uma tarefa; com hora vira due_datetime (UTC), sem hora vira due_date. */
     /** Retorna o id da tarefa criada. */
     /** [repeat]: regra do Todoist em inglês ("every day at 8am"); tem prioridade sobre a data. */
-    fun create(token: String, title: String, date: LocalDate?, time: LocalTime?, description: String?, repeat: String? = null): String? {
+    fun create(
+        token: String, title: String, date: LocalDate?, time: LocalTime?, description: String?,
+        repeat: String? = null, parentId: String? = null,
+    ): String? {
         val body = JSONObject().put("content", title)
+        if (parentId != null) body.put("parent_id", parentId)
         if (!repeat.isNullOrBlank()) {
             body.put("due_string", repeat).put("due_lang", "en")
         } else if (date != null) {

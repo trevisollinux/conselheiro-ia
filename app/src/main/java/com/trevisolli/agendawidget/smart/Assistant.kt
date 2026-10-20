@@ -32,7 +32,11 @@ object Assistant {
     /** Ação pedida, antes de executar. */
     private sealed class Action {
         data class Event(val title: String, val date: LocalDate, val time: LocalTime?, val minutes: Int) : Action()
-        data class Task(val title: String, val date: LocalDate?, val time: LocalTime?, val repeat: String? = null) : Action()
+        data class Task(
+            val title: String, val date: LocalDate?, val time: LocalTime?, val repeat: String? = null,
+            /** Itens de uma lista (compras, mala…): viram subtarefas no Todoist. */
+            val subtasks: List<String> = emptyList(),
+        ) : Action()
         data class Complete(val title: String) : Action()
     }
 
@@ -131,12 +135,16 @@ object Assistant {
                             problems += "conecte o Todoist nas Configurações para eu criar tarefas"
                         } else {
                             val id = TodoistSource.create(settings.todoistToken, a.title, a.date, a.time, null, a.repeat)
+                            // Apagar a tarefa-mãe no Desfazer leva as subtarefas junto.
                             if (id != null) undo += Undo(Undo.TASK, id)
+                            if (id != null) a.subtasks.forEach { item ->
+                                TodoistSource.create(settings.todoistToken, item, null, null, null, parentId = id)
+                            }
                             done += "✅ ${a.title}" + when {
                                 a.repeat != null -> " · 🔁 recorrente"
                                 a.date != null -> " · ${whenText(a.date, a.time)}"
                                 else -> ""
-                            }
+                            } + if (a.subtasks.isNotEmpty()) "\n" + a.subtasks.joinToString("\n") { "   ▫️ $it" } else ""
                         }
                     }
                     is Action.Complete -> {
@@ -229,7 +237,23 @@ object Assistant {
     )
     private val TAIL = Regex("\\s*(no|na)\\s+(calendario|calendário|agenda|todoist)\\s*$", RegexOption.IGNORE_CASE)
 
+    private val LIST = Regex("^(.*?\\blista\\b[^:]*?)(?::|\\s+com\\s+|\\s+de\\s+itens\\s*:?)\\s*(.+)$", RegexOption.IGNORE_CASE)
+
+    /** "lista de compras: leite, pão e ovos" → tarefa "Lista de compras" com 3 subtarefas. */
+    private fun rulesList(text: String): Plan? {
+        val m = LIST.find(text.trim()) ?: return null
+        var name = m.groupValues[1].trim()
+        LEAD.find(norm(name))?.let { lead -> name = name.substring(minOf(lead.range.last + 1, name.length)).trim() }
+        val items = m.groupValues[2].split(Regex(",|;|\\s+e\\s+|\\n")).map { it.trim().trimEnd('.') }.filter { it.isNotBlank() }
+        if (items.size < 2) return null
+        return Plan(
+            "Lista criada!",
+            listOf(Action.Task(name.ifBlank { "Lista" }.replaceFirstChar { it.uppercase() }, null, null, subtasks = items.map { it.replaceFirstChar { c -> c.uppercase() } })),
+        )
+    }
+
     private fun rulesPlan(text: String, items: List<AgendaItem>): Plan {
+        rulesList(text)?.let { return it }
         val n = norm(text)
         if (ASK.containsMatchIn(n)) return Plan(answerQuestion(text, items), emptyList())
 
@@ -275,7 +299,8 @@ object Assistant {
             "{\"reply\": string, \"actions\": [ ... ]}. Tipos de ação: " +
             "{\"type\":\"create_event\",\"title\":string,\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\" ou null,\"duration_min\":número}; " +
             "{\"type\":\"create_task\",\"title\":string,\"date\":\"YYYY-MM-DD\" ou null,\"time\":\"HH:MM\" ou null," +
-            "\"repeat\": null ou regra do Todoist EM INGLÊS quando repetir (\"every day at 8am\", \"every monday at 9am\", \"every month on the 5th\")}; " +
+            "\"repeat\": null ou regra do Todoist EM INGLÊS quando repetir (\"every day at 8am\", \"every monday at 9am\", \"every month on the 5th\")," +
+            "\"subtasks\": [] ou lista de itens}; " +
             "{\"type\":\"complete_task\",\"title\": título exato de uma tarefa da lista}. " +
             "Regras: se o usuário falar em agenda/calendário, consulta, reunião, exame ou algo para comparecer, use create_event. " +
             "Se for algo a fazer (comprar, pagar, ligar, lembrar), use create_task. Pode criar várias ações. " +
@@ -284,6 +309,8 @@ object Assistant {
             "fornecidos e deixe actions vazio. Ao criar algo ao ar livre com chuva prevista, avise no reply. " +
             "O reply confirma em até 2 frases; não repita a lista do que foi criado (o app mostra). " +
             "Coisas que se repetem (todo dia, toda semana) viram create_task com repeat. " +
+            "Listas (de compras, de mala, de presentes, passos de algo) viram UMA create_task com o nome da lista " +
+            "(ex.: \"Lista de compras\") e cada item em subtasks, curto e com inicial maiúscula. " +
             "Se a mensagem vier em ÁUDIO anexo, inclua \"heard\": a transcrição fiel do que foi dito."
 
     private fun aiPlan(
@@ -324,6 +351,9 @@ object Assistant {
                 "create_task" -> actions += Action.Task(
                     title, date, time,
                     a.optString("repeat").takeIf { !a.isNull("repeat") && it.startsWith("every", ignoreCase = true) },
+                    a.optJSONArray("subtasks")?.let { arr ->
+                        List(arr.length()) { arr.optString(it).trim() }.filter { it.isNotBlank() }.take(40)
+                    }.orEmpty(),
                 )
                 "complete_task" -> actions += Action.Complete(title)
             }

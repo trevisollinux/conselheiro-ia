@@ -41,6 +41,11 @@ class NotificationWatcher : NotificationListenerService() {
             ?.toString()?.trim().orEmpty()
         if (body.length < 6) return
         val sender = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
+        // Grupos (WhatsApp e afins) quase sempre são planos de outras pessoas: fora, a não ser que a pessoa ligue.
+        val isGroup = extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false) ||
+            extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE) != null ||
+            GROUP_TITLE.containsMatchIn(sender)
+        if (isGroup && !Settings(this).notifGroups) return
         val label = if (sender.isBlank()) origin else "$origin · $sender"
         val isEmail = sbn.packageName in EMAIL_APPS
 
@@ -64,6 +69,8 @@ class NotificationWatcher : NotificationListenerService() {
     companion object {
         private const val CHANNEL = "suggestions"
 
+        private val GROUP_TITLE = Regex("\\(\\d+ (mensagens|messages)\\)|: ~|\\s@\\s")
+
         private val EMAIL_APPS = setOf("com.google.android.gm", "com.microsoft.office.outlook")
 
         private val AUTOMATED = Regex(
@@ -71,7 +78,8 @@ class NotificationWatcher : NotificationListenerService() {
                 "voce esta recebendo|fazer login|login com o google|alerta de segurança|alerta de seguranca|" +
                 "código de verificação|codigo de verificacao|redefinir (a )?senha|cancelar inscrição|cancelar inscricao|" +
                 "unsubscribe|promoção|promocao|oferta|desconto|cupom|% off|sua fatura|seu pedido|rastreio|" +
-                "compartilhou alguns dados|conta do google",
+                "compartilhou alguns dados|conta do google|novas condições|novas condicoes|termos de uso|política de privacidade|" +
+                "politica de privacidade|atualização dos termos|seu extrato|fatura|boleto disponível|webinar|inscreva-se",
         )
 
         val WATCHED = mapOf(

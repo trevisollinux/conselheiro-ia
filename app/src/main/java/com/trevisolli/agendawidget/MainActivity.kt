@@ -191,8 +191,11 @@ class MainActivity : ComponentActivity() {
         var aiTest by remember { mutableStateOf<String?>(null) }
 
         var detect by remember { mutableStateOf(settings.detectNotifications) }
+        var groups by remember { mutableStateOf(settings.notifGroups) }
         var notionToken by remember { mutableStateOf(settings.notionToken) }
-        val suggestions = remember(resumeCount, snapshot) { SuggestionStore.all(this) }
+        var suggestionsVersion by remember { mutableStateOf(0) }
+        var showAllSuggestions by remember { mutableStateOf(false) }
+        val suggestions = remember(resumeCount, snapshot, suggestionsVersion) { SuggestionStore.all(this) }
         val listenerOn = remember(resumeCount) { NotificationWatcher.isEnabled(this) }
 
 
@@ -878,9 +881,18 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 Text(
-                    "Mensagens com data e hora viram sugestões 📌 para você confirmar.",
+                    "Só o que parece compromisso seu vira sugestão 📌 para você confirmar.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                if (detect) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Incluir grupos do WhatsApp", modifier = Modifier.weight(1f))
+                        Switch(checked = groups, onCheckedChange = {
+                            groups = it
+                            settings.notifGroups = it
+                        })
+                    }
+                }
                 if (detect && !listenerOn) {
                     Text("Falta liberar o acesso às notificações:", color = MaterialTheme.colorScheme.error)
                     OutlinedButton(onClick = {
@@ -1008,21 +1020,45 @@ class MainActivity : ComponentActivity() {
 
             if (suggestions.isNotEmpty()) {
                 Section("📌 Sugestões para revisar") {
-                    suggestions.forEach { s ->
-                        Column(
-                            Modifier.fillMaxWidth().clickable {
-                                startActivity(
-                                    Intent(this@MainActivity, ConfirmActivity::class.java)
-                                        .putExtra(ConfirmActivity.EXTRA_SUGGESTION_ID, s.id),
+                    // Mostra 3; o resto fica a um toque. Cada uma some com ✕.
+                    val shown = if (showAllSuggestions) suggestions else suggestions.take(3)
+                    shown.forEach { s ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(
+                                Modifier.weight(1f).clickable {
+                                    startActivity(
+                                        Intent(this@MainActivity, ConfirmActivity::class.java)
+                                            .putExtra(ConfirmActivity.EXTRA_SUGGESTION_ID, s.id),
+                                    )
+                                }.padding(vertical = 6.dp),
+                            ) {
+                                Text(s.title, style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    listOfNotNull(Format.suggestionWhen(s.date, s.time), s.origin).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
                                 )
-                            }.padding(vertical = 6.dp),
-                        ) {
-                            Text(s.title, fontWeight = FontWeight.Bold)
-                            Text(
-                                listOfNotNull(Format.suggestionWhen(s.date, s.time), s.origin).joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
+                            }
+                            IconButton(onClick = {
+                                SuggestionStore.remove(this@MainActivity, s.id)
+                                suggestionsVersion++
+                                refresh()
+                            }) { Text("✕", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }
+                    }
+                    Row {
+                        if (suggestions.size > 3) {
+                            TextButton(onClick = { showAllSuggestions = !showAllSuggestions }) {
+                                Text(if (showAllSuggestions) "Mostrar menos" else "Ver todas (${suggestions.size})")
+                            }
+                        }
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = {
+                            SuggestionStore.clear(this@MainActivity)
+                            suggestionsVersion++
+                            refresh()
+                        }) { Text("Limpar todas") }
                     }
                 }
             }

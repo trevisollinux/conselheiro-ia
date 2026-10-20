@@ -219,6 +219,11 @@ class Settings(context: Context) {
         get() = prefs.getLong("target_calendar", -1L)
         set(value) = prefs.edit().putLong("target_calendar", value).apply()
 
+    /** Ler também grupos (WhatsApp e afins). Desligado: grupos geram muita sugestão sem sentido. */
+    var notifGroups: Boolean
+        get() = prefs.getBoolean("notif_groups", false)
+        set(value) = prefs.edit().putBoolean("notif_groups", value).apply()
+
     var detectNotifications: Boolean
         get() = prefs.getBoolean("detect_notifications", false)
         set(value) = prefs.edit().putBoolean("detect_notifications", value).apply()

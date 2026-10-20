@@ -25,8 +25,12 @@ object Brain {
             "\"time\": \"HH:MM\" ou null, \"duration_min\": número ou null, \"kind\": \"event\" ou \"task\"}. " +
             "title: curto (até 50 caracteres), no infinitivo ou substantivo, sem a data. " +
             "kind = event quando tem hora marcada ou é algo para comparecer; task quando é algo a fazer. " +
-            "found = false se a mensagem não contém nenhum compromisso, prazo ou tarefa concreta, " +
-            "se for aviso automático (login, segurança, propaganda, recibo, código) ou se a data/hora já passou."
+            "Seja MUITO seletivo: found = true só para compromisso do PRÓPRIO usuário (consulta, reunião ou encontro " +
+            "marcado com ele, convite direto, prazo que ele precisa cumprir, algo que pediram para ele fazer). " +
+            "found = false para: conversa de grupo sobre planos de outras pessoas, divulgação de eventos, avisos de " +
+            "serviços e empresas, mudança de termos ou condições, newsletters, propaganda, recibos, códigos, login, " +
+            "e para qualquer data ou hora que já passou. Na dúvida, found = false. " +
+            "Inclua \"confidence\": número de 0 a 1 indicando a certeza de que é um compromisso real do usuário."
 
     fun rules(text: String, origin: String): Suggestion {
         val r = RuleParser.parse(text)
@@ -46,7 +50,8 @@ object Brain {
         val s = Settings(context)
         val raw = AiClient.complete(s.aiProvider, s.aiKey, if (light) s.lightModel else s.effectiveModel, EXTRACT_SYSTEM, todayContext() + "\n\nMensagem:\n" + text)
         val json = AiClient.extractJson(raw) ?: throw IllegalStateException("resposta da IA sem JSON")
-        return fromJson(json, text, origin)
+        // Leitura automática (light) só aceita o que a IA tem bastante certeza.
+        return fromJson(json, text, origin, minConfidence = if (light) 0.75 else 0.0)
     }
 
     /** Print com IA: a imagem vai direto para o modelo (lê texto, conversas, cartazes, convites). */
@@ -61,12 +66,17 @@ object Brain {
         return fromJson(json, ocrText.ifBlank { "Print compartilhado" }, origin)
     }
 
-    private fun fromJson(json: org.json.JSONObject, text: String, origin: String): Suggestion? {
+    private fun fromJson(json: org.json.JSONObject, text: String, origin: String, minConfidence: Double = 0.0): Suggestion? {
         if (!json.optBoolean("found", false)) return null
+        if (json.optDouble("confidence", 1.0) < minConfidence) return null
         val date = json.optString("date").takeIf { !json.isNull("date") && it.length == 10 }
             ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         val time = json.optString("time").takeIf { !json.isNull("time") && it.length >= 4 }
             ?.let { runCatching { LocalTime.parse(it.padStart(5, '0')) }.getOrNull() }
+        // Nada no passado.
+        val today = LocalDate.now()
+        if (date != null && date.isBefore(today)) return null
+        if ((date == null || date == today) && time != null && time.isBefore(LocalTime.now())) return null
         return Suggestion(
             title = json.optString("title").ifBlank { "Compromisso" }.take(60),
             date = date,
@@ -91,11 +101,12 @@ object Brain {
         val today = LocalDate.now()
         if (r.date != null && r.date.isBefore(today)) return null
         if ((r.date == null || r.date == today) && r.time != null && r.time.isBefore(LocalTime.now())) return null
-        if (!Settings(context).aiLightReady) return rules(text, origin)
+        // Sem IA, só vira sugestão o que tem palavra de compromisso ("consulta", "reunião"…).
+        if (!Settings(context).aiLightReady) return if (r.hasKeyword) rules(text, origin) else null
         return try {
             ai(context, text, origin, light = true)
         } catch (e: Exception) {
-            rules(text, origin)
+            if (r.hasKeyword) rules(text, origin) else null
         }
     }
 }

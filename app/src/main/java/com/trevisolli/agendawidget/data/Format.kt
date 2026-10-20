@@ -22,7 +22,7 @@ object Format {
         }
     }
 
-    /** Ex.: "Hoje · 09:00-10:00", "Todoist · Quarta, 21/10", "Atrasada · Google Tasks · Ontem". */
+    /** Ex.: "Hoje · 09:00-10:00", "Todoist · Quarta, 21/10", "Atrasada · Todoist · Ontem". */
     fun subtitle(item: AgendaItem): String {
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)

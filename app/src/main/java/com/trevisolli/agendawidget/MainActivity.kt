@@ -39,7 +39,6 @@ import com.trevisolli.agendawidget.ui.AgendaTab
 import com.trevisolli.agendawidget.ui.ChatPanel
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -108,7 +107,6 @@ import java.time.format.DateTimeFormatter
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.google.android.gms.auth.api.identity.Identity
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -121,7 +119,6 @@ import com.trevisolli.agendawidget.data.TodoistSource
 import java.time.LocalDate
 import com.trevisolli.agendawidget.data.CalendarSource
 import com.trevisolli.agendawidget.data.Format
-import com.trevisolli.agendawidget.data.GoogleTasksSource
 import com.trevisolli.agendawidget.data.Settings
 import com.trevisolli.agendawidget.data.Snapshot
 import com.trevisolli.agendawidget.smart.AiClient
@@ -132,7 +129,6 @@ import com.trevisolli.agendawidget.widget.AgendaWidget
 import com.trevisolli.agendawidget.widget.RefreshWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
@@ -179,6 +175,7 @@ class MainActivity : ComponentActivity() {
         var aiKey by remember { mutableStateOf(settings.aiKey) }
         var aiModel by remember { mutableStateOf(settings.aiModel) }
         var aiLight by remember { mutableStateOf(settings.aiLightModel) }
+        var notifDisclosure by remember { mutableStateOf(false) }
         var aiTest by remember { mutableStateOf<String?>(null) }
 
         var detect by remember { mutableStateOf(settings.detectNotifications) }
@@ -186,8 +183,6 @@ class MainActivity : ComponentActivity() {
         val suggestions = remember(resumeCount, snapshot) { SuggestionStore.all(this) }
         val listenerOn = remember(resumeCount) { NotificationWatcher.isEnabled(this) }
 
-        var tasksEnabled by remember { mutableStateOf(settings.googleTasksEnabled) }
-        var tasksMessage by remember { mutableStateOf<String?>(null) }
 
         var theme by remember { mutableStateOf(settings.widgetTheme) }
         var scene by remember { mutableStateOf(settings.sceneChoice) }
@@ -260,44 +255,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val googleConsent = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
-            val data = result.data
-            if (data == null) {
-                tasksMessage = "Autorização cancelada."
-                return@rememberLauncherForActivityResult
-            }
-            try {
-                val auth = Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data)
-                if (auth.accessToken != null) {
-                    settings.googleTasksEnabled = true
-                    tasksEnabled = true
-                    tasksMessage = null
-                    refresh()
-                }
-            } catch (e: Exception) {
-                tasksMessage = googleError(e)
-            }
-        }
-
-        fun connectGoogleTasks() {
-            scope.launch {
-                try {
-                    val result = Identity.getAuthorizationClient(this@MainActivity)
-                        .authorize(GoogleTasksSource.authRequest).await()
-                    val pending = result.pendingIntent
-                    if (result.hasResolution() && pending != null) {
-                        googleConsent.launch(IntentSenderRequest.Builder(pending.intentSender).build())
-                    } else {
-                        settings.googleTasksEnabled = true
-                        tasksEnabled = true
-                        tasksMessage = null
-                        refresh()
-                    }
-                } catch (e: Exception) {
-                    tasksMessage = googleError(e)
-                }
-            }
-        }
 
         fun saveAiAndTest() {
             // Testar de novo (ex.: trocou para flash-lite) tira a pausa do 429.
@@ -898,12 +855,37 @@ class MainActivity : ComponentActivity() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Detectar compromissos nas notificações", modifier = Modifier.weight(1f))
                     Switch(checked = detect, onCheckedChange = {
-                        detect = it
-                        settings.detectNotifications = it
-                        if (it && Build.VERSION.SDK_INT >= 33) {
-                            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        // Ligar exige o aviso de uso de dados antes (regra da Play Store).
+                        if (it) {
+                            notifDisclosure = true
+                        } else {
+                            detect = false
+                            settings.detectNotifications = false
                         }
                     })
+                }
+                if (notifDisclosure) {
+                    AlertDialog(
+                        onDismissRequest = { notifDisclosure = false },
+                        title = { Text("Ler suas notificações") },
+                        text = {
+                            Text(
+                                "Para sugerir compromissos, o ConsigliereIA lê o texto das notificações que chegam " +
+                                    "(WhatsApp, Gmail, SMS…). A leitura acontece no celular. Se \"Minha IA\" estiver ligada, " +
+                                    "só as mensagens que parecem ter data e hora são enviadas ao provedor de IA que você " +
+                                    "escolheu, com a sua chave. Nada é guardado em servidores nossos. Você pode desligar quando quiser.",
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                notifDisclosure = false
+                                detect = true
+                                settings.detectNotifications = true
+                                if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }) { Text("Concordo") }
+                        },
+                        dismissButton = { TextButton(onClick = { notifDisclosure = false }) { Text("Agora não") } },
+                    )
                 }
                 Text(
                     "Mensagens com data e hora viram sugestões 📌 para você confirmar.",
@@ -916,6 +898,16 @@ class MainActivity : ComponentActivity() {
                     }) { Text("Abrir acesso a notificações") }
                 } else if (detect) {
                     Text("✅ Acesso liberado.")
+                }
+            }
+
+            Section("Sobre") {
+                Text("ConsigliereIA ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Support.PRIVACY_URL)))
+                    }) { Text("Privacidade") }
+                    OutlinedButton(onClick = { Support.contact(this@MainActivity, "ConsigliereIA: contato", "") }) { Text("Fale conosco") }
                 }
             }
 
@@ -956,20 +948,6 @@ class MainActivity : ComponentActivity() {
                 }) { Text("Abrir configurações de bateria") }
             }
 
-            Section("Google Tasks (experimental)") {
-                if (tasksEnabled) {
-                    Text("Conectado.")
-                    OutlinedButton(onClick = {
-                        settings.googleTasksEnabled = false
-                        tasksEnabled = false
-                        refresh()
-                    }) { Text("Desconectar") }
-                } else {
-                    Text("Precisa de configuração no Google Cloud (veja o README).", style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick = { connectGoogleTasks() }) { Text("Conectar conta Google") }
-                }
-                tasksMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            }
                     }
 
                     tab == 0 -> Column(
@@ -1085,16 +1063,6 @@ class MainActivity : ComponentActivity() {
             if (matrix[i % size, i / size]) android.graphics.Color.BLACK else android.graphics.Color.WHITE
         }
         return Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)
-    }
-
-    private fun googleError(e: Exception): String {
-        val msg = e.message.orEmpty()
-        return if ("UNREGISTERED_ON_API_CONSOLE" in msg) {
-            "App ainda não registrado no Google Cloud. Crie o ID do cliente OAuth Android " +
-                "(pacote com.trevisolli.agendawidget + SHA-1 do README) e tente de novo em alguns minutos."
-        } else {
-            "Não autorizado: $msg"
-        }
     }
 
     /** O ConsigliereIA "falando" o resumo do dia, com a lista de hoje para marcar logo abaixo. */

@@ -315,6 +315,7 @@ class VoiceActivity : ComponentActivity() {
                                     }) { Text("Desfazer") }
                                 }
                                 TextButton(onClick = { start() }) { Text("🎤 Outro") }
+                                if (a != null) TextButton(onClick = { Support.report(this@VoiceActivity, a.text) }) { Text("⚑") }
                                 TextButton(onClick = { finish() }) { Text("OK") }
                             }
                         }

@@ -12,8 +12,8 @@ android {
         applicationId = "com.trevisolli.agendawidget"
         minSdk = 26
         targetSdk = 35
-        versionCode = 28
-        versionName = "1.14"
+        versionCode = 29
+        versionName = "1.15"
 
         // Só celulares reais (ARM): deixa o APK bem menor.
         ndk {
@@ -21,14 +21,23 @@ android {
         }
     }
 
-    // Chave fixa e versionada: o SHA-1 precisa ser estável para o OAuth do Google Tasks.
-    // Uso pessoal apenas; não reutilize esta chave para publicar na Play Store.
+    // APK de teste: chave fixa e pública (repositório aberto), para instalar por cima sem desinstalar.
+    // Loja: chave de upload que só existe nos segredos do GitHub (variáveis UPLOAD_*).
+    val uploadKeystore = System.getenv("UPLOAD_KEYSTORE_PATH")
     signingConfigs {
         create("fixed") {
             storeFile = file("agenda.keystore")
             storePassword = "agendawidget"
             keyAlias = "agenda"
             keyPassword = "agendawidget"
+        }
+        if (uploadKeystore != null) {
+            create("upload") {
+                storeFile = file(uploadKeystore)
+                storePassword = System.getenv("UPLOAD_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("UPLOAD_KEY_ALIAS")
+                keyPassword = System.getenv("UPLOAD_KEY_PASSWORD")
+            }
         }
     }
 
@@ -38,7 +47,8 @@ android {
         }
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("fixed")
+            // Sem a chave de upload, o release sai sem assinatura (não serve para a loja).
+            signingConfig = if (uploadKeystore != null) signingConfigs.getByName("upload") else null
         }
     }
 
@@ -51,6 +61,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -71,6 +82,5 @@ dependencies {
 
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("com.google.mlkit:text-recognition:16.0.1")
-    implementation("com.google.android.gms:play-services-auth:21.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 }

@@ -6,7 +6,6 @@ import org.json.JSONObject
 enum class Source(val label: String) {
     CALENDAR("Agenda"),
     TODOIST("Todoist"),
-    GOOGLE_TASKS("Google Tasks"),
 }
 
 data class AgendaItem(

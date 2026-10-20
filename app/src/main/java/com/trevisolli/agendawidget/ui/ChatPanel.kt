@@ -287,6 +287,12 @@ private fun Bubble(m: ChatMessage, onUndo: (() -> Unit)?) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (onUndo != null) TextButton(onClick = onUndo) { Text("Desfazer") }
+                if (!m.fromUser) {
+                    val ctx = LocalContext.current
+                    TextButton(onClick = { com.trevisolli.agendawidget.Support.report(ctx, m.text) }) {
+                        Text("⚑", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
         }
     }

@@ -56,14 +56,6 @@ object AgendaRepository {
                 errors += "Notion: ${e.message?.take(120)}"
             }
         }
-        if (settings.googleTasksEnabled) {
-            try {
-                items += GoogleTasksSource.fetch(context, days)
-            } catch (e: Exception) {
-                errors += "Google Tasks: ${e.message?.take(120)}"
-            }
-        }
-
         // Atrasadas primeiro; depois por data, com itens de dia inteiro antes dos com hora.
         items.sortWith(compareBy<AgendaItem>({ !it.overdue }, { it.startMillis }, { !it.dateOnly }, { it.title }))
         val summary = Summary.build(context, items, errors)

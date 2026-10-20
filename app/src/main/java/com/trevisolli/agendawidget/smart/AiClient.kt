@@ -113,7 +113,15 @@ object AiClient {
     /** Uma segunda tentativa se o provedor demorar demais; depois, mensagem clara. */
     private fun <T> withRetryOnTimeout(provider: AiProvider, block: () -> T): T {
         try {
-            return block()
+            return try {
+                block()
+            } catch (e: IOException) {
+                // 503/500 = provedor sobrecarregado por instantes: uma nova tentativa costuma passar.
+                val m = e.message.orEmpty()
+                if (!m.startsWith("HTTP 503") && !m.startsWith("HTTP 500")) throw e
+                Thread.sleep(2000)
+                block()
+            }
         } catch (e: java.net.SocketTimeoutException) {
             try {
                 return block()
@@ -250,6 +258,20 @@ object AiClient {
                 val part = out.getJSONObject(i)
                 if (!part.optBoolean("thought")) append(part.optString("text"))
             }
+        }
+    }
+
+    /** Erro em palavras simples, sem o JSON cru do provedor. */
+    fun friendly(e: Throwable): String {
+        val m = e.message.orEmpty()
+        return when {
+            e is RateLimited -> m
+            m.startsWith("HTTP 503") || m.startsWith("HTTP 500") -> "a IA está sobrecarregada no momento"
+            m.startsWith("HTTP 401") || m.startsWith("HTTP 403") -> "a chave da IA foi recusada"
+            m.startsWith("HTTP 404") -> "o modelo de IA não foi encontrado"
+            m.startsWith("HTTP") -> "a IA respondeu com erro (${m.take(8)})"
+            e is java.net.UnknownHostException || e is java.net.ConnectException -> "sem internet"
+            else -> m.take(80)
         }
     }
 

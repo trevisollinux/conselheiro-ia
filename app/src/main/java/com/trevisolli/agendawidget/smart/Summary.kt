@@ -48,8 +48,8 @@ object Summary {
 
     private const val SUMMARY_SYSTEM =
         "Você é o Consigliere, um conselheiro pessoal direto. Recebe a agenda e as tarefas do usuário e escreve UMA frase " +
-            "em português do Brasil, com no máximo 150 caracteres, dizendo como está o dia e o que priorizar. " +
-            "Se o tempo pedir (chuva no horário de um compromisso, calor forte), inclua o conselho prático, ex.: leve guarda-chuva. " +
+            "em português do Brasil, com no máximo 110 caracteres, dizendo o que priorizar hoje. " +
+            "Só mencione o tempo se afetar um compromisso (ex.: leve guarda-chuva); não mande a pessoa ficar em casa. " +
             "Sem saudação, sem emojis em excesso (no máximo 1), sem markdown."
 
     /** Resumo por IA, com cache: só chama de novo quando a lista ou o dia muda. Cai para as regras em caso de erro. */
@@ -65,7 +65,7 @@ object Summary {
         val today = LocalDate.now(zone)
         val relevant = items.filter { it.overdue || !dateOf(it, zone).isAfter(today.plusDays(1)) }.take(25)
         // A IA só refaz o resumo quando a lista muda; tempo/conselho novo, no máximo 1x por hora.
-        val itemsKey = settings.aiProvider.name + today + relevant.joinToString("|") { it.title + it.startMillis + it.overdue }.hashCode()
+        val itemsKey = "v2" + settings.aiProvider.name + today + relevant.joinToString("|") { it.title + it.startMillis + it.overdue }.hashCode()
         val key = itemsKey + "#" + (advice ?: "") + weather?.mood
         val cached = settings.summaryCacheText.isNotBlank()
         val sameItems = settings.summaryCacheKey.substringBefore("#") == itemsKey
@@ -91,7 +91,7 @@ object Summary {
             // Pausa avisada só em Configurações → Inteligência.
             ruleText
         } catch (e: Exception) {
-            errors += "IA: ${e.message?.take(120)}"
+            errors += "IA: ${AiClient.friendly(e)}"
             ruleText
         }
     }

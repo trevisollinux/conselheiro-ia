@@ -80,11 +80,11 @@ private data class Ink(
 )
 
 private val LIGHT_INK = Ink(
-    primary = Color(0xFFFFFFFF), secondary = Color(0xFFD6DEE5), summary = Color(0xFFFFE0A3),
+    primary = Color(0xFFFFFFFF), secondary = Color(0xFFD6DEE5), summary = Color(0xFFE8C877),
     overdue = Color(0xFFFF9C93), suggestion = Color(0xFFFFE08A), footer = Color(0xCCE8EEF2),
 )
 private val DARK_INK = Ink(
-    primary = Color(0xFF1C2A24), secondary = Color(0xFF3D4E47), summary = Color(0xFF2E6B45),
+    primary = Color(0xFF2A2124), secondary = Color(0xFF6A5A5D), summary = Color(0xFF8A2B3D),
     overdue = Color(0xFFB3261E), suggestion = Color(0xFF8A5A00), footer = Color(0xCC3D4E47),
 )
 
@@ -220,9 +220,9 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
     val range = Range.entries.firstOrNull { it.name == currentState<Preferences>()[RANGE_KEY] } ?: settings.widgetRange
     val hour = java.time.LocalTime.now().hour
     val greeting = when (hour) {
-        in 5..11 -> "Bom dia"
-        in 12..17 -> "Boa tarde"
-        else -> "Boa noite"
+        in 5..11 -> "Buongiorno"
+        in 12..17 -> "Buon pomeriggio"
+        else -> "Buonasera"
     } + settings.userName.takeIf { it.isNotBlank() }?.let { ", $it" }.orEmpty()
     val lastReply = ChatStore.all(context).lastOrNull { !it.fromUser }
         ?.takeIf { System.currentTimeMillis() - it.time < 12 * 3600_000L }
@@ -241,9 +241,19 @@ private fun Body(snapshot: Snapshot, ink: Ink, footer: String?) {
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Mascote + saudação em serifa (marca Consigliere).
+            Image(
+                provider = ImageProvider(R.drawable.mascot),
+                contentDescription = null,
+                modifier = GlanceModifier.size(30.dp).clickable(actionStartActivity<MainActivity>()),
+            )
+            Spacer(GlanceModifier.width(6.dp))
             Text(
                 text = greeting,
-                style = TextStyle(color = ColorProvider(ink.primary), fontSize = 21.sp, fontWeight = FontWeight.Bold),
+                style = TextStyle(
+                    color = ColorProvider(ink.primary), fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                    fontFamily = androidx.glance.text.FontFamily.Serif,
+                ),
                 maxLines = 1,
                 modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()),
             )

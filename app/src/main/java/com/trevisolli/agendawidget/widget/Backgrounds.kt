@@ -121,13 +121,22 @@ object Backgrounds {
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
         val unit = w / 360f
         when (theme) {
-            WidgetTheme.LIGHT -> {
-                p.color = if (night) 0xFF1E1F22.toInt() else 0xFFFAFAF7.toInt()
+            WidgetTheme.LIGHT, WidgetTheme.DARK -> {
+                // Creme (papel quente) ou Noir (grafite com brilho dourado no alto), com filete dourado.
+                val noir = night || theme == WidgetTheme.DARK
+                p.shader = if (noir) {
+                    LinearGradient(0f, 0f, w * 0.4f, h.toFloat(), 0xFF2A2226.toInt(), 0xFF141114.toInt(), Shader.TileMode.CLAMP)
+                } else {
+                    LinearGradient(0f, 0f, 0f, h.toFloat(), 0xFFFFFBF4.toInt(), 0xFFF6EEE1.toInt(), Shader.TileMode.CLAMP)
+                }
                 c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), p)
-            }
-            WidgetTheme.DARK -> {
-                p.color = 0xFF1E1F22.toInt()
-                c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), p)
+                p.shader = null
+                p.style = Paint.Style.STROKE
+                p.strokeWidth = 1.2f * unit
+                p.color = if (noir) 0x55E8C877 else 0x55C9A24A
+                val inset = 5 * unit
+                c.drawRoundRect(RectF(inset, inset, w - inset, h - inset), corner - inset, corner - inset, p)
+                p.style = Paint.Style.FILL
             }
             WidgetTheme.NOTEBOOK -> {
                 // Bloco amarelo pautado: faixa no topo, linhas azuis e margem vermelha.

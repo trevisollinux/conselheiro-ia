@@ -53,13 +53,13 @@ object Assistant {
             ChatStore.add(context, ChatMessage(fromUser = true, text = "🎤 (áudio guardado)"))
             val answer = ChatMessage(
                 fromUser = false,
-                text = "⏳ A IA está fora agora (${e.message?.take(60)}). Guardei o áudio e anoto sozinho quando ela voltar; aviso por notificação.",
+                text = "⏳ Não deu agora: ${AiClient.friendly(e)}. Guardei o áudio e anoto sozinho assim que der; aviso por notificação.",
             )
             ChatStore.add(context, answer)
             answer
         } catch (e: Exception) {
             ChatStore.add(context, ChatMessage(fromUser = true, text = "🎤 (áudio)"))
-            val answer = ChatMessage(fromUser = false, text = "⚠️ Não consegui ouvir o áudio: ${e.message?.take(120)}")
+            val answer = ChatMessage(fromUser = false, text = "⚠️ Não consegui ouvir o áudio: ${AiClient.friendly(e)}")
             ChatStore.add(context, answer)
             answer
         }

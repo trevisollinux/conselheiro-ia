@@ -300,8 +300,8 @@ enum class Range(val label: String, val days: Long) {
 enum class WidgetTheme(val label: String) {
     LANDSCAPE("Paisagem"),
     ART("Obras de arte"),
-    LIGHT("Claro"),
-    DARK("Escuro"),
+    LIGHT("Creme"),
+    DARK("Noir"),
     NOTEBOOK("Caderno"),
     POSTIT("Post-it"),
 }
@@ -348,6 +348,6 @@ enum class ArtStyle(val label: String, val queries: List<String>) {
 
 enum class AppTheme(val label: String) {
     SYSTEM("Seguir o celular"),
-    LIGHT("Claro"),
-    DARK("Escuro"),
+    LIGHT("Creme"),
+    DARK("Noir"),
 }

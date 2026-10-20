@@ -49,50 +49,65 @@ class VoiceWidget : GlanceAppWidget() {
         provideContent {
             val size = LocalSize.current
             val dark = Backgrounds.darkMode(context, Settings(context))
-            if (size.width.value < 150) {
+            if (size.width.value < 120) {
+                // Pequeno: o mascote num círculo (dá para saber de quem é), tocar abre o gravador.
+                val d = (minOf(size.width, size.height).value * 0.86f).dp
                 Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    MicButton(context, (minOf(size.width, size.height).value * 0.8f).dp)
+                    Box(
+                        modifier = GlanceModifier.size(d).cornerRadius(d / 2).background(Color(0xFF8A2B3D))
+                            .clickable(actionStartActivity(VoiceActivity.intent(context))),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(provider = ImageProvider(R.drawable.mascot), contentDescription = "Falar com o Consigliere", modifier = GlanceModifier.size(d * 0.78f))
+                    }
                 }
                 return@provideContent
             }
-            val pill = if (dark) Color(0xFF262025) else Color(0xFFFFFBF4)
+            // Barra no estilo do Chrome: pílula externa, campo interno com mascote e nome, ícones ao lado.
+            val outer = if (dark) Color(0xFF1E1A1D) else Color(0xFFF3EADC)
+            val field = if (dark) Color(0xFF332B30) else Color(0xFFFFFBF4)
             val accent = if (dark) Color(0xFFE8C877) else Color(0xFF8A2B3D)
-            val barHeight = minOf(size.height.value - 8, 60f).coerceAtLeast(40f).dp
+            val barHeight = minOf(size.height.value - 4, 60f).coerceAtLeast(40f).dp
+            val inner = barHeight - 12.dp
             Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Row(
                     modifier = GlanceModifier.fillMaxWidth().height(barHeight)
-                        .background(pill).cornerRadius(barHeight / 2)
-                        .padding(start = 10.dp, end = 14.dp)
-                        .clickable(actionStartActivity(chatIntent(context))),
+                        .background(outer).cornerRadius(barHeight / 2)
+                        .padding(start = 6.dp, end = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Image(
-                        provider = ImageProvider(R.drawable.mascot),
-                        contentDescription = null,
-                        modifier = GlanceModifier.size(barHeight * 0.72f),
-                    )
-                    Spacer(GlanceModifier.width(8.dp))
-                    Image(
-                        provider = ImageProvider(wordmark(context, accent)),
-                        contentDescription = "Consigliere",
-                        modifier = GlanceModifier.height(barHeight * 0.42f).width(barHeight * 0.42f * 5),
-                    )
-                    Spacer(GlanceModifier.defaultWeight())
+                    Row(
+                        modifier = GlanceModifier.defaultWeight().height(inner)
+                            .background(field).cornerRadius(inner / 2)
+                            .padding(start = 6.dp, end = 12.dp)
+                            .clickable(actionStartActivity(chatIntent(context))),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Image(
+                            provider = ImageProvider(R.drawable.mascot),
+                            contentDescription = null,
+                            modifier = GlanceModifier.size(inner * 0.86f),
+                        )
+                        Spacer(GlanceModifier.width(6.dp))
+                        Image(
+                            provider = ImageProvider(wordmark(context, accent)),
+                            contentDescription = "Consigliere",
+                            modifier = GlanceModifier.height(inner * 0.5f).width(inner * 0.5f * 5),
+                        )
+                    }
+                    Spacer(GlanceModifier.width(10.dp))
                     Image(
                         provider = ImageProvider(R.drawable.ic_mic),
                         contentDescription = "Falar",
                         colorFilter = ColorFilter.tint(ColorProvider(accent)),
-                        modifier = GlanceModifier.size(barHeight * 0.62f).cornerRadius(barHeight * 0.31f)
-                            .padding(4.dp)
+                        modifier = GlanceModifier.size(barHeight * 0.5f)
                             .clickable(actionStartActivity(VoiceActivity.intent(context))),
                     )
-                    Spacer(GlanceModifier.width(10.dp))
-                    Box(GlanceModifier.width(1.dp).height(barHeight * 0.45f).background(accent.copy(alpha = 0.25f))) {}
-                    Spacer(GlanceModifier.width(10.dp))
+                    Spacer(GlanceModifier.width(14.dp))
                     Image(
                         provider = ImageProvider(R.drawable.ic_app_grid),
                         contentDescription = "Abrir o app",
-                        modifier = GlanceModifier.size(barHeight * 0.5f).clickable(actionStartActivity<MainActivity>()),
+                        modifier = GlanceModifier.size(barHeight * 0.42f).clickable(actionStartActivity<MainActivity>()),
                     )
                 }
             }

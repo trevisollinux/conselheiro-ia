@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Nasce largo (barra 4x1); dá para encolher até virar só o botão. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/voice_widget_description"
     android:initialLayout="@layout/glance_default_loading_layout"
     android:previewLayout="@layout/voice_widget_preview"
     android:previewImage="@mipmap/ic_launcher"
-    android:minWidth="40dp"
+    android:minWidth="250dp"
     android:minHeight="40dp"
     android:minResizeWidth="40dp"
     android:minResizeHeight="40dp"

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Quatro "pastilhas" nas cores da marca: abre o app -->
+    <path android:fillColor="#8A2B3D" android:pathData="M3,6.5a3.5,3.5 0,1 0,7 0a3.5,3.5 0,1 0,-7 0Z" />
+    <path android:fillColor="#C9A24A" android:pathData="M14,6.5a3.5,3.5 0,1 0,7 0a3.5,3.5 0,1 0,-7 0Z" />
+    <path android:fillColor="#3F7A5C" android:pathData="M3,17.5a3.5,3.5 0,1 0,7 0a3.5,3.5 0,1 0,-7 0Z" />
+    <path android:fillColor="#E59AA8" android:pathData="M14,17.5a3.5,3.5 0,1 0,7 0a3.5,3.5 0,1 0,-7 0Z" />
+</vector>

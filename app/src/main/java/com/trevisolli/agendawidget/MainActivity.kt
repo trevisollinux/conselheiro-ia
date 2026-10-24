@@ -1134,7 +1134,10 @@ class MainActivity : ComponentActivity() {
 
                     else -> ChatPanel(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
-                        onChanged = { snapshot = AgendaRepository.load(this@MainActivity) },
+                        onChanged = {
+                            snapshot = AgendaRepository.load(this@MainActivity)
+                            refresh()
+                        },
                     )
                 }
             }

@@ -25,6 +25,11 @@ import java.util.Locale
  * A conversa: entende pedidos ("coloca dentista quinta 15h na agenda", "lembrar de pagar o MEI",
  * "terminei a ração da Amelie", "o que tenho amanhã?"), executa e responde.
  */
+/** Trabalho que não pode morrer junto com a tela (ex.: o gravador fechado no meio). */
+object Background {
+    val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+}
+
 object Assistant {
     private val locale = Locale("pt", "BR")
     private val hhmm = DateTimeFormatter.ofPattern("HH:mm")
@@ -165,8 +170,8 @@ object Assistant {
         }
 
         if (plan.actions.isNotEmpty()) {
-            val snapshot = AgendaRepository.refresh(context)
-            AgendaWidget.push(context, snapshot)
+            // Atualiza agenda e widget em segundo plano: a resposta não espera (resumo, arte, Notion…).
+            com.trevisolli.agendawidget.widget.RefreshWorker.runNow(context)
         }
 
         val reply = buildString {
@@ -200,8 +205,7 @@ object Assistant {
         }
         ChatStore.markUndone(context, message.id)
         ChatStore.add(context, ChatMessage(fromUser = false, text = "↩️ Desfeito."))
-        val snapshot = AgendaRepository.refresh(context)
-        AgendaWidget.push(context, snapshot)
+        com.trevisolli.agendawidget.widget.RefreshWorker.runNow(context)
     }
 
     private fun whenText(date: LocalDate, time: LocalTime?): String {

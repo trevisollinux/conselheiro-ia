@@ -62,6 +62,7 @@ import com.trevisolli.agendawidget.smart.VoiceRecorder
 import com.trevisolli.agendawidget.ui.ConsigliereTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 
 /** Gravador aberto pelo widget: já começa gravando; toque para enviar e veja o que foi criado. */
 class VoiceActivity : ComponentActivity() {
@@ -196,11 +197,7 @@ class VoiceActivity : ComponentActivity() {
             finish()
             return
         }
-        phase = "think"
-        lifecycleScope.launch {
-            answer = Assistant.handleSpoken(this@VoiceActivity, text)
-            phase = "done"
-        }
+        think { Assistant.handleSpoken(it, text) }
     }
 
     private fun sendAudio() {
@@ -212,14 +209,31 @@ class VoiceActivity : ComponentActivity() {
             finish()
             return
         }
+        think { Assistant.handleAudio(it, audio, r.mime) }
+    }
+
+    private var work: kotlinx.coroutines.Deferred<ChatMessage>? = null
+
+    /** Roda fora da tela: se a pessoa fechar antes, o pedido continua e o resultado chega por notificação. */
+    private fun think(block: suspend (android.content.Context) -> ChatMessage) {
         phase = "think"
+        val app = applicationContext
+        val job = com.trevisolli.agendawidget.smart.Background.scope.async { block(app) }
+        work = job
         lifecycleScope.launch {
-            answer = Assistant.handleAudio(this@VoiceActivity, audio, r.mime)
+            answer = runCatching { job.await() }.getOrNull()
             phase = "done"
+            work = null
         }
     }
 
     override fun onDestroy() {
+        work?.let { job ->
+            val app = applicationContext
+            job.invokeOnCompletion { e ->
+                if (e == null) runCatching { com.trevisolli.agendawidget.smart.VoiceQueue.notify(app, job.getCompleted().text) }
+            }
+        }
         recorder?.cancel()
         stopLive()
         super.onDestroy()
@@ -250,7 +264,7 @@ class VoiceActivity : ComponentActivity() {
                 .fillMaxSize()
                 .background(Color(0x66000000))
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                    if (phase != "think") finish()
+                    finish()
                 },
         ) {
             Card(
@@ -301,6 +315,19 @@ class VoiceActivity : ComponentActivity() {
                         "think" -> {
                             CircularProgressIndicator()
                             Text("Entendendo…", style = MaterialTheme.typography.titleMedium)
+                            var slow by remember { mutableStateOf(false) }
+                            LaunchedEffect(Unit) {
+                                delay(8000)
+                                slow = true
+                            }
+                            if (slow) {
+                                Text(
+                                    "A IA está demorando. Pode fechar: eu termino e aviso por notificação.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    textAlign = TextAlign.Center,
+                                )
+                                TextButton(onClick = { finish() }) { Text("Fechar e avisar depois") }
+                            }
                         }
                         else -> {
                             val a = answer

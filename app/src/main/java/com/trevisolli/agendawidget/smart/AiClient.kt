@@ -81,6 +81,20 @@ object AiClient {
     fun complete(
         provider: AiProvider, key: String, model: String, system: String, user: String,
         jpeg: ByteArray? = null, audio: Pair<ByteArray, String>? = null,
+        /** Pedido com alguém esperando na tela: [fastTimeoutMs] de espera, sem segunda tentativa por demora. */
+        fastTimeoutMs: Int? = null,
+    ): String {
+        if (fastTimeoutMs != null) Http.readTimeoutOverride.set(fastTimeoutMs)
+        try {
+            return completeGuarded(provider, key, model, system, user, jpeg, audio)
+        } finally {
+            Http.readTimeoutOverride.remove()
+        }
+    }
+
+    private fun completeGuarded(
+        provider: AiProvider, key: String, model: String, system: String, user: String,
+        jpeg: ByteArray?, audio: Pair<ByteArray, String>?,
     ): String {
         pausedUntil(model).takeIf { it > 0 }?.let { throw RateLimited(it) }
         return try {
@@ -123,6 +137,10 @@ object AiClient {
                 block()
             }
         } catch (e: java.net.SocketTimeoutException) {
+            // Interativo: não faz a pessoa esperar duas vezes.
+            if (Http.readTimeoutOverride.get() != null) {
+                throw IOException("a ${provider.label} demorou demais para responder")
+            }
             try {
                 return block()
             } catch (e2: java.net.SocketTimeoutException) {

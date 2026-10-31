@@ -110,7 +110,7 @@ object Assistant {
             }
         } else if (text == null) {
             Plan(null, emptyList())
-        } else if (settings.aiReady) {
+        } else if (settings.aiLightReady || settings.aiReady) {
             try {
                 aiPlan(context, text, items, history)
             } catch (e: Exception) {
@@ -338,7 +338,12 @@ object Assistant {
             }
             if (audio != null) append("Nova mensagem do usuário: no ÁUDIO anexo (pt-BR).") else append("Nova mensagem do usuário: ").append(text)
         }
-        val raw = AiClient.complete(s.aiProvider, s.aiKey, s.effectiveModel, SYSTEM, prompt, audio = audio)
+        // Texto vai no modelo leve (rápido, cota maior); áudio precisa do principal.
+        val model = if (audio == null && s.aiLightReady) s.lightModel else s.effectiveModel
+        val raw = AiClient.complete(
+            s.aiProvider, s.aiKey, model, SYSTEM, prompt, audio = audio,
+            fastTimeoutMs = if (audio == null) 20_000 else 45_000,
+        )
         val json = AiClient.extractJson(raw) ?: return Plan(raw.take(400), emptyList())
         val actions = mutableListOf<Action>()
         val arr = json.optJSONArray("actions") ?: JSONArray()

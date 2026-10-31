@@ -568,7 +568,7 @@ class MainActivity : ComponentActivity() {
                     OutlinedTextField(
                         value = aiModel,
                         onValueChange = { aiModel = it },
-                        label = { Text("Modelo principal (conversa, áudio, prints)") },
+                        label = { Text("Modelo principal (áudio e prints)") },
                         placeholder = { Text(provider.defaultModel) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -576,7 +576,7 @@ class MainActivity : ComponentActivity() {
                     OutlinedTextField(
                         value = aiLight,
                         onValueChange = { aiLight = it },
-                        label = { Text("Modelo leve (resumo, notificações, briefings)") },
+                        label = { Text("Modelo leve (conversa, resumo, notificações)") },
                         placeholder = { Text(if (provider == settings.aiProvider) settings.lightModel else "automático") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),

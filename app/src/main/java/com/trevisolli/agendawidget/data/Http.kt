@@ -6,6 +6,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 internal object Http {
+    /** Tempo máximo de espera da resposta só para esta thread (pedidos interativos são mais curtos). */
+    val readTimeoutOverride = ThreadLocal<Int?>()
+
     fun getJson(url: String, bearer: String): JSONObject =
         request("GET", url, mapOf("Authorization" to "Bearer $bearer"), null)
 
@@ -39,7 +42,7 @@ internal object Http {
         try {
             conn.requestMethod = "POST"
             conn.connectTimeout = 20_000
-            conn.readTimeout = 120_000
+            conn.readTimeout = readTimeoutOverride.get() ?: 120_000
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
             headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
@@ -80,7 +83,7 @@ internal object Http {
         try {
             conn.requestMethod = method
             conn.connectTimeout = 20_000
-            conn.readTimeout = 120_000
+            conn.readTimeout = readTimeoutOverride.get() ?: 120_000
             conn.setRequestProperty("Accept", "application/json")
             headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
             if (body != null) {

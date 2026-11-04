@@ -134,6 +134,11 @@ Na grade do pacote, tocar numa figurinha abre **Editar**, **Emojis**, **Mover** 
 - **Backup automático do Android:** também fica ligado e salva as figurinhas prontas na conta Google do celular
   (limite de 25 MB do Android). Os dados de reedição, mais pesados, ficam de fora; para eles, use o Exportar.
 
+### Apoie 💜
+
+O Unusual Stickers é grátis e sem anúncios. Gostou do app? Mande qualquer valor via **Pix**:
+**gustavotrevisolli@gmail.com** (também no app: menu **⋮ → Apoiar o app**, com botão para copiar a chave).
+
 ### Limitações (por enquanto)
 
 - Só figurinhas paradas; animadas (GIF/vídeo) ainda não.

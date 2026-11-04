@@ -127,6 +127,8 @@ fun PackListScreen(
     }
     var creating by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var supporting by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val backup = rememberBackupActions(store, snackbar, onImported = { version++ })
 
@@ -147,6 +149,10 @@ fun PackListScreen(
                         DropdownMenuItem(
                             text = { Text("Importar backup (.zip)") },
                             onClick = { menu = false; backup.import() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("💜 Apoiar o app (Pix)") },
+                            onClick = { menu = false; supporting = true },
                         )
                     }
                 },
@@ -216,8 +222,20 @@ fun PackListScreen(
                     }
                 }
             }
+            item {
+                TextButton(onClick = { supporting = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("💜 Gostou do app? Mande qualquer valor via Pix")
+                }
+            }
             item { Spacer(Modifier.height(72.dp)) }
         }
+    }
+
+    if (supporting) {
+        SupportDialog(
+            onDismiss = { supporting = false },
+            onCopied = { scope.launch { snackbar.showSnackbar("Chave Pix copiada: $PIX_KEY") } },
+        )
     }
 
     if (creating) {

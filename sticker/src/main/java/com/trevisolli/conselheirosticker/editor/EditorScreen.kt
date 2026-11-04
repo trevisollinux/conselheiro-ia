@@ -166,7 +166,13 @@ fun EditorScreen(
                         // Figurinha sem dados de edição: usa a própria imagem (já recortada) como foto.
                         EditorState(bmp).apply { outline = false; tab = EditTab.Text }
                     }
-                is EditorSource.Photo -> EditorState(Images.load(context, source.uri))
+                is EditorSource.Photo -> EditorState(Images.load(context, source.uri)).apply {
+                    // Usa a última escolha de borda (com ou sem contorno branco).
+                    val prefs = context.getSharedPreferences(OUTLINE_PREFS, android.content.Context.MODE_PRIVATE)
+                    outline = prefs.getBoolean("outline_on", false)
+                    outlineWidth = prefs.getFloat("outline_width", 10f)
+                    outlineColor = prefs.getInt("outline_color", android.graphics.Color.WHITE)
+                }
             }
             if (state == null) snackbar.showSnackbar("Não consegui abrir esta figurinha")
         } catch (e: Exception) {
@@ -296,6 +302,9 @@ fun EditorScreen(
         }
     }
 }
+
+private const val OUTLINE_PREFS = "sticker"
+private val OUTLINE_PRESETS = listOf("Sem borda" to 0f, "Fina" to 5f, "Média" to 10f, "Grossa" to 18f)
 
 // Estado das ferramentas de recorte, compartilhado entre a área de desenho e os botões.
 private val cutMode = mutableStateOf(CutMode.Frame)
@@ -600,15 +609,37 @@ private fun StickerPreview(st: EditorState, fonts: Fonts, tab: EditTab, modifier
 
 @Composable
 private fun AdjustControls(st: EditorState) {
-    Text("Arraste para mover, use dois dedos para zoom e giro.", style = MaterialTheme.typography.bodySmall)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Contorno de adesivo", Modifier.weight(1f))
-        Switch(checked = st.outline, onCheckedChange = { st.outline = it })
+    val context = LocalContext.current
+    // Guarda a escolha para as próximas figurinhas.
+    fun saveChoice() {
+        context.getSharedPreferences(OUTLINE_PREFS, android.content.Context.MODE_PRIVATE).edit()
+            .putBoolean("outline_on", st.outline)
+            .putFloat("outline_width", st.outlineWidth)
+            .putInt("outline_color", st.outlineColor)
+            .apply()
+    }
+    Text("Borda em volta da figurinha", style = MaterialTheme.typography.labelLarge)
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OUTLINE_PRESETS.forEach { (label, width) ->
+            val selected = if (width == 0f) !st.outline else st.outline && kotlin.math.abs(st.outlineWidth - width) < 0.5f
+            FilterChip(
+                selected = selected,
+                onClick = {
+                    if (width == 0f) st.outline = false else { st.outline = true; st.outlineWidth = width }
+                    saveChoice()
+                },
+                label = { Text(label) },
+            )
+        }
     }
     if (st.outline) {
-        LabeledSlider("Espessura", st.outlineWidth, 2f..24f) { st.outlineWidth = it }
-        ColorRow(st.outlineColor) { st.outlineColor = it }
+        LabeledSlider("Espessura", st.outlineWidth, 2f..24f) { st.outlineWidth = it; saveChoice() }
+        ColorRow(st.outlineColor) { st.outlineColor = it; saveChoice() }
     }
+    Text("Arraste para mover, use dois dedos para zoom e giro.", style = MaterialTheme.typography.bodySmall)
     LabeledSlider("Zoom", st.scale, 0.2f..3f) { st.scale = it }
     LabeledSlider("Giro", st.rotation, -180f..180f) { st.rotation = it }
     OutlinedButton(onClick = { st.scale = 1f; st.offset = Offset.Zero; st.rotation = 0f }) { Text("Centralizar") }

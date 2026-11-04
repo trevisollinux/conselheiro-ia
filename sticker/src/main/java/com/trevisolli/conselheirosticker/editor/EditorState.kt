@@ -58,7 +58,7 @@ class EditorState(val source: Bitmap, mask: Bitmap? = null) {
     var offset by mutableStateOf(Offset.Zero)
     var rotation by mutableFloatStateOf(0f)
 
-    var outline by mutableStateOf(true)
+    var outline by mutableStateOf(false)
     var outlineWidth by mutableFloatStateOf(10f)
     var outlineColor by mutableIntStateOf(Color.WHITE)
 

@@ -103,7 +103,8 @@ Tudo fica no celular, sem conta e sem servidor.
   Comic Neue e Permanent Marker. **Importar fonte** aceita qualquer `.ttf`/`.otf` (a Impact é da Microsoft e
   não pode vir no app, mas dá para importar a sua).
 - **Só texto:** figurinha com fundo transparente.
-- **Animadas (GIF e vídeo):** crie um pacote **🎞️ Animadas**, escolha um GIF ou vídeo e o trecho (até 10 s).
+- **Animadas (GIF e vídeo):** crie um pacote **🎞️ Animadas**, toque **+ Figurinha → GIF** ou **→ Vídeo** e escolha o
+  trecho (até 10 s). Algo do YouTube ou de outro app: grave a tela do celular e use o vídeo gravado.
   O recorte (retângulo, círculo, laço, borracha), a borda e os textos valem para todos os quadros; a prévia anima
   nas abas Ajustar e Texto. O app ajusta quadros e qualidade sozinho para caber nos 500 KB do WhatsApp.
 - **Compartilhar:** em qualquer app, Compartilhar uma foto, GIF ou vídeo → Unusual Stickers.

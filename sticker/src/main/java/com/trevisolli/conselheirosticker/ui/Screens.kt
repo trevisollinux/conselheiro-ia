@@ -313,7 +313,7 @@ fun PackScreen(
     onBack: () -> Unit,
     onAddPhoto: () -> Unit,
     onAddText: () -> Unit,
-    onAddAnimation: () -> Unit,
+    onAddAnimation: (video: Boolean) -> Unit,
     onEdit: (String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -416,7 +416,12 @@ fun PackScreen(
         ModalBottomSheet(onDismissRequest = { adding = false }) {
             Column(Modifier.padding(16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (p?.animated == true) {
-                    Button(onClick = { adding = false; onAddAnimation() }, Modifier.fillMaxWidth()) { Text("🎞️  GIF ou vídeo") }
+                    Button(onClick = { adding = false; onAddAnimation(false) }, Modifier.fillMaxWidth()) { Text("🎞️  GIF") }
+                    Button(onClick = { adding = false; onAddAnimation(true) }, Modifier.fillMaxWidth()) { Text("🎬  Vídeo") }
+                    Text(
+                        "Viu algo no YouTube ou em outro app? Use o gravador de tela do celular e escolha o vídeo gravado aqui.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 } else {
                     Button(onClick = { adding = false; onAddPhoto() }, Modifier.fillMaxWidth()) { Text("🖼️  Foto da galeria") }
                     Button(onClick = { adding = false; onAddText() }, Modifier.fillMaxWidth()) { Text("🔤  Só texto") }

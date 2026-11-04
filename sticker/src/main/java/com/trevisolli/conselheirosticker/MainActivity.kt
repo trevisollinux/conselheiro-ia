@@ -84,10 +84,15 @@ class MainActivity : ComponentActivity() {
                                 pickAnimated = false
                                 picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                             },
-                            onAddAnimation = {
+                            onAddAnimation = { video ->
                                 pickFor = s.id
                                 pickAnimated = true
-                                picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                                picker.launch(
+                                    PickVisualMediaRequest(
+                                        if (video) ActivityResultContracts.PickVisualMedia.VideoOnly
+                                        else ActivityResultContracts.PickVisualMedia.SingleMimeType("image/gif")
+                                    )
+                                )
                             },
                             onAddText = { screen = Screen.Editor(s.id, EditorSource.TextOnly) },
                             onEdit = { file -> screen = Screen.Editor(s.id, EditorSource.Existing(file)) },

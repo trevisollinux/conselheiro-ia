@@ -21,6 +21,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -79,7 +80,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect as ComposeRect
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -106,7 +111,9 @@ sealed interface EditorSource {
 }
 
 private enum class EditTab(val label: String) { Cut("Recortar"), Adjust("Ajustar"), Text("Texto") }
-private enum class CutMode(val label: String) { Lasso("Laço"), Erase("Borracha"), Restore("Pincel") }
+private enum class CutMode(val label: String) {
+    Frame("Retângulo"), Lasso("Laço"), Erase("Borracha"), Restore("Pincel")
+}
 
 private val PALETTE = listOf(
     0xFFFFFFFF, 0xFF000000, 0xFFFFD23F, 0xFFE53935, 0xFFFF7A00,
@@ -159,7 +166,7 @@ fun EditorScreen(
                         // Figurinha sem dados de edição: usa a própria imagem (já recortada) como foto.
                         EditorState(bmp).apply { outline = false; tab = EditTab.Text }
                     }
-                is EditorSource.Photo -> EditorState(Images.load(context, source.uri)).also { runAuto(it) }
+                is EditorSource.Photo -> EditorState(Images.load(context, source.uri))
             }
             if (state == null) snackbar.showSnackbar("Não consegui abrir esta figurinha")
         } catch (e: Exception) {
@@ -218,7 +225,7 @@ fun EditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Editar figurinha") },
+                title = { Text("Editar") },
                 navigationIcon = {
                     IconButton(onClick = { confirmExit = true }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
@@ -291,8 +298,15 @@ fun EditorScreen(
 }
 
 // Estado das ferramentas de recorte, compartilhado entre a área de desenho e os botões.
-private val cutMode = mutableStateOf(CutMode.Lasso)
+private val cutMode = mutableStateOf(CutMode.Frame)
 private val brushSize = mutableFloatStateOf(40f)
+private val frameShape = mutableStateOf(FrameShape.Free)
+
+/** Formato da moldura de corte. */
+private enum class FrameShape(val label: String) { Free("Livre"), Square("Quadrado"), Circle("Círculo") }
+
+/** Qual parte da moldura o dedo está arrastando. */
+private enum class Grab { None, Move, L, T, R, B, TL, TR, BL, BR }
 
 // ---------------------------------------------------------------- Recorte
 
@@ -300,11 +314,29 @@ private val brushSize = mutableFloatStateOf(40f)
 private fun CutView(st: EditorState, mode: CutMode, brush: Float, modifier: Modifier) {
     val lassoPoints = remember { mutableStateListOf<Offset>() }
     var fingerAt by remember { mutableStateOf<Offset?>(null) }
+    val shape = frameShape.value
     BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
         val ratio = st.source.width.toFloat() / st.source.height
         Canvas(
-            Modifier.aspectRatio(ratio).pointerInput(mode, brush) {
+            Modifier.aspectRatio(ratio).clipToBounds().pointerInput(mode, brush, shape) {
                 val k = st.source.width / size.width.toFloat() // px da tela → px da foto
+                if (mode == CutMode.Frame) {
+                    val handle = 32.dp.toPx() * k // área de toque das alças, em px da foto
+                    var grab = Grab.None
+                    detectDragGestures(
+                        onDragStart = { p -> grab = st.frame.grabAt(p.x * k, p.y * k, handle, shape == FrameShape.Free) },
+                        onDrag = { change, d ->
+                            if (grab != Grab.None) {
+                                st.frame = st.frame.dragged(grab, d.x * k, d.y * k, shape != FrameShape.Free,
+                                    st.source.width.toFloat(), st.source.height.toFloat())
+                                change.consume()
+                            }
+                        },
+                        onDragEnd = { grab = Grab.None },
+                        onDragCancel = { grab = Grab.None },
+                    )
+                    return@pointerInput
+                }
                 var last: Offset? = null
                 val path = Path()
                 detectDragGestures(
@@ -352,6 +384,7 @@ private fun CutView(st: EditorState, mode: CutMode, brush: Float, modifier: Modi
                 })
                 nc.restoreToCount(layer)
             }
+            if (mode == CutMode.Frame) drawFrame(st.frame, size.width / st.source.width, shape)
             if (lassoPoints.size > 1) {
                 val p = androidx.compose.ui.graphics.Path().apply {
                     moveTo(lassoPoints[0].x, lassoPoints[0].y)
@@ -365,31 +398,160 @@ private fun CutView(st: EditorState, mode: CutMode, brush: Float, modifier: Modi
     }
 }
 
-@Composable
-private fun CutControls(st: EditorState, onAuto: () -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Button(onClick = onAuto) { Text("✨ Recorte automático") }
-        OutlinedButton(onClick = { st.resetMask() }) {
-            Icon(Icons.Filled.Refresh, contentDescription = null)
-            Spacer(Modifier.width(4.dp))
-            Text("Foto inteira")
+/** Moldura: escurece o que fica de fora, linhas de terço e alças nos cantos e lados. */
+private fun DrawScope.drawFrame(frameBmp: ComposeRect, s: Float, shape: FrameShape) {
+    val r = ComposeRect(frameBmp.left * s, frameBmp.top * s, frameBmp.right * s, frameBmp.bottom * s)
+    val outside = androidx.compose.ui.graphics.Path().apply {
+        fillType = PathFillType.EvenOdd
+        addRect(ComposeRect(Offset.Zero, size))
+        if (shape == FrameShape.Circle) addOval(r) else addRect(r)
+    }
+    drawPath(outside, Color(0x99000000))
+    if (shape == FrameShape.Circle) drawOval(Color.White, r.topLeft, r.size, style = Stroke(2.dp.toPx()))
+    drawRect(Color.White.copy(alpha = if (shape == FrameShape.Circle) 0.5f else 1f), r.topLeft, r.size,
+        style = Stroke(2.dp.toPx()))
+    for (i in 1..2) {
+        val x = r.left + r.width * i / 3
+        val y = r.top + r.height * i / 3
+        drawLine(Color.White.copy(alpha = 0.45f), Offset(x, r.top), Offset(x, r.bottom), 1.dp.toPx())
+        drawLine(Color.White.copy(alpha = 0.45f), Offset(r.left, y), Offset(r.right, y), 1.dp.toPx())
+    }
+    // Cantos em "L", grossos, como nos editores de foto.
+    val len = minOf(22.dp.toPx(), r.width / 3, r.height / 3)
+    val w = 4.dp.toPx()
+    listOf(
+        Triple(r.topLeft, 1f, 1f), Triple(r.topRight, -1f, 1f),
+        Triple(r.bottomLeft, 1f, -1f), Triple(r.bottomRight, -1f, -1f),
+    ).forEach { (c, dx, dy) ->
+        drawLine(Color.White, c, Offset(c.x + len * dx, c.y), w, cap = StrokeCap.Round)
+        drawLine(Color.White, c, Offset(c.x, c.y + len * dy), w, cap = StrokeCap.Round)
+    }
+    if (shape == FrameShape.Free) {
+        val bar = minOf(18.dp.toPx(), r.width / 4, r.height / 4)
+        listOf(Offset(r.center.x, r.top), Offset(r.center.x, r.bottom)).forEach {
+            drawLine(Color.White, Offset(it.x - bar, it.y), Offset(it.x + bar, it.y), w, cap = StrokeCap.Round)
+        }
+        listOf(Offset(r.left, r.center.y), Offset(r.right, r.center.y)).forEach {
+            drawLine(Color.White, Offset(it.x, it.y - bar), Offset(it.x, it.y + bar), w, cap = StrokeCap.Round)
         }
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+}
+
+private fun ComposeRect.grabAt(x: Float, y: Float, tol: Float, edges: Boolean): Grab {
+    fun near(a: Float, b: Float) = kotlin.math.abs(a - b) <= tol
+    val inX = x in (left - tol)..(right + tol)
+    val inY = y in (top - tol)..(bottom + tol)
+    return when {
+        near(x, left) && near(y, top) -> Grab.TL
+        near(x, right) && near(y, top) -> Grab.TR
+        near(x, left) && near(y, bottom) -> Grab.BL
+        near(x, right) && near(y, bottom) -> Grab.BR
+        edges && near(x, left) && inY -> Grab.L
+        edges && near(x, right) && inY -> Grab.R
+        edges && near(y, top) && inX -> Grab.T
+        edges && near(y, bottom) && inX -> Grab.B
+        contains(Offset(x, y)) -> Grab.Move
+        else -> Grab.None
+    }
+}
+
+/** Nova moldura depois de arrastar; mantém dentro da foto e com tamanho mínimo. */
+private fun ComposeRect.dragged(g: Grab, dx: Float, dy: Float, square: Boolean, w: Float, h: Float): ComposeRect {
+    val min = maxOf(24f, minOf(w, h) * 0.06f)
+    if (g == Grab.Move) {
+        val nx = (left + dx).coerceIn(0f, w - width)
+        val ny = (top + dy).coerceIn(0f, h - height)
+        return ComposeRect(Offset(nx, ny), size)
+    }
+    var l = left; var t = top; var r = right; var b = bottom
+    when (g) {
+        Grab.L, Grab.TL, Grab.BL -> l = (l + dx).coerceIn(0f, r - min)
+        Grab.R, Grab.TR, Grab.BR -> r = (r + dx).coerceIn(l + min, w)
+        else -> {}
+    }
+    when (g) {
+        Grab.T, Grab.TL, Grab.TR -> t = (t + dy).coerceIn(0f, b - min)
+        Grab.B, Grab.BL, Grab.BR -> b = (b + dy).coerceIn(t + min, h)
+        else -> {}
+    }
+    if (square) {
+        // Lado = média da largura e altura, ancorado no canto oposto, sem sair da foto.
+        var s = ((r - l) + (b - t)) / 2f
+        s = when (g) {
+            Grab.TL -> minOf(s, r, b)
+            Grab.TR -> minOf(s, w - l, b)
+            Grab.BL -> minOf(s, r, h - t)
+            else -> minOf(s, w - l, h - t)
+        }.coerceAtLeast(min)
+        when (g) {
+            Grab.TL -> { l = r - s; t = b - s }
+            Grab.TR -> { r = l + s; t = b - s }
+            Grab.BL -> { l = r - s; b = t + s }
+            else -> { r = l + s; b = t + s }
+        }
+    }
+    return ComposeRect(l, t, r, b)
+}
+
+/** Moldura quadrada do mesmo centro (para Quadrado e Círculo). */
+private fun ComposeRect.squared(): ComposeRect {
+    val s = minOf(width, height) / 2f
+    return ComposeRect(center.x - s, center.y - s, center.x + s, center.y + s)
+}
+
+@Composable
+private fun CutControls(st: EditorState, onAuto: () -> Unit) {
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         CutMode.entries.forEach { m ->
             FilterChip(selected = cutMode.value == m, onClick = { cutMode.value = m }, label = { Text(m.label) })
         }
     }
-    Text(
-        when (cutMode.value) {
-            CutMode.Lasso -> "Contorne com o dedo o que quer manter."
-            CutMode.Erase -> "Passe o dedo para apagar partes."
-            CutMode.Restore -> "Passe o dedo para trazer de volta o que foi apagado."
-        },
-        style = MaterialTheme.typography.bodySmall,
-    )
-    if (cutMode.value != CutMode.Lasso) {
-        LabeledSlider("Tamanho do pincel", brushSize.floatValue, 8f..120f) { brushSize.floatValue = it }
+    when (cutMode.value) {
+        CutMode.Frame -> {
+            Text("Arraste os cantos e os lados para ajustar; arraste o meio para mover.",
+                style = MaterialTheme.typography.bodySmall)
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FrameShape.entries.forEach { f ->
+                    FilterChip(
+                        selected = frameShape.value == f,
+                        onClick = {
+                            frameShape.value = f
+                            if (f != FrameShape.Free) st.frame = st.frame.squared()
+                        },
+                        label = { Text(f.label) },
+                    )
+                }
+            }
+            Button(onClick = { st.cropTo(st.frame, oval = frameShape.value == FrameShape.Circle) }) {
+                Text("✂️ Cortar")
+            }
+        }
+        CutMode.Lasso -> Text("Contorne com o dedo o que quer manter.", style = MaterialTheme.typography.bodySmall)
+        CutMode.Erase, CutMode.Restore -> {
+            Text(
+                if (cutMode.value == CutMode.Erase) "Passe o dedo para apagar partes."
+                else "Passe o dedo para trazer de volta o que foi apagado.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            LabeledSlider("Tamanho do pincel", brushSize.floatValue, 8f..120f) { brushSize.floatValue = it }
+        }
+    }
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OutlinedButton(onClick = onAuto) { Text("✨ Automático") }
+        OutlinedButton(onClick = { st.resetMask() }) {
+            Icon(Icons.Filled.Refresh, contentDescription = null)
+            Spacer(Modifier.width(4.dp))
+            Text("Recomeçar")
+        }
     }
 }
 

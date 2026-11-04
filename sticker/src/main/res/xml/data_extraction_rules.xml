@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+: na nuvem vão só as figurinhas prontas (limite de 25 MB);
+     na transferência direta de celular para celular vai tudo, inclusive os dados de reedição. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="edits" />
+        <exclude domain="file" path="import_tmp" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="import_tmp" />
+    </device-transfer>
+</data-extraction-rules>

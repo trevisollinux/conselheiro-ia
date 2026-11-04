@@ -33,6 +33,11 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -121,9 +126,39 @@ fun PackListScreen(
         value = withContext(Dispatchers.IO) { store.list() }
     }
     var creating by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
+    var supporting by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    val backup = rememberBackupActions(store, snackbar, onImported = { version++ })
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Conselheiro Sticker", fontWeight = FontWeight.Bold) }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Unusual Stickers", fontWeight = FontWeight.Bold) },
+                actions = {
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Mais opções") }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Exportar todos os pacotes") },
+                            onClick = {
+                                menu = false
+                                backup.export(packs.map { it.id }, backupFileName("unusual-stickers"))
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Importar backup (.zip)") },
+                            onClick = { menu = false; backup.import() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("💜 Apoiar o app (Pix)") },
+                            onClick = { menu = false; supporting = true },
+                        )
+                    }
+                },
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { creating = true },
@@ -147,6 +182,9 @@ fun PackListScreen(
                     }
                 }
             }
+            if (backup.busy()) {
+                item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            }
             if (packs.isEmpty()) {
                 item {
                     Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -154,7 +192,7 @@ fun PackListScreen(
                         Spacer(Modifier.height(12.dp))
                         Text("Nenhum pacote ainda", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "Crie um pacote, adicione de 3 a 30 figurinhas e mande para o WhatsApp. Sem anúncios, sem cobrança.",
+                            "Crie um pacote, adicione de 3 a 30 figurinhas e mande para o WhatsApp. Sem anúncios, sem cobrança.\n\nTem um backup? Menu ⋮ → Importar backup.",
                             Modifier.padding(24.dp),
                             style = MaterialTheme.typography.bodyMedium,
                         )
@@ -184,8 +222,20 @@ fun PackListScreen(
                     }
                 }
             }
+            item {
+                TextButton(onClick = { supporting = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("💜 Gostou do app? Mande qualquer valor via Pix")
+                }
+            }
             item { Spacer(Modifier.height(72.dp)) }
         }
+    }
+
+    if (supporting) {
+        SupportDialog(
+            onDismiss = { supporting = false },
+            onCopied = { scope.launch { snackbar.showSnackbar("Chave Pix copiada: $PIX_KEY") } },
+        )
     }
 
     if (creating) {
@@ -256,6 +306,7 @@ fun PackScreen(
     var adding by remember { mutableStateOf(false) }
     var menuFor by remember { mutableStateOf<String?>(null) }
     var emojiFor by remember { mutableStateOf<String?>(null) }
+    val backup = rememberBackupActions(store, snackbar)
 
     val whatsapp = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         WhatsApp.describeResult(r.resultCode, r.data)?.let { msg -> scope.launch { snackbar.showSnackbar(msg) } }
@@ -272,6 +323,9 @@ fun PackScreen(
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar") }
                 },
                 actions = {
+                    IconButton(onClick = { p?.let { backup.export(listOf(it.id), backupFileName(it.name)) } }) {
+                        Icon(Icons.Filled.Share, contentDescription = "Exportar pacote (.zip)")
+                    }
                     IconButton(onClick = { renaming = true }) { Icon(Icons.Filled.Edit, contentDescription = "Renomear") }
                     IconButton(onClick = { deleting = true }) { Icon(Icons.Filled.Delete, contentDescription = "Apagar pacote") }
                 },

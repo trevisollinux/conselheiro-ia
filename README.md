@@ -3,7 +3,7 @@
 Seu conselheiro pessoal no Android: agenda e tarefas juntas num widget, um resumo do que importa no dia
 e um assistente que anota por você, por texto ou voz.
 
-O repositório também tem o **[Conselheiro Sticker](#conselheiro-sticker-app-de-figurinhas)**, um app separado para criar
+O repositório também tem o **[Unusual Stickers](#unusual-stickers-app-de-figurinhas)**, um app separado para criar
 figurinhas do WhatsApp sem anúncios.
 
 ## O que ele faz
@@ -86,9 +86,9 @@ O QR contém o token do Todoist e a chave de IA: trate como senha.
 - `widget/`: widgets em Jetpack Glance (`AgendaWidget`, `VoiceWidget`, `ChatBar`), fundos e paisagens, atualização (`RefreshWorker`)
 - `tools/fetch_art.py`: baixa a coleção de arte de reserva usada quando o Met está fora do ar
 
-## Conselheiro Sticker (app de figurinhas)
+## Unusual Stickers (app de figurinhas)
 
-Um segundo app, no módulo `sticker/`: cria pacotes de figurinhas para o WhatsApp, **sem anúncios e sem cobrança**.
+Um segundo app, no módulo `sticker/` (antes chamado Conselheiro Sticker): cria pacotes de figurinhas para o WhatsApp, **sem anúncios e sem cobrança**.
 Tudo fica no celular, sem conta e sem servidor.
 
 - **Pacotes:** de 3 a 30 figurinhas, com nome, autor e ícone gerado da primeira figurinha. **Adicionar ao WhatsApp**
@@ -102,7 +102,7 @@ Tudo fica no celular, sem conta e sem servidor.
   Comic Neue e Permanent Marker. **Importar fonte** aceita qualquer `.ttf`/`.otf` (a Impact é da Microsoft e
   não pode vir no app, mas dá para importar a sua).
 - **Só texto:** figurinha com fundo transparente.
-- **Compartilhar:** em qualquer app, Compartilhar uma foto → Conselheiro Sticker.
+- **Compartilhar:** em qualquer app, Compartilhar uma foto → Unusual Stickers.
 - Toda figurinha guarda a foto original e os textos: **Editar** reabre tudo editável.
 
 Formato que o WhatsApp exige (o app cuida sozinho): WebP 512×512 com até 100 KB; ícone PNG 96×96.
@@ -130,8 +130,8 @@ Na grade do pacote, tocar numa figurinha abre **Editar**, **Emojis**, **Mover** 
   e a borracha funcionam normalmente.
 - Os pacotes ficam só neste celular (apagar o app apaga os pacotes); não há backup nem exportação ainda.
 
-**Instalar:** cada push que mexe em `sticker/` gera o APK no GitHub Actions (workflow *Build Conselheiro Sticker*,
-artefato `conselheiro-sticker-apk`); na `main`, também sai uma release `sticker-v…` com `ConselheiroSticker-<versão>.apk`.
+**Instalar:** cada push que mexe em `sticker/` gera o APK no GitHub Actions (workflow *Build Unusual Stickers*,
+artefato `unusual-stickers-apk`); na `main`, também sai uma release `sticker-v…` com `UnusualStickers-<versão>.apk`.
 
 Código em `sticker/src/main/java/com/trevisolli/conselheirosticker/`: `data/` (pacotes e WebP), `editor/`
 (recorte, textos, desenho da figurinha), `ui/` (telas), `whatsapp/` (ContentProvider e intent oficial).

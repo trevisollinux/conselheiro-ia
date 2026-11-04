@@ -1,4 +1,4 @@
-name: Build Conselheiro Sticker
+name: Build Unusual Stickers
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: conselheiro-sticker-apk
+          name: unusual-stickers-apk
           path: sticker/build/outputs/apk/debug/sticker-debug.apk
 
       # Na main, publica o APK numa release própria (sem tirar o "latest" do Consigliere).
@@ -41,8 +41,8 @@ jobs:
         run: |
           VERSION=$(grep -oP 'versionName = "\K[^"]+' sticker/build.gradle.kts)
           TAG="sticker-v${VERSION}-${GITHUB_RUN_NUMBER}"
-          cp sticker/build/outputs/apk/debug/sticker-debug.apk "ConselheiroSticker-${VERSION}.apk"
-          gh release create "$TAG" "ConselheiroSticker-${VERSION}.apk" --draft --latest=false \
-            --title "Conselheiro Sticker ${VERSION}" \
+          cp sticker/build/outputs/apk/debug/sticker-debug.apk "UnusualStickers-${VERSION}.apk"
+          gh release create "$TAG" "UnusualStickers-${VERSION}.apk" --draft --latest=false \
+            --title "Unusual Stickers ${VERSION}" \
             --notes "Build ${GITHUB_SHA::7}. Baixe o APK no celular e instale."
           gh release edit "$TAG" --draft=false --latest=false

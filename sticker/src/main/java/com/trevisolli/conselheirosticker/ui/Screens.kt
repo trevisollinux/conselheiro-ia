@@ -123,7 +123,7 @@ fun PackListScreen(
     var creating by remember { mutableStateOf(false) }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Conselheiro Sticker", fontWeight = FontWeight.Bold) }) },
+        topBar = { TopAppBar(title = { Text("Unusual Stickers", fontWeight = FontWeight.Bold) }) },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { creating = true },

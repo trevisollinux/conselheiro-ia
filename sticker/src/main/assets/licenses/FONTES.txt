@@ -1,4 +1,4 @@
-Fontes incluídas no Conselheiro Sticker (todas gratuitas e livres para distribuir):
+Fontes incluídas no Unusual Stickers (todas gratuitas e livres para distribuir):
 
 - Anton, Bebas Neue, Comic Neue, Bangers, Archivo Black: SIL Open Font License 1.1 (OFL-Anton.txt)
 - Permanent Marker, Luckiest Guy: Apache License 2.0 (LICENSE-Apache-2.0.txt)

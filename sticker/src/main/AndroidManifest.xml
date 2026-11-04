@@ -13,7 +13,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.ConselheiroSticker">
+        android:theme="@style/Theme.UnusualStickers">
 
         <!-- Baixa o modelo de recorte junto com a instalação (Google Play services) -->
         <meta-data

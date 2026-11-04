@@ -2,14 +2,17 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FFFFFFFF"
-        android:pathData="M38,32h32a6,6 0,0 1,6 6v20l-18,18h-20a6,6 0,0 1,-6 -6v-32a6,6 0,0 1,6 -6z" />
-    <path android:fillColor="#FFFFD23F"
-        android:pathData="M76,58l-18,18v-12a6,6 0,0 1,6 -6z" />
-    <path android:fillColor="#FF1B1530"
-        android:pathData="M45,46m-3.5,0a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0" />
-    <path android:fillColor="#FF1B1530"
-        android:pathData="M61,46m-3.5,0a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0" />
-    <path android:fillColor="#FF1B1530"
-        android:pathData="M42,56h22a11,9 0,0 1,-22 0z" />
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="0.72" android:scaleY="0.72">
+        <group android:pivotX="54" android:pivotY="56" android:rotation="-10">
+            <path android:pathData="M36,30v28a18,18 0 0,0 36,0v-28"
+                android:strokeColor="#FFFFFFFF" android:strokeWidth="24" android:strokeLineCap="round" />
+            <path android:pathData="M36,30v28a18,18 0 0,0 36,0v-28"
+                android:strokeColor="#FFEC407A" android:strokeWidth="13" android:strokeLineCap="round" />
+            <!-- Ponta de baixo descolando, como uma figurinha: corta a curva e dobra para dentro -->
+            <path android:fillColor="#FF1B1530" android:pathData="M100,47.4L47.4,100L110,110z" />
+            <path android:fillColor="#4D000000" android:pathData="M83.4,63.95Q61.2,65.2 59.95,87.4z" />
+            <path android:fillColor="#FFFFD23F" android:pathData="M83.4,63.95Q64.7,68.7 59.95,87.4z" />
+        </group>
+        <path android:fillColor="#FFFFD23F" android:pathData="M80,24l3,7l7,3l-7,3l-3,7l-3,-7l-7,-3l7,-3z" />
+    </group>
 </vector>

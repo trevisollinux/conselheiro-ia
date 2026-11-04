@@ -12,8 +12,8 @@ android {
         applicationId = "com.trevisolli.conselheirosticker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4"
+        versionCode = 5
+        versionName = "0.5"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }

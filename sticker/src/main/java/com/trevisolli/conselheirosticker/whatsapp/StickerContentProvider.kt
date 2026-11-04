@@ -59,7 +59,7 @@ class StickerContentProvider : ContentProvider() {
             c.addRow(
                 arrayOf<Any>(
                     p.id, p.name, p.publisher, p.trayFile, "", "", "", "", "", "",
-                    p.version.toString(), 0, 0,
+                    p.version.toString(), 0, if (p.animated) 1 else 0,
                 )
             )
         }

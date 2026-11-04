@@ -103,11 +103,15 @@ Tudo fica no celular, sem conta e sem servidor.
   Comic Neue e Permanent Marker. **Importar fonte** aceita qualquer `.ttf`/`.otf` (a Impact é da Microsoft e
   não pode vir no app, mas dá para importar a sua).
 - **Só texto:** figurinha com fundo transparente.
-- **Compartilhar:** em qualquer app, Compartilhar uma foto → Unusual Stickers.
+- **Animadas (GIF e vídeo):** crie um pacote **🎞️ Animadas**, escolha um GIF ou vídeo e o trecho (até 10 s).
+  O recorte (retângulo, círculo, laço, borracha), a borda e os textos valem para todos os quadros; a prévia anima
+  nas abas Ajustar e Texto. O app ajusta quadros e qualidade sozinho para caber nos 500 KB do WhatsApp.
+- **Compartilhar:** em qualquer app, Compartilhar uma foto, GIF ou vídeo → Unusual Stickers.
 - Toda figurinha guarda a foto original e os textos: **Editar** reabre tudo editável.
 - **Backup sem cadastro:** exporta os pacotes num `.zip` e importa de volta (detalhes abaixo).
 
-Formato que o WhatsApp exige (o app cuida sozinho): WebP 512×512 com até 100 KB; ícone PNG 96×96.
+Formato que o WhatsApp exige (o app cuida sozinho): WebP 512×512 com até 100 KB (animada: WebP animado com até
+500 KB e 10 s); ícone PNG 96×96. Um pacote é só de paradas ou só de animadas.
 
 ### Como usar
 
@@ -142,7 +146,8 @@ O Unusual Stickers é grátis e sem anúncios. Gostou do app? Mande qualquer val
 
 ### Limitações (por enquanto)
 
-- Só figurinhas paradas; animadas (GIF/vídeo) ainda não.
+- Animadas: até 50 quadros (10 por segundo); trechos longos ficam com menos quadros. O recorte automático não
+  funciona em animações (use retângulo ou laço).
 - O recorte automático usa o Google Play services: na primeira vez o modelo pode demorar a baixar. Sem ele, o laço
   e a borracha funcionam normalmente.
 - O backup é manual (Exportar); o app não envia nada sozinho para a nuvem além do backup automático do Android.

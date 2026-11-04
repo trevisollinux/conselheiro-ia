@@ -16,7 +16,7 @@ data class FontOption(val key: String, val label: String)
 class Fonts(context: Context) {
     private val ctx = context.applicationContext
     private val dir = File(ctx.filesDir, "fonts").apply { mkdirs() }
-    private val cache = HashMap<String, Typeface>()
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, Typeface>()
 
     private val builtIn = linkedMapOf(
         "anton" to ("Anton (tipo Impact)" to R.font.anton),

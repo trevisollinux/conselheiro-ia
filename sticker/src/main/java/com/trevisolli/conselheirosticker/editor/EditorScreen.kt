@@ -49,6 +49,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
+import com.trevisolli.conselheirosticker.data.AnimatedWebp
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -108,6 +111,8 @@ sealed interface EditorSource {
     data class Photo(val uri: Uri) : EditorSource
     data class Existing(val file: String) : EditorSource
     data object TextOnly : EditorSource
+    /** GIF ou vídeo para figurinha animada. */
+    data class Animation(val uri: Uri) : EditorSource
 }
 
 private enum class EditTab(val label: String) { Cut("Recortar"), Adjust("Ajustar"), Text("Texto") }
@@ -137,9 +142,36 @@ fun EditorScreen(
     var busy by remember { mutableStateOf<String?>(null) }
     var confirmExit by remember { mutableStateOf(false) }
     var fontOptions by remember { mutableStateOf(fonts.options()) }
+    var clip by remember { mutableStateOf<ClipInfo?>(null) }
+
+    fun applyOutlinePrefs(st: EditorState) {
+        // Usa a última escolha de borda (com ou sem contorno branco).
+        val prefs = context.getSharedPreferences(OUTLINE_PREFS, android.content.Context.MODE_PRIVATE)
+        st.outline = prefs.getBoolean("outline_on", false)
+        st.outlineWidth = prefs.getFloat("outline_width", 10f)
+        st.outlineColor = prefs.getInt("outline_color", android.graphics.Color.WHITE)
+    }
+
+    fun loadClip(info: ClipInfo, startMs: Int, endMs: Int) {
+        scope.launch {
+            busy = "Lendo os quadros…"
+            try {
+                val c = Clips.extract(context, info, startMs, endMs) { p -> busy = "Lendo os quadros… ${(p * 100).toInt()}%" }
+                state = EditorState(c.frames[0], null, c.frames, c.durations).also { applyOutlinePrefs(it) }
+            } catch (e: Exception) {
+                snackbar.showSnackbar("Não consegui ler a animação: ${e.message}")
+            } finally {
+                busy = null
+            }
+        }
+    }
 
     fun runAuto(st: EditorState) {
         scope.launch {
+            if (st.isAnimated) {
+                snackbar.showSnackbar("O recorte automático não funciona em animações. Use o retângulo ou o laço.")
+                return@launch
+            }
             busy = "Recortando o fundo…"
             try {
                 val conf = withContext(Dispatchers.Default) { Images.segment(st.source) }
@@ -166,17 +198,16 @@ fun EditorScreen(
                         // Figurinha sem dados de edição: usa a própria imagem (já recortada) como foto.
                         EditorState(bmp).apply { outline = false; tab = EditTab.Text }
                     }
-                is EditorSource.Photo -> EditorState(Images.load(context, source.uri)).apply {
-                    // Usa a última escolha de borda (com ou sem contorno branco).
-                    val prefs = context.getSharedPreferences(OUTLINE_PREFS, android.content.Context.MODE_PRIVATE)
-                    outline = prefs.getBoolean("outline_on", false)
-                    outlineWidth = prefs.getFloat("outline_width", 10f)
-                    outlineColor = prefs.getInt("outline_color", android.graphics.Color.WHITE)
+                is EditorSource.Photo -> EditorState(Images.load(context, source.uri)).also { applyOutlinePrefs(it) }
+                is EditorSource.Animation -> {
+                    // Primeiro escolhe o trecho; os quadros são lidos depois.
+                    clip = Clips.probe(context, source.uri)
+                    null
                 }
             }
-            if (state == null) snackbar.showSnackbar("Não consegui abrir esta figurinha")
+            if (state == null && clip == null) snackbar.showSnackbar("Não consegui abrir esta figurinha")
         } catch (e: Exception) {
-            snackbar.showSnackbar("Não consegui abrir a imagem")
+            snackbar.showSnackbar(e.message?.takeIf { source is EditorSource.Animation } ?: "Não consegui abrir a imagem")
         } finally {
             if (busy == "Abrindo…") busy = null
         }
@@ -200,13 +231,49 @@ fun EditorScreen(
         scope.launch {
             busy = "Salvando…"
             try {
-                val bmp = Render.export(st, fonts)
-                val bytes = withContext(Dispatchers.Default) { WebpEncoder.encode(bmp) }
-                bmp.recycle()
-                withContext(Dispatchers.IO) {
-                    val replace = (source as? EditorSource.Existing)?.file
-                    val file = store.putSticker(packId, bytes, Emojis.parse(st.emojis), replace)
-                    st.save(store.editDir(packId, file))
+                val animatedPack = withContext(Dispatchers.IO) { store.get(packId)?.animated == true }
+                if (animatedPack != st.isAnimated) {
+                    busy = null
+                    snackbar.showSnackbar(
+                        if (animatedPack) "Este pacote é de figurinhas animadas: use um GIF ou vídeo."
+                        else "Animação só entra em pacote animado."
+                    )
+                    return@launch
+                }
+                val replace = (source as? EditorSource.Existing)?.file
+                if (st.isAnimated) {
+                    val frames = st.frames!!
+                    val bounds = st.contentBounds()
+                    val rendered = withContext(Dispatchers.Default) {
+                        frames.indices.map { i ->
+                            busy = "Preparando quadros… ${(i + 1) * 100 / frames.size}%"
+                            val cut = st.cutoutFor(i, bounds)
+                            Render.export(st, fonts, cut).also { cut?.recycle() }
+                        }
+                    }
+                    try {
+                        busy = "Comprimindo para o WhatsApp…"
+                        val result = withContext(Dispatchers.Default) { AnimatedWebp.encodeFitting(rendered, st.durations!!) }
+                        if (result.bytes.size > AnimatedWebp.MAX_BYTES) {
+                            busy = null
+                            snackbar.showSnackbar("A animação ficou grande demais para o WhatsApp. Escolha um trecho mais curto.")
+                            return@launch
+                        }
+                        withContext(Dispatchers.IO) {
+                            val file = store.putSticker(packId, result.bytes, Emojis.parse(st.emojis), replace, still = rendered[0])
+                            st.save(store.editDir(packId, file))
+                        }
+                    } finally {
+                        rendered.forEach { it.recycle() }
+                    }
+                } else {
+                    val bmp = Render.export(st, fonts)
+                    val bytes = withContext(Dispatchers.Default) { WebpEncoder.encode(bmp) }
+                    bmp.recycle()
+                    withContext(Dispatchers.IO) {
+                        val file = store.putSticker(packId, bytes, Emojis.parse(st.emojis), replace)
+                        st.save(store.editDir(packId, file))
+                    }
                 }
                 onDone(true)
             } catch (e: Exception) {
@@ -217,6 +284,17 @@ fun EditorScreen(
     }
 
     BackHandler { confirmExit = true }
+
+    // Prévia animada nas abas Ajustar e Texto (para enquanto salva).
+    LaunchedEffect(state, tab, busy) {
+        val st = state ?: return@LaunchedEffect
+        if (!st.isAnimated || tab == EditTab.Cut || busy != null) return@LaunchedEffect
+        val ds = st.durations!!
+        while (true) {
+            kotlinx.coroutines.delay(ds[st.frameIndex.coerceIn(0, ds.lastIndex)].toLong().coerceAtLeast(30))
+            st.frameIndex = (st.frameIndex + 1) % ds.size
+        }
+    }
 
     if (confirmExit) {
         AlertDialog(
@@ -261,8 +339,17 @@ fun EditorScreen(
                 }
             }
             if (st == null) {
+                val info = clip
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    if (busy != null) CircularProgressIndicator() else Text("Nada para editar")
+                    when {
+                        busy != null -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Spacer(Modifier.height(8.dp))
+                            Text(busy.orEmpty())
+                        }
+                        info != null -> TrimPanel(info) { a, b -> loadClip(info, a, b) }
+                        else -> Text("Nada para editar")
+                    }
                 }
                 return@Column
             }
@@ -294,11 +381,62 @@ fun EditorScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 when (tab) {
-                    EditTab.Cut -> CutControls(st, onAuto = { runAuto(st) })
+                    EditTab.Cut -> {
+                        if (st.isAnimated) {
+                            Text(
+                                "Animação com ${st.frames!!.size} quadros. O recorte vale para todos; a prévia anima em Ajustar e Texto.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        CutControls(st, onAuto = { runAuto(st) })
+                    }
                     EditTab.Adjust -> AdjustControls(st)
                     EditTab.Text -> TextControls(st, fontOptions, fonts, onImportFont = { fontPicker.launch(arrayOf("*/*")) })
                 }
             }
+        }
+    }
+}
+
+/** Escolha do trecho do GIF/vídeo (até 10 segundos). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TrimPanel(info: ClipInfo, onConfirm: (startMs: Int, endMs: Int) -> Unit) {
+    val total = info.durationMs.toFloat()
+    val maxLen = Clips.MAX_CLIP_MS.toFloat()
+    var range by remember(info) { mutableStateOf(0f..minOf(total, 4000f)) }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Escolha o trecho", style = MaterialTheme.typography.titleMedium)
+        info.preview?.let {
+            androidx.compose.foundation.Image(
+                it.asImageBitmap(), contentDescription = null,
+                modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(12.dp)),
+            )
+        }
+        val len = range.endInclusive - range.start
+        Text("De %.1f s a %.1f s (%.1f s)".format(range.start / 1000, range.endInclusive / 1000, len / 1000))
+        RangeSlider(
+            value = range,
+            onValueChange = { r ->
+                // Janela de no máximo 10 s: mexer uma ponta arrasta a outra.
+                range = when {
+                    r.endInclusive - r.start <= maxLen -> r
+                    r.start != range.start -> r.start..(r.start + maxLen)
+                    else -> (r.endInclusive - maxLen)..r.endInclusive
+                }
+            },
+            valueRange = 0f..total,
+        )
+        Text(
+            "Trechos curtos (2 a 4 s) ficam mais fluidos: o WhatsApp aceita até 500 KB por figurinha animada.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Button(onClick = { onConfirm(range.start.toInt(), range.endInclusive.toInt()) }, enabled = len >= 200f) {
+            Text("Usar este trecho")
         }
     }
 }

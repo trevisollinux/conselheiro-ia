@@ -19,10 +19,13 @@ object Render {
     /** Margem de segurança que o WhatsApp recomenda (16 px em volta). */
     const val MARGIN = 16f
 
-    fun draw(canvas: Canvas, sizePx: Float, st: EditorState, fonts: Fonts, showSelection: Boolean) {
+    fun draw(
+        canvas: Canvas, sizePx: Float, st: EditorState, fonts: Fonts, showSelection: Boolean,
+        image: Bitmap? = st.cutout(),
+    ) {
         canvas.save()
         canvas.scale(sizePx / SIZE, sizePx / SIZE)
-        st.cutout()?.let { img ->
+        image?.let { img ->
             val fit = (SIZE - MARGIN * 2) / max(img.width, img.height)
             canvas.save()
             canvas.translate(SIZE / 2 + st.offset.x, SIZE / 2 + st.offset.y)
@@ -38,9 +41,9 @@ object Render {
         canvas.restore()
     }
 
-    fun export(st: EditorState, fonts: Fonts): Bitmap {
+    fun export(st: EditorState, fonts: Fonts, image: Bitmap? = st.cutout()): Bitmap {
         val bmp = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
-        draw(Canvas(bmp), SIZE, st, fonts, showSelection = false)
+        draw(Canvas(bmp), SIZE, st, fonts, showSelection = false, image = image)
         return bmp
     }
 

@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "agenda-widget"
 include(":app")
+include(":sticker")

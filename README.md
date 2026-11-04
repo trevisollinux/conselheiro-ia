@@ -82,3 +82,29 @@ O QR contém o token do Todoist e a chave de IA: trate como senha.
   leitura de notificações, Notion, voz (`VoiceRecorder`, `VoiceQueue`)
 - `widget/`: widgets em Jetpack Glance (`AgendaWidget`, `VoiceWidget`, `ChatBar`), fundos e paisagens, atualização (`RefreshWorker`)
 - `tools/fetch_art.py`: baixa a coleção de arte de reserva usada quando o Met está fora do ar
+
+## Conselheiro Sticker (app de figurinhas)
+
+Um segundo app, no módulo `sticker/`: cria pacotes de figurinhas para o WhatsApp, **sem anúncios e sem cobrança**.
+Tudo fica no celular, sem conta e sem servidor.
+
+- **Pacotes:** de 3 a 30 figurinhas, com nome, autor e ícone gerado da primeira figurinha. **Adicionar ao WhatsApp**
+  (ou WhatsApp Business) pela integração oficial; depois de editar, toque de novo para atualizar.
+- **Recortar:** ✨ recorte automático do fundo (ML Kit, no aparelho), **laço** (contorne o que fica),
+  **borracha** e **pincel** (devolve o que foi apagado), com Desfazer.
+- **Ajustar:** mover, zoom e giro com os dedos; contorno de adesivo (branco, preto ou colorido) com espessura.
+- **Texto de meme:** vários textos, arrastar, pinça para tamanho e giro, cor da letra e da borda, CAIXA ALTA.
+  Fontes livres embutidas: Anton (parecida com a Impact), Bebas Neue, Archivo Black, Bangers, Luckiest Guy,
+  Comic Neue e Permanent Marker. **Importar fonte** aceita qualquer `.ttf`/`.otf` (a Impact é da Microsoft e
+  não pode vir no app, mas dá para importar a sua).
+- **Só texto:** figurinha com fundo transparente.
+- **Compartilhar:** em qualquer app, Compartilhar uma foto → Conselheiro Sticker.
+- Toda figurinha guarda a foto original e os textos: **Editar** reabre tudo editável.
+
+Formato que o WhatsApp exige (o app cuida sozinho): WebP 512×512 com até 100 KB; ícone PNG 96×96.
+
+**Instalar:** cada push que mexe em `sticker/` gera o APK no GitHub Actions (workflow *Build Conselheiro Sticker*,
+artefato `conselheiro-sticker-apk`); na `main`, também sai uma release `sticker-v…` com `ConselheiroSticker-<versão>.apk`.
+
+Código em `sticker/src/main/java/com/trevisolli/conselheirosticker/`: `data/` (pacotes e WebP), `editor/`
+(recorte, textos, desenho da figurinha), `ui/` (telas), `whatsapp/` (ContentProvider e intent oficial).

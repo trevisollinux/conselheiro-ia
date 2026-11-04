@@ -7,6 +7,8 @@ on:
     paths-ignore:
       - "README.md"
       - "docs/**"
+      - "sticker/**"
+      - ".github/workflows/sticker.yml"
   workflow_dispatch:
 
 permissions:
@@ -29,7 +31,7 @@ jobs:
         run: python3 tools/fetch_art.py app/src/main/assets/art || true
 
       - name: Build
-        run: ./gradlew --no-daemon assembleDebug
+        run: ./gradlew --no-daemon :app:assembleDebug
 
       - uses: actions/upload-artifact@v4
         with:
@@ -46,7 +48,7 @@ jobs:
         run: |
           if [ -z "$UPLOAD_KEYSTORE_BASE64" ]; then echo "Sem chave de upload; pulando o .aab"; exit 0; fi
           echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.keystore"
-          UPLOAD_KEYSTORE_PATH="$RUNNER_TEMP/upload.keystore" ./gradlew --no-daemon bundleRelease
+          UPLOAD_KEYSTORE_PATH="$RUNNER_TEMP/upload.keystore" ./gradlew --no-daemon :app:bundleRelease
           rm -f "$RUNNER_TEMP/upload.keystore"
 
       - uses: actions/upload-artifact@v4

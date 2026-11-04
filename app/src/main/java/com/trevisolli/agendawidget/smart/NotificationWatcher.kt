@@ -114,7 +114,13 @@ class NotificationWatcher : NotificationListenerService() {
                 Intent(context, com.trevisolli.agendawidget.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
+            val track = PendingIntent.getActivity(
+                context, code.hashCode() + 1,
+                com.trevisolli.agendawidget.ActionActivity.intent(context, QuickAction(QuickAction.TRACK, "Rastrear", code)),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
             val n = NotificationCompat.Builder(context, CHANNEL)
+                .addAction(0, "📦 Rastrear", track)
                 .setSmallIcon(R.drawable.ic_launcher_monochrome)
                 .setContentTitle("📦 Encomenda $code")
                 .setContentText("Guardei o rastreio · $origin")
@@ -143,7 +149,15 @@ class NotificationWatcher : NotificationListenerService() {
                 intent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
+            // Botões na própria notificação: cria ou ignora sem abrir o app.
+            fun broadcast(action: String, code: Int) = PendingIntent.getBroadcast(
+                context, s.id.hashCode() + code,
+                Intent(context, SuggestionReceiver::class.java).setAction(action).putExtra(SuggestionActions.EXTRA_ID, s.id),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
             val notification = NotificationCompat.Builder(context, CHANNEL)
+                .addAction(0, if (s.kind == Kind.TASK) "✅ Criar tarefa" else "📅 Criar", broadcast(SuggestionActions.ACTION_CREATE, 1))
+                .addAction(0, "Ignorar", broadcast(SuggestionActions.ACTION_DISMISS, 2))
                 .setSmallIcon(R.drawable.ic_launcher_monochrome)
                 .setContentTitle("📌 ${s.title}")
                 .setContentText(listOfNotNull(Format.suggestionWhen(s.date, s.time), s.origin).joinToString(" · "))

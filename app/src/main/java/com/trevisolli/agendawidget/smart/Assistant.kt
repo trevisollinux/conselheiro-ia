@@ -48,6 +48,8 @@ object Assistant {
         data class Call(val to: String) : Action()
         data class Route(val place: String) : Action()
         data class Track(val code: String) : Action()
+        data class RemindAt(val place: String, val text: String) : Action()
+        data class SavePlace(val name: String) : Action()
     }
 
     private data class Plan(val reply: String?, val actions: List<Action>, val heard: String? = null)
@@ -145,6 +147,26 @@ object Assistant {
                         buttons += QuickAction(QuickAction.CALL, "📞 Ligar para $who", a.to)
                     }
                     is Action.Route -> buttons += QuickAction(QuickAction.MAP, "🗺️ Rota até ${a.place}", a.place)
+                    is Action.RemindAt -> {
+                        // Nome genérico ("mercado") só vale se já foi salvo; endereço ou nome composto dá para procurar no mapa.
+                        val searchable = a.place.trim().contains(' ') || a.place.any { it.isDigit() }
+                        val p = Places.find(context, a.place)
+                            ?: (if (searchable) Places.geocode(context, a.place) else null)?.also { Places.addPlace(context, it) }
+                        if (p == null) {
+                            problems += "ainda não sei onde fica \"${a.place}\". Quando estiver lá, diga \"salvar este lugar como ${a.place}\""
+                        } else {
+                            Places.addReminder(context, p, a.text)
+                            done += "📍 Ao chegar em ${p.name}: ${a.text}"
+                            if (!Places.hasFine(context) || !Places.hasBackground(context)) {
+                                problems += "para avisar com o app fechado, libere a localização \"o tempo todo\" em Configurações → Lugares"
+                            }
+                        }
+                    }
+                    is Action.SavePlace -> {
+                        val p = Places.saveHere(context, a.name)
+                        if (p == null) problems += "não consegui pegar sua localização (libere em Configurações → Lugares)"
+                        else done += "📍 Lugar salvo: ${p.name}"
+                    }
                     is Action.Track -> {
                         Parcels.scan(context, a.code, "Conversa")
                         buttons += QuickAction(QuickAction.TRACK, "📦 Rastrear ${a.code}", a.code)
@@ -289,9 +311,19 @@ object Assistant {
         RegexOption.IGNORE_CASE,
     )
 
-    /** Mensagem, ligação, rota e rastreio sem IA. */
+    private val SAVE_PLACE = Regex("^(salva|salvar|guarda|guardar)\\s+(este|esse|aqui|o)?\\s*(lugar\\s+)?(aqui\\s+)?como\\s+(.+)$", RegexOption.IGNORE_CASE)
+    private val REMIND_AT = Regex(
+        "^quando\\s+(eu\\s+)?(chegar|estiver)\\s+(no|na|em|ao|à|nos|nas)\\s+(.+?)[,]?\\s+(me\\s+)?(lembra|lembre|lembrar|avisa|avise)(\\s+de|\\s+que)?\\s+(.+)$",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Mensagem, ligação, rota, rastreio e lugares sem IA. */
     private fun rulesActions(text: String): Plan? {
         val t = text.trim().trimEnd('.', '!')
+        SAVE_PLACE.find(t)?.let { return Plan(null, listOf(Action.SavePlace(it.groupValues[5]))) }
+        REMIND_AT.find(t)?.let { m ->
+            return Plan(null, listOf(Action.RemindAt(m.groupValues[4], m.groupValues[8].replaceFirstChar { c -> c.uppercase() })))
+        }
         Parcels.find(t).takeIf { it.isNotEmpty() }?.let { codes -> return Plan(null, codes.map { Action.Track(it) }) }
         CALL.find(t)?.let { return Plan(null, listOf(Action.Call(it.groupValues[3]))) }
         ROUTE.find(t)?.let { return Plan(null, listOf(Action.Route(it.groupValues[5]))) }
@@ -359,7 +391,10 @@ object Assistant {
             "{\"type\":\"send_message\",\"to\": nome do contato ou número,\"text\": a mensagem pronta, em 1ª pessoa,\"app\":\"whatsapp\" ou \"sms\"}; " +
             "{\"type\":\"call\",\"to\": nome ou número}; " +
             "{\"type\":\"route\",\"place\": endereço ou nome do lugar}; " +
-            "{\"type\":\"track\",\"code\": código de rastreio, ex. AB123456789BR}. " +
+            "{\"type\":\"track\",\"code\": código de rastreio, ex. AB123456789BR}; " +
+            "{\"type\":\"remind_at_place\",\"place\": nome do lugar (ex. mercado, casa) ou endereço,\"text\": o lembrete}; " +
+            "{\"type\":\"save_place\",\"name\": nome para o lugar onde a pessoa está agora}. " +
+            "Use remind_at_place para \"quando eu chegar no X, me lembra de Y\" e save_place para \"salva aqui como X\". " +
             "send_message/call/route/track só preparam um botão; a pessoa confirma. Para \"avisa a Helena que…\", use send_message " +
             "com o texto já escrito do jeito que a pessoa mandaria. " +
             "Regras: se o usuário falar em agenda/calendário, consulta, reunião, exame ou algo para comparecer, use create_event. " +
@@ -422,6 +457,16 @@ object Assistant {
                 }
                 "track" -> {
                     Parcels.find(a.optString("code")).forEach { actions += Action.Track(it) }
+                    continue
+                }
+                "remind_at_place" -> {
+                    val place = a.optString("place").trim()
+                    val txt = a.optString("text").trim()
+                    if (place.isNotBlank() && txt.isNotBlank()) actions += Action.RemindAt(place, txt)
+                    continue
+                }
+                "save_place" -> {
+                    a.optString("name").trim().takeIf { it.isNotBlank() }?.let { actions += Action.SavePlace(it) }
                     continue
                 }
             }

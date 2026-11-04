@@ -18,6 +18,10 @@ figurinhas do WhatsApp sem anúncios.
   - **Repetição:** "dar o remédio todo dia às 8h" vira tarefa recorrente.
 - **Ações de um toque:** "avisa a Helena que vou atrasar" prepara a mensagem no WhatsApp; "liga pro dentista" disca;
   "como chego no shopping" abre a rota. O Consigliere prepara e você confirma: nada é enviado sozinho.
+- **Aniversários 🎂:** de manhã, aviso dos aniversários dos contatos com "Mandar parabéns" (mensagem pronta no WhatsApp).
+- **Lembrete por lugar 📍:** "quando eu chegar no mercado, me lembra da lista de compras"; ensine um lugar com
+  "salva aqui como mercado" (endereços funcionam direto). Precisa da localização "o tempo todo".
+- **Botões nas notificações:** sugestões têm "Criar" e "Ignorar"; encomendas, "Rastrear"; aniversários, "Mandar parabéns".
 - **Encomendas 📦:** códigos de rastreio (ex.: AB123456789BR) achados em mensagens, prints ou na conversa ficam numa
   lista; "Rastrear" copia o código e abre o app ou o site dos Correios.
 - **Voz:** usa o reconhecimento de voz do aparelho (o mesmo do teclado), que funciona sem IA. Sem esse serviço,

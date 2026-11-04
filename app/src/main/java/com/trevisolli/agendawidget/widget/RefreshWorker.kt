@@ -20,6 +20,8 @@ class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         AgendaWidget.push(applicationContext, snapshot)
         // O gatilho de mudança na agenda dispara uma vez só; rearma a cada execução.
         watchCalendar(applicationContext)
+        // Aniversários do dia (uma vez, a partir das 8h).
+        runCatching { com.trevisolli.agendawidget.smart.Birthdays.notifyToday(applicationContext) }
         // Áudio esperando a IA: garante uma nova tentativa a cada atualização.
         if (com.trevisolli.agendawidget.smart.VoiceQueue.pending(applicationContext).isNotEmpty()) {
             com.trevisolli.agendawidget.smart.VoiceQueue.schedule(applicationContext)

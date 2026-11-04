@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Android 11+: enxergar o serviço de reconhecimento de voz (o mesmo do teclado) -->
     <queries>
@@ -46,6 +49,22 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Ponte invisível: botão de notificação → WhatsApp, ligar, rota, rastrear -->
+        <activity
+            android:name=".ActionActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <receiver android:name=".smart.SuggestionReceiver" android:exported="false" />
+        <receiver android:name=".smart.GeofenceReceiver" android:exported="false" />
+        <receiver android:name=".smart.BootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <!-- Gravador: toque no widget, fale e pronto -->
         <activity
             android:name=".VoiceActivity"

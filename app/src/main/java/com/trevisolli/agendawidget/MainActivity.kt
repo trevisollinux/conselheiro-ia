@@ -150,6 +150,7 @@ class MainActivity : ComponentActivity() {
         )
         RefreshWorker.schedule(this)
         Briefing.scheduleAll(this)
+        com.trevisolli.agendawidget.smart.Places.register(this)
         setContent {
             ConsigliereTheme {
                 Surface(modifier = Modifier.fillMaxSize()) { AppRoot() }
@@ -197,6 +198,21 @@ class MainActivity : ComponentActivity() {
         var showAllSuggestions by remember { mutableStateOf(false) }
         val suggestions = remember(resumeCount, snapshot, suggestionsVersion) { SuggestionStore.all(this) }
         val parcels = remember(resumeCount, snapshot, suggestionsVersion) { com.trevisolli.agendawidget.smart.Parcels.all(this) }
+        val birthdays = remember(resumeCount) { com.trevisolli.agendawidget.smart.Birthdays.on(this) }
+        var placesVersion by remember { mutableStateOf(0) }
+        val savedPlaces = remember(resumeCount, placesVersion) { com.trevisolli.agendawidget.smart.Places.places(this) }
+        val placeReminders = remember(resumeCount, placesVersion) { com.trevisolli.agendawidget.smart.Places.reminders(this) }
+        var fineOk by remember(resumeCount) { mutableStateOf(com.trevisolli.agendawidget.smart.Places.hasFine(this)) }
+        val bgOk = remember(resumeCount, fineOk) { com.trevisolli.agendawidget.smart.Places.hasBackground(this) }
+        var bgDisclosure by remember { mutableStateOf(false) }
+        val finePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+            fineOk = it
+            com.trevisolli.agendawidget.smart.Places.register(this)
+        }
+        val bgPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+            placesVersion++
+            com.trevisolli.agendawidget.smart.Places.register(this)
+        }
         var contactsOk by remember { mutableStateOf(com.trevisolli.agendawidget.smart.QuickActions.hasContacts(this)) }
         val contactsPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { contactsOk = it }
         val listenerOn = remember(resumeCount) { NotificationWatcher.isEnabled(this) }
@@ -944,6 +960,59 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            Section("Lugares") {
+                Text(
+                    "Lembretes ao chegar: \"quando eu chegar no mercado, me lembra da lista de compras\". " +
+                        "Para ensinar um lugar, esteja nele e diga \"salva aqui como mercado\" (endereços completos funcionam direto).",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                when {
+                    !fineOk -> OutlinedButton(onClick = { finePermission.launch(Manifest.permission.ACCESS_FINE_LOCATION) }) {
+                        Text("Permitir localização")
+                    }
+                    !bgOk -> OutlinedButton(onClick = { bgDisclosure = true }) { Text("Avisar com o app fechado") }
+                    else -> Text("✅ Localização liberada, inclusive com o app fechado.")
+                }
+                savedPlaces.forEach { pl ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("📍 ${pl.name}", modifier = Modifier.weight(1f))
+                        IconButton(onClick = {
+                            com.trevisolli.agendawidget.smart.Places.removePlace(this@MainActivity, pl.name)
+                            placesVersion++
+                        }) { Text("✕", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
+                placeReminders.forEach { r ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("⏰ ${r.place}: ${r.text}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        IconButton(onClick = {
+                            com.trevisolli.agendawidget.smart.Places.removeReminder(this@MainActivity, r.id)
+                            placesVersion++
+                        }) { Text("✕", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
+                if (bgDisclosure) {
+                    AlertDialog(
+                        onDismissRequest = { bgDisclosure = false },
+                        title = { Text("Localização com o app fechado") },
+                        text = {
+                            Text(
+                                "Para avisar quando você chegar a um lugar salvo, o Consigliere usa sua localização mesmo com o app " +
+                                    "fechado. Ela é usada só no celular, para checar os lugares dos seus lembretes, e não é enviada a " +
+                                    "ninguém. Na próxima tela, escolha \"Permitir o tempo todo\".",
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                bgDisclosure = false
+                                if (Build.VERSION.SDK_INT >= 29) bgPermission.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                            }) { Text("Continuar") }
+                        },
+                        dismissButton = { TextButton(onClick = { bgDisclosure = false }) { Text("Agora não") } },
+                    )
+                }
+            }
+
             Section("Compartilhar com o Consigliere") {
                 Text(
                     "Em qualquer app, toque em Compartilhar → Consigliere para virar evento ou tarefa. Vale para texto e print.",
@@ -1080,6 +1149,29 @@ class MainActivity : ComponentActivity() {
                 onToggle = { item, done -> toggleTask(item, done) },
                 onOpen = { detail = it },
             )
+
+            if (birthdays.isNotEmpty()) {
+                Section("🎂 Aniversários hoje") {
+                    birthdays.forEach { b ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                b.name + (b.age?.let { " · $it anos" } ?: ""),
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = {
+                                com.trevisolli.agendawidget.smart.QuickActions.launch(
+                                    this@MainActivity,
+                                    com.trevisolli.agendawidget.smart.QuickAction(
+                                        com.trevisolli.agendawidget.smart.QuickAction.WHATSAPP, "", b.name,
+                                        com.trevisolli.agendawidget.smart.Birthdays.greeting(b),
+                                    ),
+                                )
+                            }) { Text("🎉 Parabéns") }
+                        }
+                    }
+                }
+            }
 
             if (parcels.isNotEmpty()) {
                 Section("📦 Encomendas") {

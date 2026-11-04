@@ -169,7 +169,7 @@ fun EditorScreen(
                 is EditorSource.Photo -> EditorState(Images.load(context, source.uri)).apply {
                     // Usa a última escolha de borda (com ou sem contorno branco).
                     val prefs = context.getSharedPreferences(OUTLINE_PREFS, android.content.Context.MODE_PRIVATE)
-                    outline = prefs.getBoolean("outline_on", true)
+                    outline = prefs.getBoolean("outline_on", false)
                     outlineWidth = prefs.getFloat("outline_width", 10f)
                     outlineColor = prefs.getInt("outline_color", android.graphics.Color.WHITE)
                 }

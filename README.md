@@ -97,7 +97,7 @@ Tudo fica no celular, sem conta e sem servidor.
   ✨ recorte automático do fundo (ML Kit, no aparelho), **laço** (contorne o que fica),
   **borracha** e **pincel** (devolve o que foi apagado), com Desfazer.
 - **Ajustar:** mover, zoom e giro com os dedos; borda em volta da figurinha: **Sem borda**, **Fina**, **Média** ou
-  **Grossa** (com cor e espessura). O app lembra a última escolha para as próximas figurinhas.
+  **Grossa** (com cor e espessura). Por padrão sai **sem borda**; o app lembra a última escolha para as próximas figurinhas.
 - **Texto de meme:** vários textos, arrastar, pinça para tamanho e giro, cor da letra e da borda, CAIXA ALTA.
   Fontes livres embutidas: Anton (parecida com a Impact), Bebas Neue, Archivo Black, Bangers, Luckiest Guy,
   Comic Neue e Permanent Marker. **Importar fonte** aceita qualquer `.ttf`/`.otf` (a Impact é da Microsoft e

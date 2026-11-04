@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect as ComposeRect
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -89,6 +90,21 @@ class EditorState(val source: Bitmap, mask: Bitmap? = null) {
     fun resetMask() {
         pushUndo()
         mask.eraseColor(Color.BLACK)
+        touched()
+    }
+
+    /** Moldura de corte (retângulo com alças), em pixels da foto. Começa com 8% de folga em volta. */
+    var frame by mutableStateOf(
+        ComposeRect(source.width * 0.08f, source.height * 0.08f, source.width * 0.92f, source.height * 0.92f)
+    )
+
+    /** Fica só o que está dentro da moldura (retângulo ou círculo); o resto vira transparente. */
+    fun cropTo(r: ComposeRect, oval: Boolean) {
+        pushUndo()
+        mask.eraseColor(Color.TRANSPARENT)
+        val rf = android.graphics.RectF(r.left, r.top, r.right, r.bottom)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
+        Canvas(mask).apply { if (oval) drawOval(rf, paint) else drawRect(rf, paint) }
         touched()
     }
 

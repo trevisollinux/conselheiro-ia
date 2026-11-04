@@ -104,6 +104,7 @@ Tudo fica no celular, sem conta e sem servidor.
 - **Só texto:** figurinha com fundo transparente.
 - **Compartilhar:** em qualquer app, Compartilhar uma foto → Unusual Stickers.
 - Toda figurinha guarda a foto original e os textos: **Editar** reabre tudo editável.
+- **Backup sem cadastro:** exporta os pacotes num `.zip` e importa de volta (detalhes abaixo).
 
 Formato que o WhatsApp exige (o app cuida sozinho): WebP 512×512 com até 100 KB; ícone PNG 96×96.
 
@@ -123,12 +124,22 @@ Formato que o WhatsApp exige (o app cuida sozinho): WebP 512×512 com até 100 K
 Na grade do pacote, tocar numa figurinha abre **Editar**, **Emojis**, **Mover** (muda a ordem; a primeira vira o
 ícone) e **Apagar**.
 
+### Backup (sem conta)
+
+- **Exportar todos:** na tela inicial, menu **⋮ → Exportar todos os pacotes**. **Um pacote:** dentro dele, botão de
+  compartilhar no topo. O Android pergunta onde salvar o `.zip`: Google Drive, Downloads, pendrive…
+- **Importar:** menu **⋮ → Importar backup (.zip)**. Um pacote com o mesmo identificador é substituído pelo do arquivo;
+  os outros continuam como estão. Serve também para passar um pacote para outra pessoa que tenha o app.
+- O `.zip` leva as figurinhas prontas e os dados para reeditar (foto original, recorte e textos).
+- **Backup automático do Android:** também fica ligado e salva as figurinhas prontas na conta Google do celular
+  (limite de 25 MB do Android). Os dados de reedição, mais pesados, ficam de fora; para eles, use o Exportar.
+
 ### Limitações (por enquanto)
 
 - Só figurinhas paradas; animadas (GIF/vídeo) ainda não.
 - O recorte automático usa o Google Play services: na primeira vez o modelo pode demorar a baixar. Sem ele, o laço
   e a borracha funcionam normalmente.
-- Os pacotes ficam só neste celular (apagar o app apaga os pacotes); não há backup nem exportação ainda.
+- O backup é manual (Exportar); o app não envia nada sozinho para a nuvem além do backup automático do Android.
 
 **Instalar:** cada push que mexe em `sticker/` gera o APK no GitHub Actions (workflow *Build Unusual Stickers*,
 artefato `unusual-stickers-apk`); na `main`, também sai uma release `sticker-v…` com `UnusualStickers-<versão>.apk`.

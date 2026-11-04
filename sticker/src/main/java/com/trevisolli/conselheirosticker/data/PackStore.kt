@@ -42,6 +42,14 @@ data class Pack(
 class PackStore(context: Context) {
     private val root = File(context.applicationContext.filesDir, "packs").apply { mkdirs() }
 
+    /**
+     * Dados para reeditar (foto original, máscara, textos) ficam fora de packs/: são pesados e
+     * não entram no backup automático do Android (limite de 25 MB). Vão no backup em arquivo.
+     */
+    val editRoot = File(context.applicationContext.filesDir, "edits").apply { mkdirs() }
+
+    fun editPackDir(packId: String): File = File(editRoot, safeId(packId))
+
     fun dir(packId: String): File = File(root, safeId(packId))
 
     fun list(): List<Pack> = synchronized(LOCK) {
@@ -70,7 +78,39 @@ class PackStore(context: Context) {
         )
     }
 
-    fun delete(packId: String) = synchronized(LOCK) { dir(packId).deleteRecursively() }
+    fun delete(packId: String) = synchronized(LOCK) {
+        dir(packId).deleteRecursively()
+        editPackDir(packId).deleteRecursively()
+    }
+
+    /**
+     * Instala um pacote vindo de um backup (já extraído em [packSrc] e [editSrc]), substituindo
+     * o de mesmo identificador. A versão sobe para o WhatsApp reler as imagens.
+     */
+    fun installFrom(packSrc: File, editSrc: File?): Pack? = synchronized(LOCK) {
+        val raw = readFile(File(packSrc, "pack.json")) ?: return@synchronized null
+        val id = safeId(raw.id)
+        if (id.isEmpty()) return@synchronized null
+        val incoming = raw.copy(id = id, stickers = raw.stickers.filter { STICKER_NAME.matches(it.file) })
+        val old = read(incoming.id)
+        dir(incoming.id).deleteRecursively()
+        editPackDir(incoming.id).deleteRecursively()
+        if (!packSrc.renameTo(dir(incoming.id))) {
+            packSrc.copyRecursively(dir(incoming.id), overwrite = true)
+        }
+        if (editSrc != null && editSrc.exists() && !editSrc.renameTo(editPackDir(incoming.id))) {
+            editSrc.copyRecursively(editPackDir(incoming.id), overwrite = true)
+        }
+        // Só fica o que o pacote declara (nada de arquivos soltos vindos do zip).
+        val keep = incoming.stickers.filter { File(dir(incoming.id), it.file).isFile }
+        val pack = incoming.copy(
+            stickers = keep,
+            version = maxOf(incoming.version, old?.version ?: 0) + 1,
+        )
+        write(pack)
+        refreshTray(pack)
+        pack
+    }
 
     /** Salva (ou substitui, se [replaceFile] vier) uma figurinha já no formato do WhatsApp. */
     fun putSticker(packId: String, webp: ByteArray, emojis: List<String>, replaceFile: String?): String =
@@ -122,8 +162,17 @@ class PackStore(context: Context) {
     }
 
     /** Pasta com a foto original, a máscara e os textos, para reeditar depois. */
-    fun editDir(packId: String, stickerFile: String): File =
-        File(dir(packId), "edit/" + stickerFile.removeSuffix(".webp"))
+    fun editDir(packId: String, stickerFile: String): File {
+        val name = stickerFile.removeSuffix(".webp")
+        val target = File(editPackDir(packId), name)
+        // Versões até a 0.3 guardavam dentro de packs/<id>/edit/: move na primeira vez.
+        val legacy = File(dir(packId), "edit/$name")
+        if (legacy.exists() && !target.exists()) {
+            target.parentFile?.mkdirs()
+            legacy.renameTo(target)
+        }
+        return target
+    }
 
     fun stickerFile(packId: String, file: String): File = File(dir(packId), file)
 
@@ -144,8 +193,10 @@ class PackStore(context: Context) {
         src.recycle(); out.recycle()
     }
 
-    private fun read(packId: String): Pack? = runCatching {
-        val json = JSONObject(File(dir(packId), "pack.json").readText())
+    private fun read(packId: String): Pack? = readFile(File(dir(packId), "pack.json"))
+
+    private fun readFile(file: File): Pack? = runCatching {
+        val json = JSONObject(file.readText())
         val arr = json.getJSONArray("stickers")
         Pack(
             id = json.getString("id"),
@@ -179,6 +230,7 @@ class PackStore(context: Context) {
 
     companion object {
         private val LOCK = Any()
+        private val STICKER_NAME = Regex("[A-Za-z0-9_-]{1,64}\\.webp")
 
         /** O WhatsApp aceita só letras, números, _ - . e espaço no identificador. */
         fun safeId(id: String): String = id.filter { it.isLetterOrDigit() || it == '_' || it == '-' }.take(64)

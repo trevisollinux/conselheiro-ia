@@ -16,6 +16,10 @@ figurinhas do WhatsApp sem anúncios.
   "terminei a ração da Amelie" conclui; "o que tenho amanhã?" responde. Tudo com **Desfazer**.
   - **Listas:** "lista de compras: leite, pão e ovos" vira uma tarefa com subtarefas no Todoist.
   - **Repetição:** "dar o remédio todo dia às 8h" vira tarefa recorrente.
+- **Ações de um toque:** "avisa a Helena que vou atrasar" prepara a mensagem no WhatsApp; "liga pro dentista" disca;
+  "como chego no shopping" abre a rota. O Consigliere prepara e você confirma: nada é enviado sozinho.
+- **Encomendas 📦:** códigos de rastreio (ex.: AB123456789BR) achados em mensagens, prints ou na conversa ficam numa
+  lista; "Rastrear" copia o código e abre o app ou o site dos Correios.
 - **Voz:** usa o reconhecimento de voz do aparelho (o mesmo do teclado), que funciona sem IA. Sem esse serviço,
   grava o áudio e a IA transcreve. Se a IA estiver fora, o áudio fica guardado e é processado depois, com notificação.
 - **Mover de dia:** no widget, o **»** joga o item para o dia seguinte (atrasada vem para hoje). No app, na aba

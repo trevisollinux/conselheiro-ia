@@ -196,6 +196,9 @@ class MainActivity : ComponentActivity() {
         var suggestionsVersion by remember { mutableStateOf(0) }
         var showAllSuggestions by remember { mutableStateOf(false) }
         val suggestions = remember(resumeCount, snapshot, suggestionsVersion) { SuggestionStore.all(this) }
+        val parcels = remember(resumeCount, snapshot, suggestionsVersion) { com.trevisolli.agendawidget.smart.Parcels.all(this) }
+        var contactsOk by remember { mutableStateOf(com.trevisolli.agendawidget.smart.QuickActions.hasContacts(this)) }
+        val contactsPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { contactsOk = it }
         val listenerOn = remember(resumeCount) { NotificationWatcher.isEnabled(this) }
 
 
@@ -928,6 +931,19 @@ class MainActivity : ComponentActivity() {
                     Text("✅ Acesso liberado.")
                 }
             }
+            Section("Contatos") {
+                Text(
+                    "Para \"avisa a Helena que…\" abrir direto a conversa dela no WhatsApp e \"liga pro dentista\" já discar. " +
+                        "Os contatos são lidos só no celular; nada é enviado.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (contactsOk) {
+                    Text("✅ Acesso liberado.")
+                } else {
+                    OutlinedButton(onClick = { contactsPermission.launch(Manifest.permission.READ_CONTACTS) }) { Text("Permitir acesso aos contatos") }
+                }
+            }
+
             Section("Compartilhar com o Consigliere") {
                 Text(
                     "Em qualquer app, toque em Compartilhar → Consigliere para virar evento ou tarefa. Vale para texto e print.",
@@ -1064,6 +1080,29 @@ class MainActivity : ComponentActivity() {
                 onToggle = { item, done -> toggleTask(item, done) },
                 onOpen = { detail = it },
             )
+
+            if (parcels.isNotEmpty()) {
+                Section("📦 Encomendas") {
+                    parcels.forEach { p ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(p.code, style = MaterialTheme.typography.titleSmall)
+                                Text(p.origin, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            }
+                            TextButton(onClick = {
+                                com.trevisolli.agendawidget.smart.QuickActions.launch(
+                                    this@MainActivity,
+                                    com.trevisolli.agendawidget.smart.QuickAction(com.trevisolli.agendawidget.smart.QuickAction.TRACK, "", p.code),
+                                )
+                            }) { Text("Rastrear") }
+                            IconButton(onClick = {
+                                com.trevisolli.agendawidget.smart.Parcels.remove(this@MainActivity, p.code)
+                                suggestionsVersion++
+                            }) { Text("✕", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
+                    }
+                }
+            }
 
             if (suggestions.isNotEmpty()) {
                 Section("📌 Sugestões para revisar") {

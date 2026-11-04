@@ -51,6 +51,8 @@ class NotificationWatcher : NotificationListenerService() {
 
         scope.launch {
             InboxStore.add(applicationContext, InboxStore.Msg(origin, sender, body, System.currentTimeMillis()))
+            // Código de rastreio (mesmo em grupo ou e-mail automático de loja): vira encomenda.
+            Parcels.scan(applicationContext, body, label).forEach { notifyParcel(applicationContext, it, label) }
             // E-mails automáticos (avisos do Google, login, propaganda, códigos) não viram sugestão.
             if (isEmail && AUTOMATED.containsMatchIn((sender + " " + body).lowercase())) return@launch
             val suggestion = Brain.fromNotification(applicationContext, body, label, strict = isEmail) ?: return@launch
@@ -97,6 +99,29 @@ class NotificationWatcher : NotificationListenerService() {
             val flat = AndroidSettings.Secure.getString(context.contentResolver, "enabled_notification_listeners").orEmpty()
             val me = ComponentName(context, NotificationWatcher::class.java).flattenToString()
             return flat.split(':').any { it == me }
+        }
+
+        fun notifyParcel(context: Context, code: String, origin: String) {
+            if (Build.VERSION.SDK_INT >= 33 &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) {
+                return
+            }
+            val manager = context.getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(NotificationChannel(CHANNEL, "Sugestões de compromisso", NotificationManager.IMPORTANCE_DEFAULT))
+            val pending = PendingIntent.getActivity(
+                context, code.hashCode(),
+                Intent(context, com.trevisolli.agendawidget.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val n = NotificationCompat.Builder(context, CHANNEL)
+                .setSmallIcon(R.drawable.ic_launcher_monochrome)
+                .setContentTitle("📦 Encomenda $code")
+                .setContentText("Guardei o rastreio · $origin")
+                .setContentIntent(pending)
+                .setAutoCancel(true)
+                .build()
+            NotificationManagerCompat.from(context).notify(code.hashCode(), n)
         }
 
         fun notifySuggestion(context: Context, s: Suggestion) {

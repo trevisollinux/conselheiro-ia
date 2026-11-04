@@ -293,6 +293,16 @@ private fun Bubble(m: ChatMessage, onUndo: (() -> Unit)?) {
                     color = if (m.fromUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                 )
             }
+            if (m.actions.isNotEmpty()) {
+                val ctx = LocalContext.current
+                Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    m.actions.forEach { a ->
+                        androidx.compose.material3.FilledTonalButton(onClick = { com.trevisolli.agendawidget.smart.QuickActions.launch(ctx, a) }) {
+                            Text(a.label)
+                        }
+                    }
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     Instant.ofEpochMilli(m.time).atZone(ZoneId.systemDefault()).format(hhmm) + if (m.undone) " · desfeito" else "",

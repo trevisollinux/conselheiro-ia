@@ -254,7 +254,8 @@ class VoiceActivity : ComponentActivity() {
         // Resultado some sozinho depois de um tempo.
         LaunchedEffect(phase, answer) {
             if (phase == "done") {
-                delay(if (answer?.undo?.isNotEmpty() == true) 15_000 else 6_000)
+                // Com botão para confirmar (mensagem, ligação…), dá tempo de tocar.
+                delay(if (answer?.actions?.isNotEmpty() == true) 30_000 else if (answer?.undo?.isNotEmpty() == true) 15_000 else 6_000)
                 finish()
             }
         }
@@ -332,6 +333,15 @@ class VoiceActivity : ComponentActivity() {
                         else -> {
                             val a = answer
                             Text(a?.text ?: "", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.fillMaxWidth())
+                            a?.actions?.forEach { qa ->
+                                androidx.compose.material3.Button(
+                                    onClick = {
+                                        com.trevisolli.agendawidget.smart.QuickActions.launch(this@VoiceActivity, qa)
+                                        finish()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text(qa.label) }
+                            }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (a != null && a.undo.isNotEmpty()) {
                                     TextButton(onClick = {

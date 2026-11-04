@@ -43,6 +43,11 @@ object Assistant {
             val subtasks: List<String> = emptyList(),
         ) : Action()
         data class Complete(val title: String) : Action()
+        /** Ações de um toque: o app prepara, a pessoa confirma. */
+        data class Message(val to: String, val text: String, val app: String) : Action()
+        data class Call(val to: String) : Action()
+        data class Route(val place: String) : Action()
+        data class Track(val code: String) : Action()
     }
 
     private data class Plan(val reply: String?, val actions: List<Action>, val heard: String? = null)
@@ -123,9 +128,28 @@ object Assistant {
         val done = mutableListOf<String>()
         val problems = mutableListOf<String>()
         val undo = mutableListOf<Undo>()
+        val buttons = mutableListOf<QuickAction>()
         for (a in plan.actions) {
             try {
                 when (a) {
+                    is Action.Message -> {
+                        val contact = QuickActions.findContact(context, a.to)
+                        val who = contact?.first ?: a.to
+                        val app = if (a.app == "sms") QuickAction.SMS else QuickAction.WHATSAPP
+                        buttons += QuickAction(app, if (app == QuickAction.SMS) "💬 Enviar SMS para $who" else "💬 Abrir WhatsApp com $who", a.to, a.text)
+                        done += "💬 Mensagem para $who pronta: \"${a.text}\"" +
+                            if (contact == null && !QuickActions.hasContacts(context)) "\n(libere Contatos nas Configurações para abrir direto na conversa)" else ""
+                    }
+                    is Action.Call -> {
+                        val who = QuickActions.findContact(context, a.to)?.first ?: a.to
+                        buttons += QuickAction(QuickAction.CALL, "📞 Ligar para $who", a.to)
+                    }
+                    is Action.Route -> buttons += QuickAction(QuickAction.MAP, "🗺️ Rota até ${a.place}", a.place)
+                    is Action.Track -> {
+                        Parcels.scan(context, a.code, "Conversa")
+                        buttons += QuickAction(QuickAction.TRACK, "📦 Rastrear ${a.code}", a.code)
+                        done += "📦 Encomenda ${a.code} guardada"
+                    }
                     is Action.Event -> {
                         val id = CalendarWriter.insert(context, a.title, a.date, a.time, a.minutes, "Criado pelo Consigliere")
                         if (id != null) {
@@ -184,9 +208,10 @@ object Assistant {
                 if (isNotEmpty()) append("\n")
                 append("⚠️ ").append(problems.joinToString("; "))
             }
+            if (isEmpty() && buttons.isNotEmpty()) append("Pronto, é só tocar abaixo.")
             if (isEmpty()) append("Não entendi bem. Tente algo como \"dentista quinta às 15h\" ou \"lembrar de pagar o MEI amanhã\".")
         }
-        val answer = ChatMessage(fromUser = false, text = reply, undo = undo)
+        val answer = ChatMessage(fromUser = false, text = reply, undo = undo, actions = buttons)
         ChatStore.add(context, answer)
         return answer
     }
@@ -256,7 +281,32 @@ object Assistant {
         )
     }
 
+    private val CALL = Regex("^(liga|ligar|ligue|telefona|telefonar)\\s+(pra|para|pro|ao|à|a)\\s+(.+)$", RegexOption.IGNORE_CASE)
+    private val ROUTE = Regex("^(rota|como (eu )?chego|me leva|caminho)\\s+(pra|para|pro|até|ate|ao|à|no|na)\\s+(.+)$", RegexOption.IGNORE_CASE)
+    private val MESSAGE = Regex(
+        "^(manda|mande|envia|envie)\\s+(uma\\s+)?(mensagem|msg|zap|whats)\\s+(pra|para|pro)\\s+(\\S+)\\s*(dizendo|falando|:)?\\s*(que\\s+)?(.+)$|" +
+            "^(avisa|avise|fala|diz)\\s+(pra|para|pro|a|o)?\\s*(\\S+)\\s+que\\s+(.+)$",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Mensagem, ligação, rota e rastreio sem IA. */
+    private fun rulesActions(text: String): Plan? {
+        val t = text.trim().trimEnd('.', '!')
+        Parcels.find(t).takeIf { it.isNotEmpty() }?.let { codes -> return Plan(null, codes.map { Action.Track(it) }) }
+        CALL.find(t)?.let { return Plan(null, listOf(Action.Call(it.groupValues[3]))) }
+        ROUTE.find(t)?.let { return Plan(null, listOf(Action.Route(it.groupValues[5]))) }
+        MESSAGE.find(t)?.let { m ->
+            val g = m.groupValues
+            val (to, msg) = if (g[5].isNotBlank()) g[5] to g[8] else g[11] to g[12]
+            if (to.isNotBlank() && msg.isNotBlank()) {
+                return Plan(null, listOf(Action.Message(to.replaceFirstChar { it.uppercase() }, msg.replaceFirstChar { it.uppercase() }, "whatsapp")))
+            }
+        }
+        return null
+    }
+
     private fun rulesPlan(text: String, items: List<AgendaItem>): Plan {
+        rulesActions(text)?.let { return it }
         rulesList(text)?.let { return it }
         val n = norm(text)
         if (ASK.containsMatchIn(n)) return Plan(answerQuestion(text, items), emptyList())
@@ -305,7 +355,13 @@ object Assistant {
             "{\"type\":\"create_task\",\"title\":string,\"date\":\"YYYY-MM-DD\" ou null,\"time\":\"HH:MM\" ou null," +
             "\"repeat\": null ou regra do Todoist EM INGLÊS quando repetir (\"every day at 8am\", \"every monday at 9am\", \"every month on the 5th\")," +
             "\"subtasks\": [] ou lista de itens}; " +
-            "{\"type\":\"complete_task\",\"title\": título exato de uma tarefa da lista}. " +
+            "{\"type\":\"complete_task\",\"title\": título exato de uma tarefa da lista}; " +
+            "{\"type\":\"send_message\",\"to\": nome do contato ou número,\"text\": a mensagem pronta, em 1ª pessoa,\"app\":\"whatsapp\" ou \"sms\"}; " +
+            "{\"type\":\"call\",\"to\": nome ou número}; " +
+            "{\"type\":\"route\",\"place\": endereço ou nome do lugar}; " +
+            "{\"type\":\"track\",\"code\": código de rastreio, ex. AB123456789BR}. " +
+            "send_message/call/route/track só preparam um botão; a pessoa confirma. Para \"avisa a Helena que…\", use send_message " +
+            "com o texto já escrito do jeito que a pessoa mandaria. " +
             "Regras: se o usuário falar em agenda/calendário, consulta, reunião, exame ou algo para comparecer, use create_event. " +
             "Se for algo a fazer (comprar, pagar, ligar, lembrar), use create_task. Pode criar várias ações. " +
             "Títulos curtos, sem a data. Datas relativas (amanhã, sexta) a partir de hoje. " +
@@ -349,6 +405,26 @@ object Assistant {
         val arr = json.optJSONArray("actions") ?: JSONArray()
         for (i in 0 until arr.length()) {
             val a = arr.optJSONObject(i) ?: continue
+            when (a.optString("type")) {
+                "send_message" -> {
+                    val to = a.optString("to").trim()
+                    val msg = a.optString("text").trim()
+                    if (to.isNotBlank() && msg.isNotBlank()) actions += Action.Message(to, msg, a.optString("app").ifBlank { "whatsapp" })
+                    continue
+                }
+                "call" -> {
+                    a.optString("to").trim().takeIf { it.isNotBlank() }?.let { actions += Action.Call(it) }
+                    continue
+                }
+                "route" -> {
+                    a.optString("place").trim().takeIf { it.isNotBlank() }?.let { actions += Action.Route(it) }
+                    continue
+                }
+                "track" -> {
+                    Parcels.find(a.optString("code")).forEach { actions += Action.Track(it) }
+                    continue
+                }
+            }
             val title = a.optString("title").trim()
             if (title.isBlank()) continue
             val date = a.optString("date").takeIf { !a.isNull("date") && it.length == 10 }

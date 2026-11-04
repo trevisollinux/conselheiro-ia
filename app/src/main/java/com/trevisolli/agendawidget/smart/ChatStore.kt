@@ -22,6 +22,8 @@ data class ChatMessage(
     val time: Long = System.currentTimeMillis(),
     val undo: List<Undo> = emptyList(),
     val undone: Boolean = false,
+    /** Botões de um toque (mandar mensagem, ligar, rota, rastrear). */
+    val actions: List<QuickAction> = emptyList(),
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id)
@@ -30,6 +32,7 @@ data class ChatMessage(
         .put("time", time)
         .put("undone", undone)
         .put("undo", JSONArray().apply { undo.forEach { put(JSONObject().put("kind", it.kind).put("id", it.id)) } })
+        .put("actions", JSONArray().apply { actions.forEach { put(it.toJson()) } })
 
     companion object {
         fun fromJson(o: JSONObject): ChatMessage {
@@ -41,6 +44,7 @@ data class ChatMessage(
                 time = o.optLong("time"),
                 undo = List(u.length()) { Undo(u.getJSONObject(it).getString("kind"), u.getJSONObject(it).getString("id")) },
                 undone = o.optBoolean("undone"),
+                actions = o.optJSONArray("actions")?.let { a -> List(a.length()) { QuickAction.fromJson(a.getJSONObject(it)) } }.orEmpty(),
             )
         }
     }

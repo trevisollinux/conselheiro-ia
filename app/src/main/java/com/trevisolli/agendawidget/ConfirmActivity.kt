@@ -115,6 +115,11 @@ class ConfirmActivity : ComponentActivity() {
         val scope = rememberCoroutineScope()
         val origin = if (image != null) "Print" else "Compartilhado"
         val initial = remember { stored ?: Brain.rules(shared, origin) }
+        LaunchedEffect(shared) {
+            com.trevisolli.agendawidget.smart.Parcels.scan(this@ConfirmActivity, shared, origin).firstOrNull()?.let {
+                android.widget.Toast.makeText(this@ConfirmActivity, "📦 Rastreio $it guardado em Encomendas", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
         var sourceText by remember { mutableStateOf(stored?.text ?: shared) }
         var kind by remember { mutableStateOf(initial.kind) }
 
@@ -141,6 +146,9 @@ class ConfirmActivity : ComponentActivity() {
                     val bitmap = withContext(Dispatchers.IO) { ImageReader.loadBitmap(this@ConfirmActivity, image) }
                     val ocr = runCatching { ImageReader.ocr(bitmap) }.getOrDefault("")
                     sourceText = ocr.ifBlank { "(sem texto legível no print)" }
+                    com.trevisolli.agendawidget.smart.Parcels.scan(this@ConfirmActivity, ocr, origin).firstOrNull()?.let {
+                        android.widget.Toast.makeText(this@ConfirmActivity, "📦 Rastreio $it guardado em Encomendas", android.widget.Toast.LENGTH_LONG).show()
+                    }
                     if (settings.aiReady) {
                         status = "Analisando o print com ${settings.aiProvider.label}…"
                         val ai = withContext(Dispatchers.IO) {

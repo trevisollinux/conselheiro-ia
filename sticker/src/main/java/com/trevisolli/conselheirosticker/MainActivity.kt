@@ -47,9 +47,12 @@ class MainActivity : ComponentActivity() {
                 var refresh by remember { mutableIntStateOf(0) }
                 var pickFor by remember { mutableStateOf<String?>(null) }
 
+                var pickAnimated by remember { mutableStateOf(false) }
                 val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
                     val packId = pickFor
-                    if (uri != null && packId != null) screen = Screen.Editor(packId, EditorSource.Photo(uri))
+                    if (uri != null && packId != null) {
+                        screen = Screen.Editor(packId, if (pickAnimated) EditorSource.Animation(uri) else EditorSource.Photo(uri))
+                    }
                 }
 
                 when (val s = screen) {
@@ -61,7 +64,9 @@ class MainActivity : ComponentActivity() {
                             val photo = shared
                             if (photo != null) {
                                 shared = null
-                                screen = Screen.Editor(p.id, EditorSource.Photo(photo))
+                                screen = Screen.Editor(
+                                    p.id, if (p.animated) EditorSource.Animation(photo) else EditorSource.Photo(photo),
+                                )
                             } else {
                                 screen = Screen.OnePack(p.id)
                             }
@@ -76,7 +81,18 @@ class MainActivity : ComponentActivity() {
                             onBack = { screen = Screen.Packs; refresh++ },
                             onAddPhoto = {
                                 pickFor = s.id
+                                pickAnimated = false
                                 picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            },
+                            onAddAnimation = { video ->
+                                pickFor = s.id
+                                pickAnimated = true
+                                picker.launch(
+                                    PickVisualMediaRequest(
+                                        if (video) ActivityResultContracts.PickVisualMedia.VideoOnly
+                                        else ActivityResultContracts.PickVisualMedia.SingleMimeType("image/gif")
+                                    )
+                                )
                             },
                             onAddText = { screen = Screen.Editor(s.id, EditorSource.TextOnly) },
                             onEdit = { file -> screen = Screen.Editor(s.id, EditorSource.Existing(file)) },

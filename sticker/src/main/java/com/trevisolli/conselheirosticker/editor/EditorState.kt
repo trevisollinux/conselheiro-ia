@@ -45,7 +45,19 @@ data class TextLayer(
  * - imagem posicionada no quadro 512×512 com zoom, giro e deslocamento
  * - contorno (o "adesivo" branco em volta) e textos
  */
-class EditorState(val source: Bitmap, mask: Bitmap? = null) {
+class EditorState(
+    val source: Bitmap,
+    mask: Bitmap? = null,
+    /** Figurinha animada: todos os quadros (o primeiro é [source]), do mesmo tamanho. */
+    val frames: List<Bitmap>? = null,
+    /** Duração de cada quadro, em ms. */
+    val durations: List<Int>? = null,
+) {
+    val isAnimated: Boolean get() = (frames?.size ?: 0) > 1
+
+    /** Quadro mostrado na prévia (a animação toca nas abas Ajustar e Texto). */
+    var frameIndex by mutableIntStateOf(0)
+
     val mask: Bitmap = mask ?: Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ALPHA_8).apply {
         eraseColor(Color.BLACK) // ALPHA_8: preto = alfa 255 = tudo visível
     }
@@ -153,17 +165,22 @@ class EditorState(val source: Bitmap, mask: Bitmap? = null) {
 
     /** A foto já recortada, aparada nas bordas e com o contorno; null se não sobrou nada. */
     fun cutout(): Bitmap? {
-        val key = "$maskVersion|$outline|$outlineWidth|$outlineColor"
+        val i = if (isAnimated) frameIndex.coerceIn(0, frames!!.lastIndex) else 0
+        val key = "$maskVersion|$outline|$outlineWidth|$outlineColor|$i"
         cutoutCache?.let { if (it.first == key) return it.second }
-        val result = buildCutout()
+        val result = buildCutout(frames?.getOrNull(i) ?: source, contentBounds())
         cutoutCache?.second?.let { old -> if (old != result) old.recycle() }
         cutoutCache = key to result
         return result
     }
 
-    private fun buildCutout(): Bitmap? {
-        val w = source.width
-        val h = source.height
+    private var boundsCache: Pair<Int, Rect?>? = null
+
+    /** Retângulo do que sobrou depois do recorte (null se não sobrou nada). */
+    fun contentBounds(): Rect? {
+        boundsCache?.let { if (it.first == maskVersion) return it.second }
+        val w = mask.width
+        val h = mask.height
         val alpha = IntArray(w * h)
         mask.getPixels(alpha, 0, w, 0, 0, w, h)
         var l = w; var t = h; var r = -1; var b = -1
@@ -173,8 +190,16 @@ class EditorState(val source: Bitmap, mask: Bitmap? = null) {
                 if (y < t) t = y; if (y > b) b = y
             }
         }
-        if (r < 0) return null
-        val crop = Rect(l, t, r + 1, b + 1)
+        val box = if (r < 0) null else Rect(l, t, r + 1, b + 1)
+        boundsCache = maskVersion to box
+        return box
+    }
+
+    /** Quadro [i] recortado, sem cache (usado ao salvar a animação, fora da thread principal). */
+    fun cutoutFor(i: Int, bounds: Rect?): Bitmap? = buildCutout(frames?.getOrNull(i) ?: source, bounds)
+
+    private fun buildCutout(image: Bitmap, bounds: Rect?): Bitmap? {
+        val crop = bounds ?: return null
         // A figurinha final tem 512 px: acima de ~600 só deixaria o contorno lento.
         val k = minOf(1f, 600f / maxOf(crop.width(), crop.height()))
         val cw = (crop.width() * k).toInt().coerceAtLeast(1)
@@ -182,7 +207,7 @@ class EditorState(val source: Bitmap, mask: Bitmap? = null) {
         val cut = Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888)
         val filter = Paint(Paint.FILTER_BITMAP_FLAG)
         Canvas(cut).apply {
-            drawBitmap(source, crop, Rect(0, 0, cw, ch), filter)
+            drawBitmap(image, crop, Rect(0, 0, cw, ch), filter)
             drawBitmap(mask, crop, Rect(0, 0, cw, ch),
                 Paint(Paint.FILTER_BITMAP_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) })
         }
@@ -251,6 +276,14 @@ class EditorState(val source: Bitmap, mask: Bitmap? = null) {
                         .put("allCaps", t.allCaps))
                 }
             })
+        if (isAnimated) {
+            // Quadros em JPEG (leves) para reeditar a animação depois.
+            val fd = File(dir, "frames").apply { deleteRecursively(); mkdirs() }
+            frames!!.forEachIndexed { i, f ->
+                File(fd, "%04d.jpg".format(i)).outputStream().use { f.compress(Bitmap.CompressFormat.JPEG, 85, it) }
+            }
+            json.put("durations", JSONArray(durations))
+        }
         File(dir, "state.json").writeText(json.toString())
     }
 
@@ -264,8 +297,20 @@ class EditorState(val source: Bitmap, mask: Bitmap? = null) {
             val mask = Bitmap.createBitmap(visMask.width, visMask.height, Bitmap.Config.ALPHA_8)
             mask.setPixels(px, 0, mask.width, 0, 0, mask.width, mask.height)
             visMask.recycle()
-            val st = EditorState(src, mask)
             val j = JSONObject(File(dir, "state.json").readText())
+            val frameFiles = File(dir, "frames").listFiles()?.filter { it.name.endsWith(".jpg") }?.sortedBy { it.name }
+            val durArr = j.optJSONArray("durations")
+            val st = if (!frameFiles.isNullOrEmpty() && durArr != null && durArr.length() == frameFiles.size) {
+                val frames = frameFiles.map { f ->
+                    val b = BitmapFactory.decodeFile(f.path, mutableOpts())!!
+                    if (b.width == src.width && b.height == src.height) b
+                    else Bitmap.createScaledBitmap(b, src.width, src.height, true).also { b.recycle() }
+                }
+                src.recycle()
+                EditorState(frames[0], mask, frames, (0 until durArr.length()).map { durArr.getInt(it) })
+            } else {
+                EditorState(src, mask)
+            }
             st.scale = j.optDouble("scale", 1.0).toFloat()
             st.offset = Offset(j.optDouble("ox", 0.0).toFloat(), j.optDouble("oy", 0.0).toFloat())
             st.rotation = j.optDouble("rotation", 0.0).toFloat()

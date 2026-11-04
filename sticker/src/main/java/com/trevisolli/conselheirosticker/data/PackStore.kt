@@ -23,6 +23,8 @@ data class Pack(
     val stickers: List<Sticker>,
     /** Muda a cada alteração: o WhatsApp só relê as imagens quando este número muda. */
     val version: Int,
+    /** Pacote de figurinhas animadas (o WhatsApp não aceita misturar com paradas). */
+    val animated: Boolean = false,
 ) {
     val trayFile: String get() = TRAY_FILE
     val readyForWhatsApp: Boolean get() = stickers.size in MIN_STICKERS..MAX_STICKERS
@@ -58,13 +60,14 @@ class PackStore(context: Context) {
 
     fun get(packId: String): Pack? = synchronized(LOCK) { read(packId) }
 
-    fun create(name: String, publisher: String): Pack = synchronized(LOCK) {
+    fun create(name: String, publisher: String, animated: Boolean = false): Pack = synchronized(LOCK) {
         val pack = Pack(
             id = "p" + UUID.randomUUID().toString().replace("-", "").take(16),
             name = name.trim().take(128).ifBlank { "Meu pacote" },
             publisher = publisher.trim().take(128).ifBlank { "Eu" },
             stickers = emptyList(),
             version = 1,
+            animated = animated,
         )
         dir(pack.id).mkdirs()
         write(pack)
@@ -113,17 +116,25 @@ class PackStore(context: Context) {
     }
 
     /** Salva (ou substitui, se [replaceFile] vier) uma figurinha já no formato do WhatsApp. */
-    fun putSticker(packId: String, webp: ByteArray, emojis: List<String>, replaceFile: String?): String =
+    /**
+     * [still] é o primeiro quadro de uma figurinha animada: vira a miniatura e o ícone do pacote
+     * (nem todo Android abre WebP animado como imagem parada).
+     */
+    fun putSticker(
+        packId: String, webp: ByteArray, emojis: List<String>, replaceFile: String?, still: Bitmap? = null,
+    ): String =
         synchronized(LOCK) {
             val pack = read(packId) ?: error("Pacote não existe")
             // Nome novo a cada versão: o WhatsApp guarda as imagens em cache pelo nome.
             val file = "s" + UUID.randomUUID().toString().replace("-", "").take(12) + ".webp"
             File(dir(packId), file).writeBytes(webp)
+            if (still != null) thumbFile(packId, file).outputStream().use { still.compress(Bitmap.CompressFormat.PNG, 100, it) }
             val sticker = Sticker(file, emojis)
             val list = pack.stickers.toMutableList()
             val idx = list.indexOfFirst { it.file == replaceFile }
             if (idx >= 0) {
                 File(dir(packId), list[idx].file).delete()
+                thumbFile(packId, list[idx].file).delete()
                 val oldEdit = editDir(packId, list[idx].file)
                 if (oldEdit.exists()) oldEdit.renameTo(editDir(packId, file))
                 list[idx] = sticker
@@ -143,6 +154,7 @@ class PackStore(context: Context) {
     fun removeSticker(packId: String, file: String) = synchronized(LOCK) {
         val pack = read(packId) ?: return@synchronized
         File(dir(packId), file).delete()
+        thumbFile(packId, file).delete()
         editDir(packId, file).deleteRecursively()
         val updated = pack.copy(stickers = pack.stickers.filter { it.file != file }, version = pack.version + 1)
         write(updated)
@@ -176,6 +188,9 @@ class PackStore(context: Context) {
 
     fun stickerFile(packId: String, file: String): File = File(dir(packId), file)
 
+    /** Miniatura parada (PNG) de uma figurinha animada; não existe nas paradas. */
+    fun thumbFile(packId: String, file: String): File = File(dir(packId), "thumb_" + file.removeSuffix(".webp") + ".png")
+
     private fun update(packId: String, change: (Pack) -> Pack) = synchronized(LOCK) {
         val pack = read(packId) ?: return@synchronized
         write(change(pack).let { it.copy(version = pack.version + 1) })
@@ -185,7 +200,9 @@ class PackStore(context: Context) {
     private fun refreshTray(pack: Pack) {
         val tray = File(dir(pack.id), Pack.TRAY_FILE)
         val first = pack.stickers.firstOrNull() ?: run { tray.delete(); return }
-        val src = BitmapFactory.decodeFile(File(dir(pack.id), first.file).path) ?: return
+        val thumb = thumbFile(pack.id, first.file)
+        val src = (if (thumb.exists()) BitmapFactory.decodeFile(thumb.path) else null)
+            ?: BitmapFactory.decodeFile(File(dir(pack.id), first.file).path) ?: return
         val out = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
         Canvas(out).drawBitmap(src, Rect(0, 0, src.width, src.height), Rect(0, 0, 96, 96),
             Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
@@ -208,6 +225,7 @@ class PackStore(context: Context) {
                 Sticker(s.getString("file"), (0 until em.length()).map { em.getString(it) })
             },
             version = json.optInt("version", 1),
+            animated = json.optBoolean("animated", false),
         )
     }.getOrNull()
 
@@ -217,6 +235,7 @@ class PackStore(context: Context) {
             .put("name", pack.name)
             .put("publisher", pack.publisher)
             .put("version", pack.version)
+            .put("animated", pack.animated)
             .put("stickers", JSONArray().apply {
                 pack.stickers.forEach { s ->
                     put(JSONObject().put("file", s.file).put("emojis", JSONArray(s.emojis)))

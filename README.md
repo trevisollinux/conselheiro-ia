@@ -151,7 +151,8 @@ Na grade do pacote, tocar numa figurinha abre **Editar**, **Emojis**, **Mover** 
 ### Apoie 💜
 
 O Unusual Stickers é grátis e sem anúncios. Gostou do app? Mande qualquer valor via **Pix**:
-**gustavotrevisolli@gmail.com** (também no app: menu **⋮ → Apoiar o app**, com botão para copiar a chave).
+**gustavotrevisolli@gmail.com**. (Fica só aqui: a versão da Play Store não pede doação dentro do app,
+pelas regras de pagamento do Google Play.)
 
 ### Limitações (por enquanto)
 
@@ -163,6 +164,14 @@ O Unusual Stickers é grátis e sem anúncios. Gostou do app? Mande qualquer val
 
 **Instalar:** cada push que mexe em `sticker/` gera o APK no GitHub Actions (workflow *Build Unusual Stickers*,
 artefato `unusual-stickers-apk`); na `main`, também sai uma release `sticker-v…` com `UnusualStickers-<versão>.apk`.
+
+**Da versão 1.0 em diante** o pacote Android é `com.trevisolli.unusualstickers` (antes: `com.trevisolli.conselheirosticker`).
+Quem tinha uma versão de teste: **Exportar todos os pacotes**, desinstalar, instalar a nova e **Importar backup**.
+
+**Play Store:** o mesmo workflow gera o `.aab` assinado com a chave de upload dos segredos do GitHub (a mesma do
+Consigliere), no artefato `unusual-stickers-play-store-aab`. Ficha da loja, ícone 512×512, imagem de destaque e respostas
+dos formulários em [`sticker/store/`](sticker/store/ficha-da-loja.md); política de privacidade em
+[`docs/unusual-stickers-privacidade.html`](docs/unusual-stickers-privacidade.html) (GitHub Pages).
 
 Código em `sticker/src/main/java/com/trevisolli/conselheirosticker/`: `data/` (pacotes e WebP), `editor/`
 (recorte, textos, desenho da figurinha), `ui/` (telas), `whatsapp/` (ContentProvider e intent oficial).

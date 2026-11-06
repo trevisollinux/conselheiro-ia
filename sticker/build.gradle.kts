@@ -6,26 +6,37 @@ plugins {
 
 android {
     namespace = "com.trevisolli.conselheirosticker"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.trevisolli.conselheirosticker"
+        // Nome definitivo na Play Store (não muda depois de publicado).
+        applicationId = "com.trevisolli.unusualstickers"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 7
-        versionName = "0.7"
+        targetSdk = 36
+        versionCode = 8
+        versionName = "1.0"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
 
-    // Mesma chave pública de teste do Consigliere: instala por cima sem desinstalar.
+    // APK de teste: chave fixa e pública (repositório aberto), para instalar por cima sem desinstalar.
+    // Loja: chave de upload que só existe nos segredos do GitHub (variáveis UPLOAD_*), a mesma do Consigliere.
+    val uploadKeystore = System.getenv("UPLOAD_KEYSTORE_PATH")
     signingConfigs {
         create("fixed") {
             storeFile = file("../app/agenda.keystore")
             storePassword = "agendawidget"
             keyAlias = "agenda"
             keyPassword = "agendawidget"
+        }
+        if (uploadKeystore != null) {
+            create("upload") {
+                storeFile = file(uploadKeystore)
+                storePassword = System.getenv("UPLOAD_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("UPLOAD_KEY_ALIAS")
+                keyPassword = System.getenv("UPLOAD_KEY_PASSWORD")
+            }
         }
     }
 
@@ -35,6 +46,8 @@ android {
         }
         release {
             isMinifyEnabled = false
+            // Sem a chave de upload, o release sai sem assinatura (não serve para a loja).
+            signingConfig = if (uploadKeystore != null) signingConfigs.getByName("upload") else null
         }
     }
 

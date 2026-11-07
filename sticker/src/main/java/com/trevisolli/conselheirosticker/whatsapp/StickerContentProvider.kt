@@ -68,7 +68,7 @@ class StickerContentProvider : ContentProvider() {
 
     private fun stickersCursor(pack: Pack?): Cursor {
         val c = MatrixCursor(arrayOf("sticker_file_name", "sticker_emoji", "sticker_accessibility_text"))
-        pack?.stickers?.forEach { s -> c.addRow(arrayOf<Any>(s.file, s.emojis.joinToString(","), "")) }
+        pack?.stickers?.forEach { s -> c.addRow(arrayOf<Any>(pack.servedFile(s), s.emojis.joinToString(","), "")) }
         return c
     }
 
@@ -79,9 +79,8 @@ class StickerContentProvider : ContentProvider() {
         val name = segs.last()
         val pack = store.get(packId) ?: throw FileNotFoundException(packId)
         // Só entrega arquivos que pertencem ao pacote (nada de caminhos arbitrários).
-        if (name != pack.trayFile && pack.stickers.none { it.file == name }) throw FileNotFoundException(name)
-        val file = if (name == pack.trayFile) store.dir(packId).resolve(name) else store.stickerFile(packId, name)
-        if (!file.exists()) throw FileNotFoundException(name)
+        val file = if (name == pack.trayFile) store.dir(pack.id).resolve(name) else store.servedPath(pack.id, name)
+        if (file == null || !file.exists()) throw FileNotFoundException(name)
         val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
         return AssetFileDescriptor(pfd, 0, AssetFileDescriptor.UNKNOWN_LENGTH)
     }

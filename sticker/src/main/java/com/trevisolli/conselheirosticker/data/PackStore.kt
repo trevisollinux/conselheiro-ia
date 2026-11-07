@@ -14,6 +14,8 @@ import java.util.UUID
 data class Sticker(
     val file: String,
     val emojis: List<String>,
+    /** WebP animado (GIF, vídeo ou foto com efeito). */
+    val animated: Boolean = false,
 )
 
 data class Pack(
@@ -23,21 +25,29 @@ data class Pack(
     val stickers: List<Sticker>,
     /** Muda a cada alteração: o WhatsApp só relê as imagens quando este número muda. */
     val version: Int,
-    /** Pacote de figurinhas animadas (o WhatsApp não aceita misturar com paradas). */
-    val animated: Boolean = false,
 ) {
+    /**
+     * O WhatsApp não aceita misturar paradas e animadas num pacote. Com pelo menos uma animada,
+     * o pacote vai como animado e as paradas seguem como animação de 2 quadros iguais.
+     */
+    val animated: Boolean get() = stickers.any { it.animated }
+
+    /** Nome do arquivo que o WhatsApp recebe para esta figurinha. */
+    fun servedFile(s: Sticker): String = if (animated && !s.animated) WRAP_PREFIX + s.file else s.file
+
     val trayFile: String get() = TRAY_FILE
     val readyForWhatsApp: Boolean get() = stickers.size in MIN_STICKERS..MAX_STICKERS
 
     companion object {
         const val TRAY_FILE = "tray.png"
+        const val WRAP_PREFIX = "w_"
         const val MIN_STICKERS = 3
         const val MAX_STICKERS = 30
     }
 }
 
 /**
- * Pacotes guardados em arquivos, sem servidor:
+ * Pacotes guardados em arquivos, sem servidor (w_<figurinha>.webp: versão animada de uma parada):
  * files/packs/<id>/pack.json, <figurinha>.webp, tray.png e edit/<figurinha>/ (para reeditar).
  * O ContentProvider do WhatsApp lê daqui também, por isso tudo é sincronizado.
  */
@@ -60,14 +70,13 @@ class PackStore(context: Context) {
 
     fun get(packId: String): Pack? = synchronized(LOCK) { read(packId) }
 
-    fun create(name: String, publisher: String, animated: Boolean = false): Pack = synchronized(LOCK) {
+    fun create(name: String, publisher: String): Pack = synchronized(LOCK) {
         val pack = Pack(
             id = "p" + UUID.randomUUID().toString().replace("-", "").take(16),
             name = name.trim().take(128).ifBlank { "Meu pacote" },
             publisher = publisher.trim().take(128).ifBlank { "Eu" },
             stickers = emptyList(),
             version = 1,
-            animated = animated,
         )
         dir(pack.id).mkdirs()
         write(pack)
@@ -112,6 +121,7 @@ class PackStore(context: Context) {
         )
         write(pack)
         refreshTray(pack)
+        ensureWrapped(pack)
         pack
     }
 
@@ -121,7 +131,8 @@ class PackStore(context: Context) {
      * (nem todo Android abre WebP animado como imagem parada).
      */
     fun putSticker(
-        packId: String, webp: ByteArray, emojis: List<String>, replaceFile: String?, still: Bitmap? = null,
+        packId: String, webp: ByteArray, emojis: List<String>, replaceFile: String?,
+        animated: Boolean = false, still: Bitmap? = null,
     ): String =
         synchronized(LOCK) {
             val pack = read(packId) ?: error("Pacote não existe")
@@ -129,11 +140,12 @@ class PackStore(context: Context) {
             val file = "s" + UUID.randomUUID().toString().replace("-", "").take(12) + ".webp"
             File(dir(packId), file).writeBytes(webp)
             if (still != null) thumbFile(packId, file).outputStream().use { still.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            val sticker = Sticker(file, emojis)
+            val sticker = Sticker(file, emojis, animated)
             val list = pack.stickers.toMutableList()
             val idx = list.indexOfFirst { it.file == replaceFile }
             if (idx >= 0) {
                 File(dir(packId), list[idx].file).delete()
+                File(dir(packId), Pack.WRAP_PREFIX + list[idx].file).delete()
                 thumbFile(packId, list[idx].file).delete()
                 val oldEdit = editDir(packId, list[idx].file)
                 if (oldEdit.exists()) oldEdit.renameTo(editDir(packId, file))
@@ -144,6 +156,7 @@ class PackStore(context: Context) {
             val updated = pack.copy(stickers = list, version = pack.version + 1)
             write(updated)
             refreshTray(updated)
+            ensureWrapped(updated)
             file
         }
 
@@ -154,6 +167,7 @@ class PackStore(context: Context) {
     fun removeSticker(packId: String, file: String) = synchronized(LOCK) {
         val pack = read(packId) ?: return@synchronized
         File(dir(packId), file).delete()
+        File(dir(packId), Pack.WRAP_PREFIX + file).delete()
         thumbFile(packId, file).delete()
         editDir(packId, file).deleteRecursively()
         val updated = pack.copy(stickers = pack.stickers.filter { it.file != file }, version = pack.version + 1)
@@ -187,6 +201,40 @@ class PackStore(context: Context) {
     }
 
     fun stickerFile(packId: String, file: String): File = File(dir(packId), file)
+
+    /**
+     * Arquivo que o WhatsApp lê para [served] (o nome que [Pack.servedFile] deu), criando na hora
+     * a versão animada de uma parada se ainda não existir. Null se não for deste pacote.
+     */
+    fun servedPath(packId: String, served: String): File? = synchronized(LOCK) {
+        val pack = read(packId) ?: return@synchronized null
+        val sticker = pack.stickers.firstOrNull { pack.servedFile(it) == served } ?: return@synchronized null
+        if (served != sticker.file) wrap(pack.id, sticker.file)
+        File(dir(pack.id), served).takeIf { it.isFile }
+    }
+
+    /** Garante a versão animada (2 quadros iguais) das paradas, se o pacote for animado. */
+    private fun ensureWrapped(pack: Pack) {
+        if (!pack.animated) return
+        pack.stickers.filter { !it.animated }.forEach { wrap(pack.id, it.file) }
+    }
+
+    private fun wrap(packId: String, file: String) {
+        val out = File(dir(packId), Pack.WRAP_PREFIX + file)
+        if (out.isFile) return
+        val bmp = BitmapFactory.decodeFile(File(dir(packId), file).path) ?: return
+        try {
+            val frame = if (bmp.width == 512 && bmp.height == 512) bmp
+            else Bitmap.createScaledBitmap(bmp, 512, 512, true)
+            val r = AnimatedWebp.encodeFitting(listOf(frame, frame), listOf(500, 500))
+            val tmp = File(out.path + ".tmp")
+            tmp.writeBytes(r.bytes)
+            tmp.renameTo(out)
+            if (frame !== bmp) frame.recycle()
+        } finally {
+            bmp.recycle()
+        }
+    }
 
     /** Miniatura parada (PNG) de uma figurinha animada; não existe nas paradas. */
     fun thumbFile(packId: String, file: String): File = File(dir(packId), "thumb_" + file.removeSuffix(".webp") + ".png")
@@ -222,10 +270,11 @@ class PackStore(context: Context) {
             stickers = (0 until arr.length()).map { i ->
                 val s = arr.getJSONObject(i)
                 val em = s.optJSONArray("emojis") ?: JSONArray()
-                Sticker(s.getString("file"), (0 until em.length()).map { em.getString(it) })
+                // Até a 1.0 o tipo era do pacote inteiro ("animated" no pacote).
+                val animated = if (s.has("animated")) s.getBoolean("animated") else json.optBoolean("animated", false)
+                Sticker(s.getString("file"), (0 until em.length()).map { em.getString(it) }, animated)
             },
             version = json.optInt("version", 1),
-            animated = json.optBoolean("animated", false),
         )
     }.getOrNull()
 
@@ -238,7 +287,7 @@ class PackStore(context: Context) {
             .put("animated", pack.animated)
             .put("stickers", JSONArray().apply {
                 pack.stickers.forEach { s ->
-                    put(JSONObject().put("file", s.file).put("emojis", JSONArray(s.emojis)))
+                    put(JSONObject().put("file", s.file).put("emojis", JSONArray(s.emojis)).put("animated", s.animated))
                 }
             })
         val target = File(dir(pack.id), "pack.json")

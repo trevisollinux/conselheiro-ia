@@ -111,16 +111,20 @@ Tudo fica no celular, sem conta e sem servidor.
   Comic Neue e Permanent Marker. **Importar fonte** aceita qualquer `.ttf`/`.otf` (a Impact é da Microsoft e
   não pode vir no app, mas dá para importar a sua).
 - **Só texto:** figurinha com fundo transparente.
-- **Animadas (GIF e vídeo):** crie um pacote **🎞️ Animadas**, toque **+ Figurinha → GIF** ou **→ Vídeo** e escolha o
+- **Animadas (GIF e vídeo):** toque **+ Figurinha → GIF** ou **→ Vídeo** e escolha o
   trecho (até 10 s). Algo do YouTube ou de outro app: grave a tela do celular e use o vídeo gravado.
   O recorte (retângulo, círculo, laço, borracha), a borda e os textos valem para todos os quadros; a prévia anima
-  nas abas Ajustar e Texto. O app ajusta quadros e qualidade sozinho para caber nos 500 KB do WhatsApp.
+  nas abas Ajustar e Efeitos. O app ajusta quadros e qualidade sozinho para caber nos 500 KB do WhatsApp.
+- **Efeitos animados:** na aba **Efeitos** do editor, uma foto parada vira animada com 🔥 fogo em volta, 🫨 tremor,
+  ✨ brilhos, ❤️ corações subindo ou 💓 pulsar (dá para combinar, ex.: fogo + tremor). Também funcionam em GIF e vídeo.
+- **Tudo no mesmo pacote:** paradas e animadas convivem num pacote só.
 - **Compartilhar:** em qualquer app, Compartilhar uma foto, GIF ou vídeo → Unusual Stickers.
 - Toda figurinha guarda a foto original e os textos: **Editar** reabre tudo editável.
 - **Backup sem cadastro:** exporta os pacotes num `.zip` e importa de volta (detalhes abaixo).
 
 Formato que o WhatsApp exige (o app cuida sozinho): WebP 512×512 com até 100 KB (animada: WebP animado com até
-500 KB e 10 s); ícone PNG 96×96. Um pacote é só de paradas ou só de animadas.
+500 KB e 10 s); ícone PNG 96×96. O WhatsApp não mistura paradas e animadas num pacote: quando um pacote tem alguma
+animada, o app manda as paradas como animação de 2 quadros iguais (`w_*.webp`), que aparecem paradas.
 
 ### Como usar
 

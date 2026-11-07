@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
                             if (photo != null) {
                                 shared = null
                                 screen = Screen.Editor(
-                                    p.id, if (p.animated) EditorSource.Animation(photo) else EditorSource.Photo(photo),
+                                    p.id, if (isAnimatedMedia(photo)) EditorSource.Animation(photo) else EditorSource.Photo(photo),
                                 )
                             } else {
                                 screen = Screen.OnePack(p.id)
@@ -113,6 +113,12 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         sharedImage(intent)?.let { shared = it }
+    }
+
+    /** GIF ou vídeo vira figurinha animada; o resto, parada. */
+    private fun isAnimatedMedia(uri: Uri): Boolean {
+        val type = contentResolver.getType(uri).orEmpty()
+        return type == "image/gif" || type.startsWith("video/")
     }
 
     private fun sharedImage(intent: Intent?): Uri? {

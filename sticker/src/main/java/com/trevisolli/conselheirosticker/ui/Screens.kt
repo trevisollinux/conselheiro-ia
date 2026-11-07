@@ -80,6 +80,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.trevisolli.conselheirosticker.data.Emojis
 import com.trevisolli.conselheirosticker.data.Pack
+import com.trevisolli.conselheirosticker.data.Sticker
 import com.trevisolli.conselheirosticker.data.PackStore
 import com.trevisolli.conselheirosticker.whatsapp.WhatsApp
 import kotlinx.coroutines.Dispatchers
@@ -233,10 +234,9 @@ fun PackListScreen(
             initialName = "",
             initialPublisher = lastPublisher(context),
             onDismiss = { creating = false },
-            askType = true,
-            onConfirm = { name, publisher, animated ->
+            onConfirm = { name, publisher ->
                 savePublisher(context, publisher)
-                val pack = store.create(name, publisher, animated)
+                val pack = store.create(name, publisher)
                 creating = false
                 version++
                 onOpen(pack)
@@ -251,12 +251,10 @@ private fun PackNameDialog(
     initialName: String,
     initialPublisher: String,
     onDismiss: () -> Unit,
-    askType: Boolean = false,
-    onConfirm: (name: String, publisher: String, animated: Boolean) -> Unit,
+    onConfirm: (name: String, publisher: String) -> Unit,
 ) {
     var name by remember { mutableStateOf(initialName) }
     var publisher by remember { mutableStateOf(initialPublisher) }
-    var animated by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -264,21 +262,10 @@ private fun PackNameDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it.take(128) }, label = { Text("Nome do pacote") }, singleLine = true)
                 OutlinedTextField(publisher, { publisher = it.take(128) }, label = { Text("Autor") }, singleLine = true)
-                if (askType) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = !animated, onClick = { animated = false }, label = { Text("🖼️ Paradas") })
-                        FilterChip(selected = animated, onClick = { animated = true }, label = { Text("🎞️ Animadas") })
-                    }
-                    Text(
-                        if (animated) "De GIFs e vídeos. O WhatsApp não mistura animadas e paradas no mesmo pacote."
-                        else "De fotos e textos.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(name, publisher, animated) }, enabled = name.isNotBlank()) { Text("Salvar") }
+            TextButton(onClick = { onConfirm(name, publisher) }, enabled = name.isNotBlank()) { Text("Salvar") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )
@@ -386,7 +373,7 @@ fun PackScreen(
                             .clickable { menuFor = s.file },
                         contentAlignment = Alignment.Center,
                     ) {
-                        StickerImage(store, p, s.file, s.emojis.joinToString(" "), Modifier.fillMaxSize().padding(4.dp))
+                        StickerImage(store, p, s, s.emojis.joinToString(" "), Modifier.fillMaxSize().padding(4.dp))
                         Text(s.emojis.firstOrNull().orEmpty(), Modifier.align(Alignment.BottomEnd).padding(4.dp))
                     }
                 }
@@ -397,17 +384,15 @@ fun PackScreen(
     if (adding) {
         ModalBottomSheet(onDismissRequest = { adding = false }) {
             Column(Modifier.padding(16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (p?.animated == true) {
-                    Button(onClick = { adding = false; onAddAnimation(false) }, Modifier.fillMaxWidth()) { Text("🎞️  GIF") }
-                    Button(onClick = { adding = false; onAddAnimation(true) }, Modifier.fillMaxWidth()) { Text("🎬  Vídeo") }
-                    Text(
-                        "Viu algo no YouTube ou em outro app? Use o gravador de tela do celular e escolha o vídeo gravado aqui.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                } else {
-                    Button(onClick = { adding = false; onAddPhoto() }, Modifier.fillMaxWidth()) { Text("🖼️  Foto da galeria") }
-                    Button(onClick = { adding = false; onAddText() }, Modifier.fillMaxWidth()) { Text("🔤  Só texto") }
-                }
+                Button(onClick = { adding = false; onAddPhoto() }, Modifier.fillMaxWidth()) { Text("🖼️  Foto da galeria") }
+                Button(onClick = { adding = false; onAddText() }, Modifier.fillMaxWidth()) { Text("🔤  Só texto") }
+                Button(onClick = { adding = false; onAddAnimation(false) }, Modifier.fillMaxWidth()) { Text("🎞️  GIF") }
+                Button(onClick = { adding = false; onAddAnimation(true) }, Modifier.fillMaxWidth()) { Text("🎬  Vídeo") }
+                Text(
+                    "Paradas e animadas podem ficar no mesmo pacote. Em fotos, a aba Efeitos do editor deixa a figurinha " +
+                        "animada (fogo, tremor, brilhos…). Viu algo no YouTube? Grave a tela e escolha o vídeo.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
     }
@@ -448,7 +433,7 @@ fun PackScreen(
     }
 
     if (renaming && p != null) {
-        PackNameDialog("Renomear pacote", p.name, p.publisher, onDismiss = { renaming = false }) { n, a, _ ->
+        PackNameDialog("Renomear pacote", p.name, p.publisher, onDismiss = { renaming = false }) { n, a ->
             store.rename(packId, n, a); renaming = false; changed()
         }
     }
@@ -470,8 +455,9 @@ fun PackScreen(
 
 /** Miniatura da figurinha; as animadas tocam a animação (Android 9+). */
 @Composable
-private fun StickerImage(store: PackStore, pack: Pack, file: String, description: String, modifier: Modifier) {
-    if (pack.animated && Build.VERSION.SDK_INT >= 28) {
+private fun StickerImage(store: PackStore, pack: Pack, sticker: Sticker, description: String, modifier: Modifier) {
+    val file = sticker.file
+    if (sticker.animated && Build.VERSION.SDK_INT >= 28) {
         val drawable by produceState<Drawable?>(null, pack.id, file) {
             value = withContext(Dispatchers.IO) {
                 runCatching {

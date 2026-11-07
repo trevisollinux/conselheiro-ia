@@ -58,6 +58,15 @@ class EditorState(
     /** Quadro mostrado na prévia (a animação toca nas abas Ajustar e Texto). */
     var frameIndex by mutableIntStateOf(0)
 
+    /** Efeitos animados (fogo, tremor…): numa foto parada, deixam a figurinha animada. */
+    var effects by mutableStateOf<Set<Effect>>(emptySet())
+
+    /** Fase dos efeitos na prévia (0..1). */
+    var effectPhase by mutableFloatStateOf(0f)
+
+    /** A figurinha salva vai ser animada (GIF/vídeo ou efeito). */
+    val willAnimate: Boolean get() = isAnimated || effects.isNotEmpty()
+
     val mask: Bitmap = mask ?: Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ALPHA_8).apply {
         eraseColor(Color.BLACK) // ALPHA_8: preto = alfa 255 = tudo visível
     }
@@ -268,6 +277,7 @@ class EditorState(
             .put("rotation", rotation.toDouble())
             .put("outline", outline).put("outlineWidth", outlineWidth.toDouble()).put("outlineColor", outlineColor)
             .put("emojis", emojis)
+            .put("effects", JSONArray(effects.map { it.name }))
             .put("texts", JSONArray().apply {
                 texts.forEach { t ->
                     put(JSONObject().put("text", t.text).put("font", t.font).put("size", t.size.toDouble())
@@ -318,6 +328,8 @@ class EditorState(
             st.outlineWidth = j.optDouble("outlineWidth", 10.0).toFloat()
             st.outlineColor = j.optInt("outlineColor", Color.WHITE)
             st.emojis = j.optString("emojis", "😂")
+            val fx = j.optJSONArray("effects") ?: JSONArray()
+            st.effects = (0 until fx.length()).mapNotNull { k -> Effect.entries.firstOrNull { it.name == fx.optString(k) } }.toSet()
             val arr = j.optJSONArray("texts") ?: JSONArray()
             for (i in 0 until arr.length()) {
                 val t = arr.getJSONObject(i)

@@ -67,7 +67,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -115,7 +115,7 @@ sealed interface EditorSource {
     data class Animation(val uri: Uri) : EditorSource
 }
 
-private enum class EditTab(val label: String) { Cut("Recortar"), Adjust("Ajustar"), Text("Texto") }
+private enum class EditTab(val label: String) { Cut("Recortar"), Adjust("Ajustar"), Text("Texto"), Effects("Efeitos") }
 private enum class CutMode(val label: String) {
     Frame("Retângulo"), Lasso("Laço"), Erase("Borracha"), Restore("Pincel")
 }
@@ -231,36 +231,37 @@ fun EditorScreen(
         scope.launch {
             busy = "Salvando…"
             try {
-                val animatedPack = withContext(Dispatchers.IO) { store.get(packId)?.animated == true }
-                if (animatedPack != st.isAnimated) {
-                    busy = null
-                    snackbar.showSnackbar(
-                        if (animatedPack) "Este pacote é de figurinhas animadas: use um GIF ou vídeo."
-                        else "Animação só entra em pacote animado."
-                    )
-                    return@launch
-                }
                 val replace = (source as? EditorSource.Existing)?.file
-                if (st.isAnimated) {
-                    val frames = st.frames!!
+                if (st.willAnimate) {
+                    // GIF/vídeo: um quadro por quadro do trecho. Foto com efeito: 16 quadros da mesma imagem.
+                    val count = if (st.isAnimated) st.frames!!.size else Effects.STILL_FRAMES
+                    val durations = if (st.isAnimated) st.durations!! else List(count) { Effects.STILL_FRAME_MS }
                     val bounds = st.contentBounds()
                     val rendered = withContext(Dispatchers.Default) {
-                        frames.indices.map { i ->
-                            busy = "Preparando quadros… ${(i + 1) * 100 / frames.size}%"
-                            val cut = st.cutoutFor(i, bounds)
-                            Render.export(st, fonts, cut).also { cut?.recycle() }
+                        val still = if (st.isAnimated) null else st.cutoutFor(0, bounds)
+                        try {
+                            (0 until count).map { i ->
+                                busy = "Preparando quadros… ${(i + 1) * 100 / count}%"
+                                val cut = if (st.isAnimated) st.cutoutFor(i, bounds) else still
+                                Render.export(st, fonts, cut, phase = i.toFloat() / count)
+                                    .also { if (st.isAnimated) cut?.recycle() }
+                            }
+                        } finally {
+                            still?.recycle()
                         }
                     }
                     try {
                         busy = "Comprimindo para o WhatsApp…"
-                        val result = withContext(Dispatchers.Default) { AnimatedWebp.encodeFitting(rendered, st.durations!!) }
+                        val result = withContext(Dispatchers.Default) { AnimatedWebp.encodeFitting(rendered, durations) }
                         if (result.bytes.size > AnimatedWebp.MAX_BYTES) {
                             busy = null
                             snackbar.showSnackbar("A animação ficou grande demais para o WhatsApp. Escolha um trecho mais curto.")
                             return@launch
                         }
                         withContext(Dispatchers.IO) {
-                            val file = store.putSticker(packId, result.bytes, Emojis.parse(st.emojis), replace, still = rendered[0])
+                            val file = store.putSticker(
+                                packId, result.bytes, Emojis.parse(st.emojis), replace, animated = true, still = rendered[0],
+                            )
                             st.save(store.editDir(packId, file))
                         }
                     } finally {
@@ -286,13 +287,28 @@ fun EditorScreen(
     BackHandler { confirmExit = true }
 
     // Prévia animada nas abas Ajustar e Texto (para enquanto salva).
-    LaunchedEffect(state, tab, busy) {
+    // Os efeitos ficam parados na aba Texto, para dar para tocar e arrastar os textos.
+    val st0 = state
+    val effectsOn = st0?.effects?.isNotEmpty() == true
+    LaunchedEffect(state, tab, busy, effectsOn) {
         val st = state ?: return@LaunchedEffect
-        if (!st.isAnimated || tab == EditTab.Cut || busy != null) return@LaunchedEffect
-        val ds = st.durations!!
-        while (true) {
-            kotlinx.coroutines.delay(ds[st.frameIndex.coerceIn(0, ds.lastIndex)].toLong().coerceAtLeast(30))
-            st.frameIndex = (st.frameIndex + 1) % ds.size
+        if (tab == EditTab.Cut || busy != null) return@LaunchedEffect
+        if (st.isAnimated) {
+            val ds = st.durations!!
+            while (true) {
+                kotlinx.coroutines.delay(ds[st.frameIndex.coerceIn(0, ds.lastIndex)].toLong().coerceAtLeast(30))
+                st.frameIndex = (st.frameIndex + 1) % ds.size
+                st.effectPhase = if (tab == EditTab.Text) 0f else st.frameIndex.toFloat() / ds.size
+            }
+        } else if (st.effects.isNotEmpty() && tab != EditTab.Text) {
+            var i = 0
+            while (true) {
+                st.effectPhase = i.toFloat() / Effects.STILL_FRAMES
+                kotlinx.coroutines.delay(Effects.STILL_FRAME_MS.toLong())
+                i = (i + 1) % Effects.STILL_FRAMES
+            }
+        } else {
+            st.effectPhase = 0f
         }
     }
 
@@ -333,7 +349,7 @@ fun EditorScreen(
     ) { pad ->
         val st = state
         Column(Modifier.padding(pad).fillMaxSize().imePadding()) {
-            TabRow(selectedTabIndex = tab.ordinal) {
+            ScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = 0.dp) {
                 EditTab.entries.forEach { t ->
                     Tab(selected = tab == t, onClick = { tab = t }, text = { Text(t.label) })
                 }
@@ -392,9 +408,34 @@ fun EditorScreen(
                     }
                     EditTab.Adjust -> AdjustControls(st)
                     EditTab.Text -> TextControls(st, fontOptions, fonts, onImportFont = { fontPicker.launch(arrayOf("*/*")) })
+                    EditTab.Effects -> EffectsControls(st)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun EffectsControls(st: EditorState) {
+    Text(
+        if (st.isAnimated) "Os efeitos tocam junto com a animação."
+        else "Com um efeito, a figurinha vira animada. Dá para combinar (ex.: fogo + tremor).",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Effect.entries.forEach { e ->
+            FilterChip(
+                selected = e in st.effects,
+                onClick = { st.effects = if (e in st.effects) st.effects - e else st.effects + e },
+                label = { Text(e.label) },
+            )
+        }
+    }
+    if (st.effects.isNotEmpty()) {
+        OutlinedButton(onClick = { st.effects = emptySet() }) { Text("Tirar efeitos") }
     }
 }
 

@@ -22,28 +22,63 @@ object Render {
     fun draw(
         canvas: Canvas, sizePx: Float, st: EditorState, fonts: Fonts, showSelection: Boolean,
         image: Bitmap? = st.cutout(),
+        phase: Float = st.effectPhase,
     ) {
         canvas.save()
         canvas.scale(sizePx / SIZE, sizePx / SIZE)
+        val fx = st.effects
+        val m = Effects.motion(fx, phase)
+        val box = effectBox(st, image, m)
+        if (fx.isNotEmpty()) Effects.drawBehind(canvas, fx, box, phase)
         image?.let { img ->
             val fit = (SIZE - MARGIN * 2) / max(img.width, img.height)
             canvas.save()
+            applyMotion(canvas, m, m.imageScale)
             canvas.translate(SIZE / 2 + st.offset.x, SIZE / 2 + st.offset.y)
             canvas.rotate(st.rotation)
             canvas.scale(fit * st.scale, fit * st.scale)
             canvas.drawBitmap(img, -img.width / 2f, -img.height / 2f, Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
             canvas.restore()
         }
+        canvas.save()
+        applyMotion(canvas, m, m.textScale)
         st.texts.forEachIndexed { i, t ->
             drawText(canvas, t, fonts)
             if (showSelection && i == st.selected) drawSelection(canvas, t, fonts)
         }
         canvas.restore()
+        if (fx.isNotEmpty()) Effects.drawFront(canvas, fx, box, phase)
+        canvas.restore()
     }
 
-    fun export(st: EditorState, fonts: Fonts, image: Bitmap? = st.cutout()): Bitmap {
+    /** Tremor, pulso e encolhimento do fogo, em volta do centro do quadro. */
+    private fun applyMotion(canvas: Canvas, m: Effects.Motion, scale: Float) {
+        canvas.translate(SIZE / 2 + m.dx, SIZE / 2 + m.dy)
+        canvas.rotate(m.rotation)
+        canvas.scale(scale, scale)
+        canvas.translate(-SIZE / 2, -SIZE / 2)
+    }
+
+    /** Onde a figura está no quadro (já com o movimento), para os efeitos ficarem em volta dela. */
+    private fun effectBox(st: EditorState, image: Bitmap?, m: Effects.Motion): RectF {
+        if (image == null) return RectF(96f, 96f, 416f, 416f)
+        val fit = (SIZE - MARGIN * 2) / max(image.width, image.height) * st.scale * m.imageScale
+        val rad = Math.toRadians(st.rotation.toDouble())
+        val w = image.width * fit
+        val h = image.height * fit
+        val hw = (kotlin.math.abs(w * cos(rad)) + kotlin.math.abs(h * sin(rad))).toFloat() / 2
+        val hh = (kotlin.math.abs(w * sin(rad)) + kotlin.math.abs(h * cos(rad))).toFloat() / 2
+        val cx = SIZE / 2 + st.offset.x * m.imageScale + m.dx
+        val cy = SIZE / 2 + st.offset.y * m.imageScale + m.dy
+        return RectF(
+            (cx - hw).coerceAtLeast(8f), (cy - hh).coerceAtLeast(8f),
+            (cx + hw).coerceAtMost(SIZE - 8f), (cy + hh).coerceAtMost(SIZE - 8f),
+        )
+    }
+
+    fun export(st: EditorState, fonts: Fonts, image: Bitmap? = st.cutout(), phase: Float = 0f): Bitmap {
         val bmp = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
-        draw(Canvas(bmp), SIZE, st, fonts, showSelection = false, image = image)
+        draw(Canvas(bmp), SIZE, st, fonts, showSelection = false, image = image, phase = phase)
         return bmp
     }
 

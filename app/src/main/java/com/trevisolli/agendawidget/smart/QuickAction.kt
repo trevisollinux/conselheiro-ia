@@ -27,6 +27,9 @@ data class QuickAction(val kind: String, val label: String, val target: String =
         const val CALL = "call"
         const val MAP = "map"
         const val TRACK = "track"
+        const val COPY = "copy"
+        /** Responde pela notificação do WhatsApp (sem abrir); sem ela, abre o WhatsApp com o texto. */
+        const val REPLY = "reply"
 
         fun fromJson(o: JSONObject) = QuickAction(o.getString("kind"), o.getString("label"), o.optString("target"), o.optString("text"))
     }
@@ -40,6 +43,20 @@ object QuickActions {
 
     /** Executa a ação (precisa vir de uma tela aberta). */
     fun launch(context: Context, a: QuickAction) {
+        when (a.kind) {
+            QuickAction.COPY -> {
+                context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Consigliere", a.target))
+                Toast.makeText(context, "Copiado", Toast.LENGTH_SHORT).show()
+                return
+            }
+            QuickAction.REPLY -> {
+                if (ReplyHub.send(context, a.target, a.text)) {
+                    Toast.makeText(context, "Resposta enviada para ${a.target}", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                return launch(context, a.copy(kind = QuickAction.WHATSAPP))
+            }
+        }
         val intent: Intent? = when (a.kind) {
             QuickAction.WHATSAPP -> {
                 val phone = phoneFor(context, a.target)

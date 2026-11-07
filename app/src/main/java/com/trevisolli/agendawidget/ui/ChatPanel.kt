@@ -267,13 +267,17 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
             // 📷 Foto: lista escrita à mão, print, convite… (o texto digitado vira a legenda).
             Box {
-                IconButton(onClick = { photoMenu = true }, enabled = !busy) { Text("📷", style = MaterialTheme.typography.titleLarge) }
+                IconButton(onClick = { photoMenu = true }, enabled = !busy) { Text("➕", style = MaterialTheme.typography.titleLarge) }
                 androidx.compose.material3.DropdownMenu(expanded = photoMenu, onDismissRequest = { photoMenu = false }) {
-                    androidx.compose.material3.DropdownMenuItem(text = { Text("Tirar foto") }, onClick = {
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("📷 Tirar foto") }, onClick = {
                         photoMenu = false
                         takePicture.launch(photoUri)
                     })
-                    androidx.compose.material3.DropdownMenuItem(text = { Text("Escolher da galeria") }, onClick = {
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("🎙️ Gravar conversa ou reunião") }, onClick = {
+                        photoMenu = false
+                        context.startActivity(Intent(context, com.trevisolli.agendawidget.MeetingActivity::class.java))
+                    })
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("🖼️ Escolher da galeria") }, onClick = {
                         photoMenu = false
                         pickPhoto.launch(
                             androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),

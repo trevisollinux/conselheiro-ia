@@ -26,9 +26,10 @@ object VoiceQueue {
 
     private fun dir(context: Context) = File(context.filesDir, "voice_pending").apply { mkdirs() }
 
-    fun add(context: Context, audio: ByteArray, mime: String) {
+    /** [meeting]: gravação de conversa (vira resumo), não um comando. */
+    fun add(context: Context, audio: ByteArray, mime: String, meeting: Boolean = false) {
         val ext = if (mime == "audio/mp4") "m4a" else "aac"
-        File(dir(context), "${System.currentTimeMillis()}.$ext").writeBytes(audio)
+        File(dir(context), (if (meeting) "m_" else "") + "${System.currentTimeMillis()}.$ext").writeBytes(audio)
         schedule(context)
     }
 
@@ -71,7 +72,11 @@ class VoiceQueueWorker(context: Context, params: WorkerParameters) : CoroutineWo
         for (file in VoiceQueue.pending(ctx)) {
             val mime = if (file.extension == "m4a") "audio/mp4" else "audio/aac"
             try {
-                val answer = Assistant.hear(ctx, file.readBytes(), mime)
+                val answer = if (file.name.startsWith("m_")) {
+                    Assistant.summarizeMeeting(ctx, file.readBytes(), mime)
+                } else {
+                    Assistant.hear(ctx, file.readBytes(), mime)
+                }
                 file.delete()
                 VoiceQueue.notify(ctx, answer.text)
             } catch (e: IOException) {

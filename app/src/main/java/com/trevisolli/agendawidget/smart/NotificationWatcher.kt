@@ -45,6 +45,10 @@ class NotificationWatcher : NotificationListenerService() {
             extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE) != null ||
             GROUP_TITLE.containsMatchIn(sender)
         val isEmail = sbn.packageName in EMAIL_APPS
+        // Gmail lido pelo IMAP: a notificação seria repetida.
+        if (sbn.packageName == "com.google.android.gm" && MailSource.configured(this)) return
+        // Guarda o "Responder" desta conversa para o Consigliere responder sem abrir o WhatsApp.
+        if (!isEmail && !isGroup) ReplyHub.remember(sender, n)
 
         // WhatsApp junta várias mensagens numa notificação ("3 novas mensagens"): lê cada uma pelo MessagingStyle.
         val recent = System.currentTimeMillis() - 15 * 60_000L
@@ -64,31 +68,7 @@ class NotificationWatcher : NotificationListenerService() {
             // A mesma mensagem volta a cada atualização da notificação: processa uma vez só.
             if (!settings.markSeen("notif:" + (sbn.packageName + sender + body).hashCode())) continue
             scope.launch {
-                val app = applicationContext
-                InboxStore.add(app, InboxStore.Msg(origin, sender, body, System.currentTimeMillis()))
-                // Código de rastreio (mesmo em grupo ou e-mail automático de loja): vira encomenda.
-                val parcels = Parcels.scan(app, body, label)
-                parcels.forEach { notifyParcel(app, it, label) }
-                if (isGroup && !settings.notifGroups) {
-                    NotifLog.add(app, label, body, if (parcels.isNotEmpty()) "📦 rastreio guardado" else "grupo (ignorado)")
-                    return@launch
-                }
-                // E-mails automáticos (avisos do Google, login, propaganda, códigos) não viram sugestão.
-                if (isEmail && AUTOMATED.containsMatchIn((sender + " " + body).lowercase())) {
-                    NotifLog.add(app, label, body, "e-mail automático (ignorado)")
-                    return@launch
-                }
-                var why = "sem compromisso"
-                val suggestion = Brain.fromNotification(app, body, label, strict = isEmail) { why = it }
-                when {
-                    suggestion == null -> NotifLog.add(app, label, body, if (parcels.isNotEmpty()) "📦 rastreio guardado" else why)
-                    SuggestionStore.add(app, suggestion) -> {
-                        NotifLog.add(app, label, body, "📌 sugestão: ${suggestion.title}")
-                        notifySuggestion(app, suggestion)
-                        RefreshWorker.runNow(app)
-                    }
-                    else -> NotifLog.add(app, label, body, "já sugerido")
-                }
+                Intake.process(applicationContext, origin, sender, body, isEmail = isEmail, isGroup = isGroup, replyable = !isEmail)
             }
         }
     }
@@ -119,7 +99,7 @@ class NotificationWatcher : NotificationListenerService() {
 
         private val EMAIL_APPS = setOf("com.google.android.gm", "com.microsoft.office.outlook")
 
-        private val AUTOMATED = Regex(
+        internal val AUTOMATED = Regex(
             "no-?reply|nao-?responda|não responda|noreply|notifica|newsletter|você está recebendo este e-mail|" +
                 "voce esta recebendo|fazer login|login com o google|alerta de segurança|alerta de seguranca|" +
                 "código de verificação|codigo de verificacao|redefinir (a )?senha|cancelar inscrição|cancelar inscricao|" +
@@ -202,6 +182,19 @@ class NotificationWatcher : NotificationListenerService() {
             val notification = NotificationCompat.Builder(context, CHANNEL)
                 .addAction(0, if (s.kind == Kind.TASK) "✅ Criar tarefa" else "📅 Criar", broadcast(SuggestionActions.ACTION_CREATE, 1))
                 .addAction(0, "Ignorar", broadcast(SuggestionActions.ACTION_DISMISS, 2))
+                .apply {
+                    // Resposta pronta pelo próprio WhatsApp, sem abrir.
+                    val to = s.replyTo
+                    val text = s.reply
+                    if (to != null && text != null) {
+                        val pi = PendingIntent.getActivity(
+                            context, s.id.hashCode() + 3,
+                            com.trevisolli.agendawidget.ActionActivity.intent(context, QuickAction(QuickAction.REPLY, "Responder", to, text)),
+                            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                        )
+                        addAction(0, "💬 \"" + text.take(28) + "…\"", pi)
+                    }
+                }
                 .setSmallIcon(R.drawable.ic_launcher_monochrome)
                 .setContentTitle("📌 ${s.title}")
                 .setContentText(listOfNotNull(Format.suggestionWhen(s.date, s.time), s.origin).joinToString(" · "))

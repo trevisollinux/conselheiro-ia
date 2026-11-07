@@ -88,6 +88,24 @@ class ConfirmActivity : ComponentActivity() {
         } else {
             null
         }
+        // Arquivo de texto ou .zip (ex.: "Exportar conversa" do WhatsApp): o assistente lê e extrai os combinados.
+        val doc: Uri? = if (isSend && image == null) IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java) else null
+        if (doc != null && stored == null) {
+            val app = applicationContext
+            val name = intent.getStringExtra(Intent.EXTRA_SUBJECT) ?: "Conversa compartilhada"
+            val content = runCatching { readDocument(doc) }.getOrDefault("")
+            if (content.isBlank()) {
+                Toast.makeText(this, "Não consegui ler esse arquivo", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(this, "Lendo \"$name\"… aviso quando terminar", Toast.LENGTH_LONG).show()
+                com.trevisolli.agendawidget.smart.Background.scope.launch {
+                    val answer = com.trevisolli.agendawidget.smart.Assistant.handleDocument(app, name, content)
+                    com.trevisolli.agendawidget.smart.Notify.post(app, "documents", "Conversas lidas", 95, "📄 $name", answer.text, answer.actions)
+                }
+            }
+            finish()
+            return
+        }
         val shared = if (isSend && image == null) {
             listOfNotNull(
                 intent.getStringExtra(Intent.EXTRA_SUBJECT),
@@ -107,6 +125,23 @@ class ConfirmActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize()) { Screen(stored, shared, image) }
             }
         }
+    }
+
+    /** Texto do arquivo; num .zip, o primeiro .txt de dentro (a conversa exportada). */
+    private fun readDocument(uri: Uri): String {
+        val type = contentResolver.getType(uri).orEmpty()
+        contentResolver.openInputStream(uri)?.use { input ->
+            if (type.contains("zip") || uri.toString().endsWith(".zip")) {
+                val zip = java.util.zip.ZipInputStream(input)
+                while (true) {
+                    val e = zip.nextEntry ?: break
+                    if (e.name.endsWith(".txt")) return zip.bufferedReader().readText().take(400_000)
+                }
+                return ""
+            }
+            return input.bufferedReader().readText().take(400_000)
+        }
+        return ""
     }
 
     @Composable

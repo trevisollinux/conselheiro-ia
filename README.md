@@ -21,6 +21,16 @@ figurinhas do WhatsApp sem anúncios.
 - **Fotos 📷:** na conversa, tire ou escolha uma foto (lista escrita à mão, print, convite, receita). A IA lê e executa;
   sem IA, o texto é lido no aparelho e várias linhas viram uma lista com subtarefas. Ao compartilhar uma imagem com o app,
   "Pedir ao Consigliere" faz o mesmo.
+- **Secretária:**
+  - **E-mail (IMAP):** lê a caixa de entrada inteira com uma senha de app; mesmos filtros das notificações.
+  - **🎙️ Gravar conversa ou reunião:** grava em primeiro plano (até 50 min) e o Gemini devolve resumo + combinados já criados.
+    Durante ligações o Android costuma bloquear o microfone para outros apps.
+  - **💬 Responder pelo WhatsApp:** sugestões vêm com a resposta pronta e "Responder" envia pela própria notificação;
+    "responde a Helena que sim" também.
+  - **🧠 Memória:** "lembra que…" e depois pergunte.
+  - **💸 Contas a pagar:** boleto/PIX em e-mails, mensagens e fotos; lista com "Copiar" e lembrete do vencimento.
+  - **🗓️ Encaixar horários** ("quando tenho uma tarde livre?") e **combinados** ("fiquei de mandar… até sexta").
+  - **Revisão da semana** domingo às 19h. **Conversa exportada do WhatsApp** compartilhada com o app vira resumo e combinados.
 - **Aniversários 🎂:** de manhã, aviso dos aniversários dos contatos com "Mandar parabéns" (mensagem pronta no WhatsApp).
 - **Lembrete por lugar 📍:** "quando eu chegar no mercado, me lembra da lista de compras"; ensine um lugar com
   "salva aqui como mercado" (endereços funcionam direto). Precisa da localização "o tempo todo".

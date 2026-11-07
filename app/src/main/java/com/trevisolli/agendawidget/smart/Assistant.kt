@@ -49,6 +49,10 @@ object Assistant {
         data class Route(val place: String) : Action()
         data class Track(val code: String) : Action()
         data class RemindAt(val place: String, val text: String) : Action()
+        data class Remember(val fact: String) : Action()
+        data class Forget(val about: String) : Action()
+        data class Reply(val to: String, val text: String) : Action()
+        data class Bill(val payee: String, val value: String?, val due: LocalDate?, val code: String?) : Action()
         data class SavePlace(val name: String) : Action()
     }
 
@@ -93,6 +97,35 @@ object Assistant {
         }
     }
 
+    /** Gravação de conversa: resumo + combinados. Se a IA estiver fora, a gravação espera na fila. */
+    suspend fun handleMeeting(context: Context, audio: ByteArray, mime: String): ChatMessage = withContext(Dispatchers.IO) {
+        try {
+            summarizeMeeting(context, audio, mime)
+        } catch (e: Exception) {
+            VoiceQueue.add(context, audio, mime, meeting = true)
+            val answer = ChatMessage(fromUser = false, text = "⏳ Não deu para resumir agora: ${AiClient.friendly(e)}. Guardei a gravação e resumo assim que der.")
+            ChatStore.add(context, answer)
+            answer
+        }
+    }
+
+    /** Sem rede de segurança (usado também pela fila). */
+    suspend fun summarizeMeeting(context: Context, audio: ByteArray, mime: String): ChatMessage = withContext(Dispatchers.IO) {
+        val s = Settings(context)
+        if (!s.useAi || s.aiKey.isBlank() || s.aiProvider != AiProvider.GEMINI) {
+            throw IllegalStateException("o resumo de conversas precisa da IA Gemini ligada")
+        }
+        process(context, "🎙️ Conversa gravada", "", audio to mime, meeting = true)
+    }
+
+    /** Texto longo compartilhado (ex.: conversa exportada do WhatsApp): extrai compromissos, combinados e endereços. */
+    suspend fun handleDocument(context: Context, name: String, content: String): ChatMessage = withContext(Dispatchers.IO) {
+        val tail = content.lines().takeLast(400).joinToString("\n").takeLast(20_000)
+        val ask = "Conversa/arquivo compartilhado (\"$name\"). Extraia os compromissos, combinados e prazos que envolvem o usuário " +
+            "(crie eventos/tarefas só do que ainda vai acontecer) e resuma em até 5 linhas o que importa:\n$tail"
+        process(context, "📄 $name", ask, null)
+    }
+
     /** Fala já transcrita no aparelho: IA se estiver no ar, senão as regras. */
     suspend fun handleSpoken(context: Context, text: String): ChatMessage = withContext(Dispatchers.IO) {
         process(context, "🎤 $text", text, null)
@@ -130,6 +163,7 @@ object Assistant {
     /** [shown]: o que aparece no balão do usuário; com áudio, vem da transcrição. */
     private suspend fun process(
         context: Context, shown: String?, text: String?, audio: Pair<ByteArray, String>?, image: ByteArray? = null,
+        meeting: Boolean = false,
     ): ChatMessage {
         val history = ChatStore.all(context).takeLast(8)
         if (shown != null) ChatStore.add(context, ChatMessage(fromUser = true, text = shown))
@@ -139,6 +173,8 @@ object Assistant {
         val plan = if (image != null) {
             // Sem fallback aqui: erro sobe para handleImage, que tenta as regras com o texto lido no aparelho.
             aiPlan(context, text.orEmpty(), items, history, image = image)
+        } else if (meeting && audio != null) {
+            aiPlan(context, "", items, history, audio, meeting = true)
         } else if (audio != null) {
             // Sem fallback: erro sobe para handleAudio.
             aiPlan(context, "", items, history, audio).also {
@@ -150,10 +186,10 @@ object Assistant {
             try {
                 aiPlan(context, text, items, history)
             } catch (e: Exception) {
-                rulesPlan(text, items).let { it.copy(reply = (it.reply ?: "") + "\n(IA indisponível, usei o modo automático)") }
+                rulesPlanCtx(context, text, items).let { it.copy(reply = (it.reply ?: "") + "\n(IA indisponível, usei o modo automático)") }
             }
         } else {
-            rulesPlan(text, items)
+            rulesPlanCtx(context, text, items)
         }
 
         val done = mutableListOf<String>()
@@ -176,6 +212,37 @@ object Assistant {
                         buttons += QuickAction(QuickAction.CALL, "📞 Ligar para $who", a.to)
                     }
                     is Action.Route -> buttons += QuickAction(QuickAction.MAP, "🗺️ Rota até ${a.place}", a.place)
+                    is Action.Remember -> {
+                        Memory.add(context, a.fact)
+                        done += "🧠 Guardei: ${a.fact}"
+                    }
+                    is Action.Forget -> {
+                        val f = Memory.forget(context, a.about)
+                        if (f != null) done += "🧠 Esqueci: ${f.text}" else problems += "não achei nada guardado sobre \"${a.about}\""
+                    }
+                    is Action.Reply -> {
+                        // Pela notificação do WhatsApp (sem abrir) quando houver; senão abre a conversa com o texto.
+                        val direct = ReplyHub.has(a.to)
+                        buttons += QuickAction(
+                            if (direct) QuickAction.REPLY else QuickAction.WHATSAPP,
+                            if (direct) "💬 Enviar para ${a.to}" else "💬 Abrir WhatsApp com ${a.to}",
+                            a.to, a.text,
+                        )
+                        done += "💬 Resposta para ${a.to}: \"${a.text}\""
+                    }
+                    is Action.Bill -> {
+                        val b = Bills.Bill(payee = a.payee, value = a.value, due = a.due, code = a.code.orEmpty(), kind = if (a.code?.startsWith("000201") == true) "pix" else "boleto")
+                        Bills.add(context, b)
+                        if (!a.code.isNullOrBlank()) buttons += QuickAction(QuickAction.COPY, "📋 Copiar ${if (b.kind == "pix") "PIX" else "código"}", a.code)
+                        // Lembrete com vencimento no Todoist (ou agenda, sem Todoist).
+                        val title = "Pagar ${a.payee}" + (a.value?.let { " ($it)" } ?: "")
+                        if (settings.todoistToken.isNotBlank()) {
+                            TodoistSource.create(settings.todoistToken, title, a.due, null, a.code)?.let { undo += Undo(Undo.TASK, it) }
+                        } else if (a.due != null) {
+                            CalendarWriter.insert(context, title, a.due, null, 60, a.code)?.let { undo += Undo(Undo.EVENT, it.toString()) }
+                        }
+                        done += "💸 ${Bills.label(b)}"
+                    }
                     is Action.RemindAt -> {
                         // Nome genérico ("mercado") só vale se já foi salvo; endereço ou nome composto dá para procurar no mapa.
                         val searchable = a.place.trim().contains(' ') || a.place.any { it.isDigit() }
@@ -346,9 +413,14 @@ object Assistant {
         RegexOption.IGNORE_CASE,
     )
 
-    /** Mensagem, ligação, rota, rastreio e lugares sem IA. */
+    private val REMEMBER = Regex("^(lembra|lembre|anota|anote|guarda|guarde|grava|memoriza)\\s+que\\s+(.+)$", RegexOption.IGNORE_CASE)
+    private val FORGET = Regex("^(esquece|esqueça|apaga|apague)\\s+(a |o |da |do )?(.+)$", RegexOption.IGNORE_CASE)
+
+    /** Mensagem, ligação, rota, rastreio, lugares e memória sem IA. */
     private fun rulesActions(text: String): Plan? {
         val t = text.trim().trimEnd('.', '!')
+        REMEMBER.find(t)?.let { return Plan(null, listOf(Action.Remember(it.groupValues[2]))) }
+        FORGET.find(t)?.takeIf { !t.contains("tarefa", true) }?.let { return Plan(null, listOf(Action.Forget(it.groupValues[3]))) }
         SAVE_PLACE.find(t)?.let { return Plan(null, listOf(Action.SavePlace(it.groupValues[5]))) }
         REMIND_AT.find(t)?.let { m ->
             return Plan(null, listOf(Action.RemindAt(m.groupValues[4], m.groupValues[8].replaceFirstChar { c -> c.uppercase() })))
@@ -375,6 +447,12 @@ object Assistant {
         val name = if (titled) first.trimEnd(':').replaceFirstChar { it.uppercase() } else "Lista"
         val itens = (if (titled) lines.drop(1) else lines).map { it.replaceFirstChar { c -> c.uppercase() } }
         return Plan("Lista criada!", listOf(Action.Task(name, null, null, subtasks = itens.take(40))))
+    }
+
+    /** Sem IA, pergunta sobre algo guardado na memória responde pela memória. */
+    private fun rulesPlanCtx(context: Context, text: String, items: List<AgendaItem>): Plan {
+        if (ASK.containsMatchIn(norm(text))) Memory.search(context, text)?.let { return Plan("🧠 ${it.text}", emptyList()) }
+        return rulesPlan(text, items)
     }
 
     private fun rulesPlan(text: String, items: List<AgendaItem>): Plan {
@@ -434,7 +512,15 @@ object Assistant {
             "{\"type\":\"route\",\"place\": endereço ou nome do lugar}; " +
             "{\"type\":\"track\",\"code\": código de rastreio, ex. AB123456789BR}; " +
             "{\"type\":\"remind_at_place\",\"place\": nome do lugar (ex. mercado, casa) ou endereço,\"text\": o lembrete}; " +
-            "{\"type\":\"save_place\",\"name\": nome para o lugar onde a pessoa está agora}. " +
+            "{\"type\":\"save_place\",\"name\": nome para o lugar onde a pessoa está agora}; " +
+            "{\"type\":\"remember\",\"fact\": fato a guardar}; {\"type\":\"forget\",\"about\": o que esquecer}; " +
+            "{\"type\":\"reply\",\"to\": nome de quem mandou a mensagem,\"text\": a resposta pronta}; " +
+            "{\"type\":\"bill\",\"payee\": a quem pagar,\"value\": \"R$ 0,00\" ou null,\"due\": \"YYYY-MM-DD\" ou null,\"code\": linha digitável ou PIX copia e cola, ou null}. " +
+            "\"lembra que…\"/\"anota que…\" (um fato, não uma tarefa) = remember; perguntas sobre fatos guardados: responda pela memória. " +
+            "\"responde a Helena que sim\" = reply (use as mensagens recebidas para entender o contexto). " +
+            "Promessas e combinados (\"fiquei de mandar o orçamento pro João até sexta\") = create_task com o prazo. " +
+            "Para encaixar horários (\"quando tenho uma tarde livre?\", \"marca no primeiro horário livre\"), use os horários livres. " +
+            "Boleto, PIX ou conta (texto ou imagem) = bill. " +
             "Use remind_at_place para \"quando eu chegar no X, me lembra de Y\" e save_place para \"salva aqui como X\". " +
             "send_message/call/route/track só preparam um botão; a pessoa confirma. Para \"avisa a Helena que…\", use send_message " +
             "com o texto já escrito do jeito que a pessoa mandaria. " +
@@ -453,6 +539,7 @@ object Assistant {
         context: Context, text: String, items: List<AgendaItem>, history: List<ChatMessage>,
         audio: Pair<ByteArray, String>? = null,
         image: ByteArray? = null,
+        meeting: Boolean = false,
     ): Plan {
         val s = Settings(context)
         val today = LocalDate.now()
@@ -465,11 +552,19 @@ object Assistant {
             if (items.isEmpty()) append("(vazia)\n")
             WeatherSource.load(context)?.let { append(WeatherSource.forecastLine(it)).append("\n") }
             append(InboxStore.promptBlock(InboxStore.recent(context, hours = 24)))
+            append(Memory.promptBlock(context))
+            append(Slots.freeBlock(items))
             if (history.isNotEmpty()) {
                 append("Conversa recente:\n")
                 history.forEach { append(if (it.fromUser) "Usuário: " else "Você: ").append(it.text.take(200)).append("\n") }
             }
             when {
+                meeting -> append(
+                    "O ÁUDIO anexo é a gravação de uma conversa do usuário (reunião, consulta, ligação; pode ter várias pessoas). " +
+                        "No reply, faça um resumo em tópicos curtos, sem markdown: assunto; o que foi decidido; combinados " +
+                        "(quem faz o quê e até quando); números, endereços e valores citados. Em actions, crie os eventos e " +
+                        "tarefas dos combinados que são do usuário. Não inclua heard.",
+                )
                 audio != null -> append("Nova mensagem do usuário: no ÁUDIO anexo (pt-BR).")
                 image != null -> append(
                     "Nova mensagem do usuário: a IMAGEM anexa (foto de lista escrita à mão, print, convite, receita, conta…). " +
@@ -484,7 +579,11 @@ object Assistant {
         val model = if (!media && s.aiLightReady) s.lightModel else s.effectiveModel
         val raw = AiClient.complete(
             s.aiProvider, s.aiKey, model, SYSTEM, prompt, jpeg = image, audio = audio,
-            fastTimeoutMs = if (!media) 20_000 else 45_000,
+            fastTimeoutMs = when {
+                meeting -> 240_000
+                !media -> 20_000
+                else -> 45_000
+            },
         )
         val json = AiClient.extractJson(raw) ?: return Plan(raw.take(400), emptyList())
         val actions = mutableListOf<Action>()
@@ -508,6 +607,28 @@ object Assistant {
                 }
                 "track" -> {
                     Parcels.find(a.optString("code")).forEach { actions += Action.Track(it) }
+                    continue
+                }
+                "remember" -> {
+                    a.optString("fact").trim().takeIf { it.isNotBlank() }?.let { actions += Action.Remember(it) }
+                    continue
+                }
+                "forget" -> {
+                    a.optString("about").trim().takeIf { it.isNotBlank() }?.let { actions += Action.Forget(it) }
+                    continue
+                }
+                "reply" -> {
+                    val to = a.optString("to").trim()
+                    val msg = a.optString("text").trim()
+                    if (to.isNotBlank() && msg.isNotBlank()) actions += Action.Reply(to, msg)
+                    continue
+                }
+                "bill" -> {
+                    val due = a.optString("due").takeIf { !a.isNull("due") && it.length == 10 }?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                    actions += Action.Bill(
+                        a.optString("payee").ifBlank { "conta" }, a.optString("value").takeIf { !a.isNull("value") && it.isNotBlank() },
+                        due, a.optString("code").filter { !it.isWhitespace() }.takeIf { !a.isNull("code") && it.length >= 20 },
+                    )
                     continue
                 }
                 "remind_at_place" -> {

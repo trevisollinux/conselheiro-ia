@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <!-- Android 11+: enxergar o serviço de reconhecimento de voz (o mesmo do teclado) -->
     <queries>
@@ -52,6 +54,15 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Modo reunião: grava a conversa em primeiro plano e resume ao parar -->
+        <activity
+            android:name=".MeetingActivity"
+            android:exported="false"
+            android:launchMode="singleTask" />
+        <service
+            android:name=".smart.MeetingService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
         <!-- Ponte invisível: botão de notificação → WhatsApp, ligar, rota, rastrear -->
         <activity
             android:name=".ActionActivity"
@@ -97,6 +108,12 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- "Exportar conversa" do WhatsApp (com mídia vem em .zip) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/zip" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

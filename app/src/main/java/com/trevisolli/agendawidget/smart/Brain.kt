@@ -30,7 +30,9 @@ object Brain {
             "found = false para: conversa de grupo sobre planos de outras pessoas, divulgação de eventos, avisos de " +
             "serviços e empresas, mudança de termos ou condições, newsletters, propaganda, recibos, códigos, login, " +
             "e para qualquer data ou hora que já passou. Na dúvida, found = false. " +
-            "Inclua \"confidence\": número de 0 a 1 indicando a certeza de que é um compromisso real do usuário."
+            "Inclua \"confidence\": número de 0 a 1 indicando a certeza de que é um compromisso real do usuário. " +
+            "Se a mensagem pede confirmação ou resposta (\"confirma terça?\", \"pode ser às 10h?\"), inclua \"reply\": " +
+            "uma resposta curta e educada em 1ª pessoa confirmando (ex.: \"Confirmado, terça às 10h estarei aí.\"); senão null."
 
     fun rules(text: String, origin: String): Suggestion {
         val r = RuleParser.parse(text)
@@ -85,6 +87,7 @@ object Brain {
             kind = if (json.optString("kind") == "event" || time != null) Kind.EVENT else Kind.TASK,
             origin = origin,
             text = text,
+            reply = json.optString("reply").takeIf { !json.isNull("reply") && it.isNotBlank() }?.take(200),
         )
     }
 

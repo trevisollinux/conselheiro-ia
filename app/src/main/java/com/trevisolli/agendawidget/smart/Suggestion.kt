@@ -21,6 +21,9 @@ data class Suggestion(
     val origin: String,
     val text: String,
     val createdAt: Long = System.currentTimeMillis(),
+    /** Resposta curta sugerida pela IA e a conversa para onde vai (WhatsApp). */
+    val reply: String? = null,
+    val replyTo: String? = null,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id)
@@ -32,6 +35,8 @@ data class Suggestion(
         .put("origin", origin)
         .put("text", text)
         .put("createdAt", createdAt)
+        .put("reply", reply ?: JSONObject.NULL)
+        .put("replyTo", replyTo ?: JSONObject.NULL)
 
     companion object {
         fun fromJson(o: JSONObject) = Suggestion(
@@ -44,6 +49,8 @@ data class Suggestion(
             origin = o.optString("origin"),
             text = o.optString("text"),
             createdAt = o.optLong("createdAt"),
+            reply = if (o.isNull("reply")) null else o.optString("reply").ifBlank { null },
+            replyTo = if (o.isNull("replyTo")) null else o.optString("replyTo").ifBlank { null },
         )
     }
 }

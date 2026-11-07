@@ -27,6 +27,8 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -419,16 +421,18 @@ fun EditorScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EffectsControls(st: EditorState) {
     Text(
         if (st.isAnimated) "Os efeitos tocam junto com a animação."
-        else "Com um efeito, a figurinha vira animada. Dá para combinar (ex.: fogo + tremor).",
+        else "Com um efeito, a figurinha vira animada. Dá para combinar (ex.: fogo + tremor). " +
+            "A chuva de emoji usa o emoji da figurinha (aba Ajustar).",
         style = MaterialTheme.typography.bodySmall,
     )
-    Row(
-        Modifier.horizontalScroll(rememberScrollState()),
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Effect.entries.forEach { e ->
             FilterChip(

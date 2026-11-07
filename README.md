@@ -116,8 +116,10 @@ Tudo fica no celular, sem conta e sem servidor.
   trecho (até 10 s). Algo do YouTube ou de outro app: grave a tela do celular e use o vídeo gravado.
   O recorte (retângulo, círculo, laço, borracha), a borda e os textos valem para todos os quadros; a prévia anima
   nas abas Ajustar e Efeitos. O app ajusta quadros e qualidade sozinho para caber nos 500 KB do WhatsApp.
-- **Efeitos animados:** na aba **Efeitos** do editor, uma foto parada vira animada com 🔥 fogo em volta, 🫨 tremor,
-  ✨ brilhos, ❤️ corações subindo ou 💓 pulsar (dá para combinar, ex.: fogo + tremor). Também funcionam em GIF e vídeo.
+- **Efeitos animados:** na aba **Efeitos** do editor, uma foto parada vira animada (dá para combinar, ex.: fogo +
+  tremor; também funcionam em GIF e vídeo): 🔥 fogo (com brilho e faíscas), 👾 fogo 16 bits (pixel art), ⚡ raios,
+  🫨 tremor, 🔍 zoom dramático, 📺 glitch, 🌈 arco-íris, ✨ brilhos, ❤️ corações, 💫 tontura, ❄️ neve, 🎉 confete,
+  😂 chuva de emoji (usa o emoji da figurinha) e 💓 pulsar. Tudo desenhado pelo app, sem imagens de terceiros.
 - **Tudo no mesmo pacote:** paradas e animadas convivem num pacote só.
 - **Compartilhar:** em qualquer app, Compartilhar uma foto, GIF ou vídeo → Unusual Stickers.
 - Toda figurinha guarda a foto original e os textos: **Editar** reabre tudo editável.

@@ -18,6 +18,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -500,6 +504,7 @@ private enum class Grab { None, Move, L, T, R, B, TL, TR, BL, BR }
 
 @Composable
 private fun CutView(st: EditorState, mode: CutMode, brush: Float, modifier: Modifier) {
+    // Pontos do laço em px da tela sem zoom (desenhados junto com a foto).
     val lassoPoints = remember { mutableStateListOf<Offset>() }
     var fingerAt by remember { mutableStateOf<Offset?>(null) }
     val shape = frameShape.value
@@ -507,79 +512,100 @@ private fun CutView(st: EditorState, mode: CutMode, brush: Float, modifier: Modi
         val ratio = st.source.width.toFloat() / st.source.height
         Canvas(
             Modifier.aspectRatio(ratio).clipToBounds().pointerInput(mode, brush, shape) {
-                val k = st.source.width / size.width.toFloat() // px da tela → px da foto
-                if (mode == CutMode.Frame) {
-                    val handle = 32.dp.toPx() * k // área de toque das alças, em px da foto
+                val k = st.source.width / size.width.toFloat() // px da tela (sem zoom) → px da foto
+                val w = size.width.toFloat()
+                val h = size.height.toFloat()
+                fun content(p: Offset) = (p - st.cutPan) / st.cutZoom
+                // Um dedo: a ferramenta. Dois dedos: zoom e mover a foto.
+                awaitEachGesture {
+                    val first = awaitFirstDown(requireUnconsumed = false)
+                    var zooming = false
+                    var started = false
                     var grab = Grab.None
-                    detectDragGestures(
-                        onDragStart = { p -> grab = st.frame.grabAt(p.x * k, p.y * k, handle, shape == FrameShape.Free) },
-                        onDrag = { change, d ->
-                            if (grab != Grab.None) {
-                                st.frame = st.frame.dragged(grab, d.x * k, d.y * k, shape != FrameShape.Free,
+                    var last = first.position
+                    val path = Path()
+                    while (true) {
+                        val ev = awaitPointerEvent()
+                        val pressed = ev.changes.filter { it.pressed }
+                        if (pressed.isEmpty()) break
+                        if (pressed.size >= 2) {
+                            if (!zooming) { zooming = true; lassoPoints.clear(); fingerAt = null }
+                            val old = st.cutZoom
+                            val z = (old * ev.calculateZoom()).coerceIn(1f, 6f)
+                            val c = ev.calculateCentroid(useCurrent = true)
+                            val pan = (st.cutPan - c) * (z / old) + c + ev.calculatePan()
+                            st.cutZoom = z
+                            st.cutPan = Offset(pan.x.coerceIn(w * (1 - z), 0f), pan.y.coerceIn(h * (1 - z), 0f))
+                            ev.changes.forEach { it.consume() }
+                            continue
+                        }
+                        if (zooming) continue // depois do zoom, espera soltar os dedos
+                        val ch = pressed[0]
+                        val p = ch.position
+                        if (!started) {
+                            if ((p - first.position).getDistance() < viewConfiguration.touchSlop) continue
+                            started = true
+                            val c0 = content(first.position)
+                            when (mode) {
+                                CutMode.Frame -> grab = st.frame.grabAt(
+                                    c0.x * k, c0.y * k, 32.dp.toPx() * k / st.cutZoom, shape == FrameShape.Free,
+                                )
+                                CutMode.Lasso -> { lassoPoints.clear(); lassoPoints += c0; path.reset(); path.moveTo(c0.x * k, c0.y * k) }
+                                else -> st.pushUndo()
+                            }
+                        }
+                        val a = content(last)
+                        val b = content(p)
+                        when (mode) {
+                            CutMode.Frame -> if (grab != Grab.None) {
+                                st.frame = st.frame.dragged(grab, (b.x - a.x) * k, (b.y - a.y) * k, shape != FrameShape.Free,
                                     st.source.width.toFloat(), st.source.height.toFloat())
-                                change.consume()
                             }
-                        },
-                        onDragEnd = { grab = Grab.None },
-                        onDragCancel = { grab = Grab.None },
-                    )
-                    return@pointerInput
-                }
-                var last: Offset? = null
-                val path = Path()
-                detectDragGestures(
-                    onDragStart = { p ->
-                        last = p
-                        fingerAt = p
-                        path.reset(); path.moveTo(p.x * k, p.y * k)
-                        if (mode == CutMode.Lasso) { lassoPoints.clear(); lassoPoints += p } else st.pushUndo()
-                    },
-                    onDrag = { change, _ ->
-                        val p = change.position
-                        fingerAt = p
-                        if (mode == CutMode.Lasso) {
-                            path.lineTo(p.x * k, p.y * k); lassoPoints += p
-                        } else {
-                            val seg = Path().apply {
-                                val l = last ?: p
-                                moveTo(l.x * k, l.y * k); lineTo(p.x * k, p.y * k)
+                            CutMode.Lasso -> { path.lineTo(b.x * k, b.y * k); lassoPoints += b }
+                            else -> {
+                                val seg = Path().apply { moveTo(a.x * k, a.y * k); lineTo(b.x * k, b.y * k) }
+                                // O pincel tem o mesmo tamanho na tela com ou sem zoom.
+                                st.brush(seg, brush * k / st.cutZoom, erase = mode == CutMode.Erase)
+                                fingerAt = p
                             }
-                            st.brush(seg, brush * k, erase = mode == CutMode.Erase)
                         }
                         last = p
-                        change.consume()
-                    },
-                    onDragEnd = {
-                        if (mode == CutMode.Lasso && lassoPoints.size > 4) st.lasso(path)
-                        lassoPoints.clear(); fingerAt = null
-                    },
-                    onDragCancel = { lassoPoints.clear(); fingerAt = null },
-                )
+                        ch.consume()
+                    }
+                    if (started && !zooming && mode == CutMode.Lasso && lassoPoints.size > 4) st.lasso(path)
+                    lassoPoints.clear()
+                    fingerAt = null
+                }
             }
         ) {
             checkerboard()
             @Suppress("UNUSED_VARIABLE") val v = st.maskVersion // redesenha quando a máscara muda
-            drawIntoCanvas { c ->
-                val nc = c.nativeCanvas
-                val src = Rect(0, 0, st.source.width, st.source.height)
-                val dst = RectF(0f, 0f, size.width, size.height)
-                // A parte removida aparece apagadinha, para saber o que dá para devolver com o pincel.
-                nc.drawBitmap(st.source, src, dst, Paint(Paint.FILTER_BITMAP_FLAG).apply { alpha = 60 })
-                val layer = nc.saveLayer(dst, null)
-                nc.drawBitmap(st.source, src, dst, Paint(Paint.FILTER_BITMAP_FLAG))
-                nc.drawBitmap(st.mask, src, dst, Paint(Paint.FILTER_BITMAP_FLAG).apply {
-                    xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
-                })
-                nc.restoreToCount(layer)
-            }
-            if (mode == CutMode.Frame) drawFrame(st.frame, size.width / st.source.width, shape)
-            if (lassoPoints.size > 1) {
-                val p = androidx.compose.ui.graphics.Path().apply {
-                    moveTo(lassoPoints[0].x, lassoPoints[0].y)
-                    lassoPoints.drop(1).forEach { lineTo(it.x, it.y) }
+            withTransform({
+                translate(st.cutPan.x, st.cutPan.y)
+                scale(st.cutZoom, st.cutZoom, pivot = Offset.Zero)
+            }) {
+                drawIntoCanvas { c ->
+                    val nc = c.nativeCanvas
+                    val src = Rect(0, 0, st.source.width, st.source.height)
+                    val dst = RectF(0f, 0f, size.width, size.height)
+                    // A parte removida aparece apagadinha, para saber o que dá para devolver com o pincel.
+                    nc.drawBitmap(st.source, src, dst, Paint(Paint.FILTER_BITMAP_FLAG).apply { alpha = 60 })
+                    val layer = nc.saveLayer(dst, null)
+                    nc.drawBitmap(st.source, src, dst, Paint(Paint.FILTER_BITMAP_FLAG))
+                    nc.drawBitmap(st.mask, src, dst, Paint(Paint.FILTER_BITMAP_FLAG).apply {
+                        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+                    })
+                    nc.restoreToCount(layer)
                 }
-                drawPath(p, Color.White, style = Stroke(width = 6f))
-                drawPath(p, Color(0xFF6C3CE9), style = Stroke(width = 3f))
+                if (mode == CutMode.Frame) drawFrame(st.frame, size.width / st.source.width, shape)
+                if (lassoPoints.size > 1) {
+                    val p = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(lassoPoints[0].x, lassoPoints[0].y)
+                        lassoPoints.drop(1).forEach { lineTo(it.x, it.y) }
+                    }
+                    drawPath(p, Color.White, style = Stroke(width = 6f / st.cutZoom))
+                    drawPath(p, Color(0xFF6C3CE9), style = Stroke(width = 3f / st.cutZoom))
+                }
             }
             fingerAt?.let { if (mode != CutMode.Lasso) drawCircle(Color.White, brush / 2, it, style = Stroke(2f)) }
         }
@@ -724,11 +750,23 @@ private fun CutControls(st: EditorState, onAuto: () -> Unit) {
         CutMode.Erase, CutMode.Restore -> {
             Text(
                 if (cutMode.value == CutMode.Erase) "Passe o dedo para apagar partes."
-                else "Passe o dedo para trazer de volta o que foi apagado.",
+                else "Pinte o que quer manter (ou trazer de volta). Para escolher só um pedaço da foto, " +
+                    "toque em Pintar do zero e pinte por cima dele.",
                 style = MaterialTheme.typography.bodySmall,
             )
+            if (cutMode.value == CutMode.Restore) {
+                OutlinedButton(onClick = { st.clearMask() }) { Text("🖌️ Pintar do zero") }
+            }
             LabeledSlider("Tamanho do pincel", brushSize.floatValue, 8f..120f) { brushSize.floatValue = it }
         }
+    }
+    Text(
+        if (st.cutZoom > 1.01f) "Zoom %.1fx · dois dedos para mover ou afastar".format(st.cutZoom)
+        else "Use dois dedos para dar zoom e acertar os detalhes.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (st.cutZoom > 1.01f) {
+        OutlinedButton(onClick = { st.cutZoom = 1f; st.cutPan = Offset.Zero }) { Text("🔍 Ver a foto inteira") }
     }
     Row(
         Modifier.horizontalScroll(rememberScrollState()),

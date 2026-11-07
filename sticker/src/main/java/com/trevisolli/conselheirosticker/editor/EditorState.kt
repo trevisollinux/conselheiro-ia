@@ -129,6 +129,17 @@ class EditorState(
         touched()
     }
 
+    /** Apaga tudo, para pintar com o pincel só o que fica. */
+    fun clearMask() {
+        pushUndo()
+        mask.eraseColor(Color.TRANSPARENT)
+        touched()
+    }
+
+    /** Zoom e deslocamento da tela de recorte (só da visualização, não da figurinha). */
+    var cutZoom by mutableFloatStateOf(1f)
+    var cutPan by mutableStateOf(Offset.Zero)
+
     /** Mantém só o que está dentro do contorno desenhado com o dedo. */
     fun lasso(path: Path) {
         pushUndo()
@@ -156,7 +167,8 @@ class EditorState(
     fun applyConfidence(conf: FloatArray) {
         pushUndo()
         val px = IntArray(conf.size) { i ->
-            val a = ((conf[i] - 0.35f) / 0.3f).coerceIn(0f, 1f)
+            // Um pouco generoso: é mais fácil apagar uma sobra com a borracha do que repintar o que sumiu.
+            val a = ((conf[i] - 0.25f) / 0.3f).coerceIn(0f, 1f)
             (a * 255).toInt() shl 24
         }
         mask.setPixels(px, 0, mask.width, 0, 0, mask.width, mask.height)

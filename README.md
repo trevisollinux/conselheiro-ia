@@ -103,7 +103,8 @@ Tudo fica no celular, sem conta e sem servidor.
   (ou WhatsApp Business) pela integração oficial; depois de editar, toque de novo para atualizar.
 - **Recortar:** **retângulo** com alças nos cantos e lados (livre, quadrado ou círculo),
   ✨ recorte automático do fundo (ML Kit, no aparelho), **laço** (contorne o que fica),
-  **borracha** e **pincel** (devolve o que foi apagado), com Desfazer.
+  **borracha** e **pincel** (pinta o que fica; **Pintar do zero** apaga tudo para pintar só um pedaço), com Desfazer.
+  **Dois dedos** dão zoom e movem a foto para acertar os detalhes.
 - **Ajustar:** mover, zoom e giro com os dedos; borda em volta da figurinha: **Sem borda**, **Fina**, **Média** ou
   **Grossa** (com cor e espessura). Por padrão sai **sem borda**; o app lembra a última escolha para as próximas figurinhas.
 - **Texto de meme:** vários textos, arrastar, pinça para tamanho e giro, cor da letra e da borda, CAIXA ALTA.
@@ -132,7 +133,8 @@ animada, o app manda as paradas como animação de 2 quadros iguais (`w_*.webp`)
 2. **+ Figurinha** → **Foto da galeria** ou **Só texto**.
 3. Aba **Recortar**: a foto abre inteira, com a moldura de corte. Arraste os cantos e os lados (ou o meio, para mover),
    escolha **Livre**, **Quadrado** ou **Círculo** e toque **✂️ Cortar**. Se preferir, use **✨ Automático** (tira o fundo),
-   **Laço** (contorne o que fica), **Borracha** e **Pincel**; **Desfazer** no topo e **Recomeçar** volta à foto inteira.
+   **Laço** (contorne o que fica), **Borracha** e **Pincel** (com **Pintar do zero** para pintar só o que fica); dois
+   dedos dão zoom. **Desfazer** no topo e **Recomeçar** volta à foto inteira.
 4. Aba **Ajustar**: arraste e use dois dedos para posicionar; ligue o **contorno de adesivo**; escolha os emojis
    (até 3, usados na busca do WhatsApp).
 5. Aba **Texto**: **+ Texto** (o primeiro vai em cima, o segundo embaixo). Toque num texto para selecionar, arraste

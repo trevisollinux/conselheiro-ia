@@ -112,6 +112,9 @@ private fun fileBitmap(file: File, key: Any): Bitmap? {
 
 private const val PREFS = "sticker"
 
+private fun appVersion(ctx: Context): String =
+    runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: "?"
+
 private fun lastPublisher(ctx: Context) =
     ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("publisher", "") ?: ""
 
@@ -155,6 +158,11 @@ fun PackListScreen(
                         DropdownMenuItem(
                             text = { Text("Importar backup (.zip)") },
                             onClick = { menu = false; backup.import() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Versão ${appVersion(context)}", style = MaterialTheme.typography.bodySmall) },
+                            onClick = { menu = false },
+                            enabled = false,
                         )
                     }
                 },

@@ -128,6 +128,40 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
         }
     }
 
+    var photoMenu by remember { mutableStateOf(false) }
+
+    /** Manda a foto para o Consigliere: a IA lê e executa (ou, sem IA, o texto lido no aparelho vira regras/lista). */
+    fun sendPhoto(load: suspend () -> android.graphics.Bitmap?) {
+        val caption = input.trim()
+        input = ""
+        busy = true
+        messages = messages + ChatMessage(fromUser = true, text = "📷 …")
+        scope.launch {
+            val bitmap = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { load() } }.getOrNull()
+            if (bitmap == null) {
+                Toast.makeText(context, "Não consegui abrir a imagem", Toast.LENGTH_SHORT).show()
+            } else {
+                val ocr = runCatching { com.trevisolli.agendawidget.smart.ImageReader.ocr(bitmap) }.getOrDefault("")
+                Assistant.handleImage(context, com.trevisolli.agendawidget.smart.ImageReader.toJpeg(bitmap), ocr, caption)
+            }
+            messages = ChatStore.all(context)
+            busy = false
+            onChanged()
+        }
+    }
+
+    // Foto em resolução cheia (a miniatura do TakePicturePreview é pequena demais para ler letra de mão).
+    val photoUri = remember {
+        val dir = java.io.File(context.cacheDir, "photos").apply { mkdirs() }
+        androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", java.io.File(dir, "foto.jpg"))
+    }
+    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        if (ok) sendPhoto { com.trevisolli.agendawidget.smart.ImageReader.loadBitmap(context, photoUri) }
+    }
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) sendPhoto { com.trevisolli.agendawidget.smart.ImageReader.loadBitmap(context, uri) }
+    }
+
     fun listen() {
         if (busy) return
         if (VoiceActivity.available(context)) {
@@ -231,6 +265,22 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
         }
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
+            // 📷 Foto: lista escrita à mão, print, convite… (o texto digitado vira a legenda).
+            Box {
+                IconButton(onClick = { photoMenu = true }, enabled = !busy) { Text("📷", style = MaterialTheme.typography.titleLarge) }
+                androidx.compose.material3.DropdownMenu(expanded = photoMenu, onDismissRequest = { photoMenu = false }) {
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("Tirar foto") }, onClick = {
+                        photoMenu = false
+                        takePicture.launch(photoUri)
+                    })
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("Escolher da galeria") }, onClick = {
+                        photoMenu = false
+                        pickPhoto.launch(
+                            androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                        )
+                    })
+                }
+            }
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },

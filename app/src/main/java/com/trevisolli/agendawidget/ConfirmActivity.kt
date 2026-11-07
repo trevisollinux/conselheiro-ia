@@ -249,6 +249,26 @@ class ConfirmActivity : ComponentActivity() {
                 )
             }
             status?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+            if (image != null) {
+                // Lista escrita à mão, várias tarefas, receita…: o assistente lê a imagem e faz o pedido inteiro.
+                androidx.compose.material3.FilledTonalButton(
+                    enabled = !busy,
+                    onClick = {
+                        busy = true
+                        status = "Lendo a imagem…"
+                        scope.launch {
+                            val reply = runCatching {
+                                val bmp = withContext(Dispatchers.IO) { ImageReader.loadBitmap(this@ConfirmActivity, image) }
+                                val ocr = runCatching { ImageReader.ocr(bmp) }.getOrDefault("")
+                                com.trevisolli.agendawidget.smart.Assistant.handleImage(this@ConfirmActivity, ImageReader.toJpeg(bmp), ocr).text
+                            }.getOrElse { "Não consegui: ${it.message?.take(80)}" }
+                            Toast.makeText(this@ConfirmActivity, reply.take(300), Toast.LENGTH_LONG).show()
+                            finish()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("✨ Pedir ao Consigliere (listas, várias tarefas)") }
+            }
 
             OutlinedTextField(title, { title = it }, label = { Text("Título") }, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

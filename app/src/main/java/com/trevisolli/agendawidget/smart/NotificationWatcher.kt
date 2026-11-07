@@ -33,34 +33,70 @@ class NotificationWatcher : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val origin = WATCHED[sbn.packageName] ?: return
-        if (!Settings(this).detectNotifications) return
+        val settings = Settings(this)
+        if (!settings.detectNotifications) return
         val n = sbn.notification
         if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
         val extras = n.extras
-        val body = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))
-            ?.toString()?.trim().orEmpty()
-        if (body.length < 6) return
         val sender = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
+        val label = if (sender.isBlank()) origin else "$origin · $sender"
         // Grupos (WhatsApp e afins) quase sempre são planos de outras pessoas: fora, a não ser que a pessoa ligue.
         val isGroup = extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false) ||
             extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE) != null ||
             GROUP_TITLE.containsMatchIn(sender)
-        if (isGroup && !Settings(this).notifGroups) return
-        val label = if (sender.isBlank()) origin else "$origin · $sender"
         val isEmail = sbn.packageName in EMAIL_APPS
 
-        scope.launch {
-            InboxStore.add(applicationContext, InboxStore.Msg(origin, sender, body, System.currentTimeMillis()))
-            // Código de rastreio (mesmo em grupo ou e-mail automático de loja): vira encomenda.
-            Parcels.scan(applicationContext, body, label).forEach { notifyParcel(applicationContext, it, label) }
-            // E-mails automáticos (avisos do Google, login, propaganda, códigos) não viram sugestão.
-            if (isEmail && AUTOMATED.containsMatchIn((sender + " " + body).lowercase())) return@launch
-            val suggestion = Brain.fromNotification(applicationContext, body, label, strict = isEmail) ?: return@launch
-            if (SuggestionStore.add(applicationContext, suggestion)) {
-                notifySuggestion(applicationContext, suggestion)
-                RefreshWorker.runNow(applicationContext)
+        // WhatsApp junta várias mensagens numa notificação ("3 novas mensagens"): lê cada uma pelo MessagingStyle.
+        val recent = System.currentTimeMillis() - 15 * 60_000L
+        val messages = runCatching {
+            NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(n)?.messages
+                ?.filter { it.person != null && it.timestamp >= recent }
+                ?.mapNotNull { it.text?.toString()?.trim() }
+                ?.takeLast(3)
+        }.getOrNull().orEmpty()
+        val bodies = messages.ifEmpty {
+            listOfNotNull(
+                (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString()?.trim(),
+            )
+        }.filter { it.length >= 6 && !SUMMARY_TEXT.matches(it) }
+
+        for (body in bodies) {
+            // A mesma mensagem volta a cada atualização da notificação: processa uma vez só.
+            if (!settings.markSeen("notif:" + (sbn.packageName + sender + body).hashCode())) continue
+            scope.launch {
+                val app = applicationContext
+                InboxStore.add(app, InboxStore.Msg(origin, sender, body, System.currentTimeMillis()))
+                // Código de rastreio (mesmo em grupo ou e-mail automático de loja): vira encomenda.
+                val parcels = Parcels.scan(app, body, label)
+                parcels.forEach { notifyParcel(app, it, label) }
+                if (isGroup && !settings.notifGroups) {
+                    NotifLog.add(app, label, body, if (parcels.isNotEmpty()) "📦 rastreio guardado" else "grupo (ignorado)")
+                    return@launch
+                }
+                // E-mails automáticos (avisos do Google, login, propaganda, códigos) não viram sugestão.
+                if (isEmail && AUTOMATED.containsMatchIn((sender + " " + body).lowercase())) {
+                    NotifLog.add(app, label, body, "e-mail automático (ignorado)")
+                    return@launch
+                }
+                var why = "sem compromisso"
+                val suggestion = Brain.fromNotification(app, body, label, strict = isEmail) { why = it }
+                when {
+                    suggestion == null -> NotifLog.add(app, label, body, if (parcels.isNotEmpty()) "📦 rastreio guardado" else why)
+                    SuggestionStore.add(app, suggestion) -> {
+                        NotifLog.add(app, label, body, "📌 sugestão: ${suggestion.title}")
+                        notifySuggestion(app, suggestion)
+                        RefreshWorker.runNow(app)
+                    }
+                    else -> NotifLog.add(app, label, body, "já sugerido")
+                }
             }
         }
+    }
+
+    /** O Android às vezes derruba o leitor (bateria, atualização): pede para religar. */
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        runCatching { requestRebind(ComponentName(this, NotificationWatcher::class.java)) }
     }
 
     override fun onDestroy() {
@@ -70,6 +106,14 @@ class NotificationWatcher : NotificationListenerService() {
 
     companion object {
         private const val CHANNEL = "suggestions"
+
+        /** "3 novas mensagens", "2 mensagens de 2 conversas": resumo, não conteúdo. */
+        private val SUMMARY_TEXT = Regex("^\\d+ (novas? )?(mensagens?|messages?)( de \\d+ conversas?)?$", RegexOption.IGNORE_CASE)
+
+        /** Religa o leitor se o sistema o derrubou (chamado ao abrir o app). */
+        fun rebind(context: Context) {
+            if (isEnabled(context)) runCatching { requestRebind(ComponentName(context, NotificationWatcher::class.java)) }
+        }
 
         private val GROUP_TITLE = Regex("\\(\\d+ (mensagens|messages)\\)|: ~|\\s@\\s")
 

@@ -18,6 +18,9 @@ figurinhas do WhatsApp sem anúncios.
   - **Repetição:** "dar o remédio todo dia às 8h" vira tarefa recorrente.
 - **Ações de um toque:** "avisa a Helena que vou atrasar" prepara a mensagem no WhatsApp; "liga pro dentista" disca;
   "como chego no shopping" abre a rota. O Consigliere prepara e você confirma: nada é enviado sozinho.
+- **Fotos 📷:** na conversa, tire ou escolha uma foto (lista escrita à mão, print, convite, receita). A IA lê e executa;
+  sem IA, o texto é lido no aparelho e várias linhas viram uma lista com subtarefas. Ao compartilhar uma imagem com o app,
+  "Pedir ao Consigliere" faz o mesmo.
 - **Aniversários 🎂:** de manhã, aviso dos aniversários dos contatos com "Mandar parabéns" (mensagem pronta no WhatsApp).
 - **Lembrete por lugar 📍:** "quando eu chegar no mercado, me lembra da lista de compras"; ensine um lugar com
   "salva aqui como mercado" (endereços funcionam direto). Precisa da localização "o tempo todo".

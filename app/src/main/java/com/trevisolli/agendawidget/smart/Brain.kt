@@ -92,21 +92,24 @@ object Brain {
      * Mensagem de notificação: as regras filtram primeiro (barato e local);
      * só o que passa no filtro vai para a IA, se ela estiver ligada.
      */
-    fun fromNotification(context: Context, text: String, origin: String, strict: Boolean = false): Suggestion? {
+    /** [why] recebe o motivo quando não vira sugestão (para o diagnóstico em Configurações). */
+    fun fromNotification(context: Context, text: String, origin: String, strict: Boolean = false, why: (String) -> Unit = {}): Suggestion? {
         val r = RuleParser.parse(text)
-        if (!RuleParser.isStrong(r)) return null
+        if (!RuleParser.isStrong(r)) return null.also { why("sem data/hora de compromisso") }
         // E-mail: exige palavra de compromisso ("consulta", "reunião"…), não só data e hora.
-        if (strict && !r.hasKeyword) return null
+        if (strict && !r.hasKeyword) return null.also { why("e-mail sem palavra de compromisso") }
         // Data/hora que já passou não é compromisso (ex.: "você entrou às 12:36").
         val today = LocalDate.now()
-        if (r.date != null && r.date.isBefore(today)) return null
-        if ((r.date == null || r.date == today) && r.time != null && r.time.isBefore(LocalTime.now())) return null
+        if (r.date != null && r.date.isBefore(today)) return null.also { why("data já passou") }
+        if ((r.date == null || r.date == today) && r.time != null && r.time.isBefore(LocalTime.now())) return null.also { why("horário já passou") }
         // Sem IA, só vira sugestão o que tem palavra de compromisso ("consulta", "reunião"…).
-        if (!Settings(context).aiLightReady) return if (r.hasKeyword) rules(text, origin) else null
+        if (!Settings(context).aiLightReady) {
+            return if (r.hasKeyword) rules(text, origin) else null.also { why("sem palavra de compromisso (sem IA)") }
+        }
         return try {
-            ai(context, text, origin, light = true)
+            ai(context, text, origin, light = true).also { if (it == null) why("IA: não parece compromisso seu") }
         } catch (e: Exception) {
-            if (r.hasKeyword) rules(text, origin) else null
+            if (r.hasKeyword) rules(text, origin) else null.also { why("IA fora: ${AiClient.friendly(e)}") }
         }
     }
 }

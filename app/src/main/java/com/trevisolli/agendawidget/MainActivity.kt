@@ -160,6 +160,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // O Android às vezes derruba o leitor de notificações: ao abrir o app, pede para religar.
+        com.trevisolli.agendawidget.smart.NotificationWatcher.rebind(this)
         resumeCount++
     }
 
@@ -189,6 +191,7 @@ class MainActivity : ComponentActivity() {
         var aiModel by remember { mutableStateOf(settings.aiModel) }
         var aiLight by remember { mutableStateOf(settings.aiLightModel) }
         var notifDisclosure by remember { mutableStateOf(false) }
+        var showNotifLog by remember { mutableStateOf(false) }
         var aiTest by remember { mutableStateOf<String?>(null) }
 
         var detect by remember { mutableStateOf(settings.detectNotifications) }
@@ -945,6 +948,31 @@ class MainActivity : ComponentActivity() {
                     }) { Text("Abrir acesso a notificações") }
                 } else if (detect) {
                     Text("✅ Acesso liberado.")
+                    Text(
+                        "Só dá para ler o que vira notificação: conversa aberta na tela, conversa silenciada e mensagens que " +
+                            "você mesmo envia não geram aviso. Se o celular economizar bateria demais, libere o app em Bateria.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = { showNotifLog = !showNotifLog }) {
+                        Text(if (showNotifLog) "Ocultar últimas leituras" else "Ver últimas leituras")
+                    }
+                    if (showNotifLog) {
+                        val log = remember(resumeCount) { com.trevisolli.agendawidget.smart.NotifLog.all(this@MainActivity) }
+                        if (log.isEmpty()) Text("Nenhuma mensagem lida ainda.", style = MaterialTheme.typography.bodySmall)
+                        val fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm")
+                        log.forEach { e ->
+                            Column(Modifier.padding(vertical = 4.dp)) {
+                                Text(
+                                    java.time.Instant.ofEpochMilli(e.time).atZone(java.time.ZoneId.systemDefault()).format(fmt) + " · " + e.from,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(e.text, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                                Text("→ ${e.result}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
                 }
             }
             Section("Contatos") {

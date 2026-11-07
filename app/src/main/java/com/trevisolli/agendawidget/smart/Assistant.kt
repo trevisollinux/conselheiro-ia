@@ -98,19 +98,48 @@ object Assistant {
         process(context, "🎤 $text", text, null)
     }
 
+    /**
+     * Foto (lista escrita à mão, print, convite, receita…): a IA lê e executa como se fosse texto.
+     * Sem IA, o texto é lido no aparelho (ML Kit) e passa pelas regras; várias linhas viram uma lista.
+     */
+    suspend fun handleImage(context: Context, jpeg: ByteArray, ocr: String, caption: String = ""): ChatMessage = withContext(Dispatchers.IO) {
+        val shown = "📷 Imagem" + if (caption.isNotBlank()) ": $caption" else ""
+        val settings = Settings(context)
+        if (settings.aiReady) {
+            try {
+                return@withContext process(context, shown, caption, null, jpeg)
+            } catch (e: Exception) {
+                // segue para o modo automático abaixo
+            }
+        }
+        val text = ocr.trim()
+        if (text.isBlank()) {
+            ChatStore.add(context, ChatMessage(fromUser = true, text = shown))
+            val answer = ChatMessage(fromUser = false, text = "Não consegui ler texto nessa imagem. Tente uma foto mais nítida e de frente.")
+            ChatStore.add(context, answer)
+            return@withContext answer
+        }
+        process(context, shown, text, null)
+    }
+
     /** Processa uma mensagem do usuário e devolve a resposta (já salva no histórico). */
     suspend fun handle(context: Context, text: String): ChatMessage = withContext(Dispatchers.IO) {
         process(context, text, text, null)
     }
 
     /** [shown]: o que aparece no balão do usuário; com áudio, vem da transcrição. */
-    private suspend fun process(context: Context, shown: String?, text: String?, audio: Pair<ByteArray, String>?): ChatMessage {
+    private suspend fun process(
+        context: Context, shown: String?, text: String?, audio: Pair<ByteArray, String>?, image: ByteArray? = null,
+    ): ChatMessage {
         val history = ChatStore.all(context).takeLast(8)
         if (shown != null) ChatStore.add(context, ChatMessage(fromUser = true, text = shown))
         val settings = Settings(context)
         val items = AgendaRepository.load(context).items
 
-        val plan = if (audio != null) {
+        val plan = if (image != null) {
+            // Sem fallback aqui: erro sobe para handleImage, que tenta as regras com o texto lido no aparelho.
+            aiPlan(context, text.orEmpty(), items, history, image = image)
+        } else if (audio != null) {
             // Sem fallback: erro sobe para handleAudio.
             aiPlan(context, "", items, history, audio).also {
                 ChatStore.add(context, ChatMessage(fromUser = true, text = "🎤 " + (it.heard ?: "(áudio)")))
@@ -337,9 +366,21 @@ object Assistant {
         return null
     }
 
+    /** Texto com várias linhas curtas e sem data (ex.: lista escrita à mão lida da foto) → lista com subtarefas. */
+    private fun rulesLines(text: String): Plan? {
+        val lines = text.lines().map { it.trim().trimStart('-', '•', '*', '·', '○', '□').trim() }.filter { it.length in 2..60 }
+        if (lines.size < 3 || RuleParser.parse(text).date != null) return null
+        val first = lines.first()
+        val titled = norm(first).startsWith("lista") || first.endsWith(":")
+        val name = if (titled) first.trimEnd(':').replaceFirstChar { it.uppercase() } else "Lista"
+        val itens = (if (titled) lines.drop(1) else lines).map { it.replaceFirstChar { c -> c.uppercase() } }
+        return Plan("Lista criada!", listOf(Action.Task(name, null, null, subtasks = itens.take(40))))
+    }
+
     private fun rulesPlan(text: String, items: List<AgendaItem>): Plan {
         rulesActions(text)?.let { return it }
         rulesList(text)?.let { return it }
+        rulesLines(text)?.let { return it }
         val n = norm(text)
         if (ASK.containsMatchIn(n)) return Plan(answerQuestion(text, items), emptyList())
 
@@ -411,6 +452,7 @@ object Assistant {
     private fun aiPlan(
         context: Context, text: String, items: List<AgendaItem>, history: List<ChatMessage>,
         audio: Pair<ByteArray, String>? = null,
+        image: ByteArray? = null,
     ): Plan {
         val s = Settings(context)
         val today = LocalDate.now()
@@ -427,13 +469,22 @@ object Assistant {
                 append("Conversa recente:\n")
                 history.forEach { append(if (it.fromUser) "Usuário: " else "Você: ").append(it.text.take(200)).append("\n") }
             }
-            if (audio != null) append("Nova mensagem do usuário: no ÁUDIO anexo (pt-BR).") else append("Nova mensagem do usuário: ").append(text)
+            when {
+                audio != null -> append("Nova mensagem do usuário: no ÁUDIO anexo (pt-BR).")
+                image != null -> append(
+                    "Nova mensagem do usuário: a IMAGEM anexa (foto de lista escrita à mão, print, convite, receita, conta…). " +
+                        "Leia e faça o que ela pede; uma lista de itens vira create_task com subtasks. " +
+                        if (text.isNotBlank()) "Legenda da pessoa: $text" else "",
+                )
+                else -> append("Nova mensagem do usuário: ").append(text)
+            }
         }
         // Texto vai no modelo leve (rápido, cota maior); áudio precisa do principal.
-        val model = if (audio == null && s.aiLightReady) s.lightModel else s.effectiveModel
+        val media = audio != null || image != null
+        val model = if (!media && s.aiLightReady) s.lightModel else s.effectiveModel
         val raw = AiClient.complete(
-            s.aiProvider, s.aiKey, model, SYSTEM, prompt, audio = audio,
-            fastTimeoutMs = if (audio == null) 20_000 else 45_000,
+            s.aiProvider, s.aiKey, model, SYSTEM, prompt, jpeg = image, audio = audio,
+            fastTimeoutMs = if (!media) 20_000 else 45_000,
         )
         val json = AiClient.extractJson(raw) ?: return Plan(raw.take(400), emptyList())
         val actions = mutableListOf<Action>()

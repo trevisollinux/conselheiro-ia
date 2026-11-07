@@ -16,6 +16,9 @@
     <!-- Android 11+: enxergar o serviço de reconhecimento de voz (o mesmo do teclado) -->
     <queries>
         <package android:name="com.whatsapp" />
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
         <package android:name="br.com.correios.preatendimento" />
         <package android:name="br.com.correios.sro" />
         <package android:name="br.gov.correios" />
@@ -57,6 +60,16 @@
             android:taskAffinity=""
             android:noHistory="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <!-- Foto tirada pela câmera para a conversa (arquivo temporário no cache) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
         <receiver android:name=".smart.SuggestionReceiver" android:exported="false" />
         <receiver android:name=".smart.GeofenceReceiver" android:exported="false" />
         <receiver android:name=".smart.BootReceiver" android:exported="false">

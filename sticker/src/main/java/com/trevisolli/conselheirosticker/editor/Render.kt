@@ -3,6 +3,10 @@ package com.trevisolli.conselheirosticker.editor
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.RectF
@@ -37,7 +41,15 @@ object Render {
             canvas.translate(SIZE / 2 + st.offset.x, SIZE / 2 + st.offset.y)
             canvas.rotate(st.rotation)
             canvas.scale(fit * st.scale, fit * st.scale)
-            canvas.drawBitmap(img, -img.width / 2f, -img.height / 2f, Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
+            val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG).apply {
+                colorFilter = Effects.imageFilter(fx, phase)
+            }
+            val g = Effects.glitch(fx, phase)
+            if (g == null) {
+                canvas.drawBitmap(img, -img.width / 2f, -img.height / 2f, paint)
+            } else {
+                drawGlitched(canvas, img, g, 1f / (fit * st.scale * m.imageScale))
+            }
             canvas.restore()
         }
         canvas.save()
@@ -47,8 +59,47 @@ object Render {
             if (showSelection && i == st.selected) drawSelection(canvas, t, fonts)
         }
         canvas.restore()
-        if (fx.isNotEmpty()) Effects.drawFront(canvas, fx, box, phase)
+        if (fx.isNotEmpty()) {
+            val emoji = com.trevisolli.conselheirosticker.data.Emojis.parse(st.emojis).first()
+            Effects.drawFront(canvas, fx, box, phase, emoji)
+        }
         canvas.restore()
+    }
+
+    /**
+     * Glitch: cópia vermelha e cópia verde-azul deslocadas (somadas dão a imagem de volta, com
+     * as bordas separadas) e faixas horizontais escorregando. [px] = 1 px da figurinha em px da imagem.
+     */
+    private fun drawGlitched(canvas: Canvas, img: Bitmap, g: Effects.Glitch, px: Float) {
+        val left = -img.width / 2f
+        val top = -img.height / 2f
+        val split = g.split * px
+        val bounds = RectF(left - split, top, left + img.width + split, top + img.height)
+        val layer = canvas.saveLayer(bounds, null)
+        val red = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+            colorFilter = ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
+                1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 1f, 0f,
+            )))
+        }
+        val cyan = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+            colorFilter = ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
+                0f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 1f, 0f,
+            )))
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.ADD)
+        }
+        canvas.drawBitmap(img, left - split, top, red)
+        canvas.drawBitmap(img, left + split, top, cyan)
+        canvas.restoreToCount(layer)
+        // Faixas que escorregam para o lado.
+        val plain = Paint(Paint.FILTER_BITMAP_FLAG)
+        g.bands.forEach { (a, b, dx) ->
+            val y0 = top + img.height * a
+            val y1 = top + img.height * b
+            canvas.save()
+            canvas.clipRect(left - 40f * px, y0, left + img.width + 40f * px, y1)
+            canvas.drawBitmap(img, left + dx * px, top, plain)
+            canvas.restore()
+        }
     }
 
     /** Tremor, pulso e encolhimento do fogo, em volta do centro do quadro. */

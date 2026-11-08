@@ -13,8 +13,8 @@ android {
         applicationId = "com.trevisolli.unusualstickers"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "1.3"
+        versionCode = 12
+        versionName = "1.4"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }

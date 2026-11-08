@@ -25,7 +25,12 @@ data class Pack(
     val stickers: List<Sticker>,
     /** Muda a cada alteração: o WhatsApp só relê as imagens quando este número muda. */
     val version: Int,
+    /** Última [version] mandada ao WhatsApp por este app (0 = nunca). */
+    val sentVersion: Int = 0,
 ) {
+    /** Mudou alguma coisa depois da última vez que foi mandado ao WhatsApp. */
+    val changedSinceSent: Boolean get() = sentVersion > 0 && sentVersion != version
+
     /**
      * O WhatsApp não aceita misturar paradas e animadas num pacote. Com pelo menos uma animada,
      * o pacote vai como animado e as paradas seguem como animação de 2 quadros iguais.
@@ -160,6 +165,12 @@ class PackStore(context: Context) {
             file
         }
 
+    /** Marca a versão atual como mandada ao WhatsApp (sem mudar a versão). */
+    fun markSent(packId: String) = synchronized(LOCK) {
+        val pack = read(packId) ?: return@synchronized
+        if (pack.sentVersion != pack.version) write(pack.copy(sentVersion = pack.version))
+    }
+
     fun setEmojis(packId: String, file: String, emojis: List<String>) = update(packId) { p ->
         p.copy(stickers = p.stickers.map { if (it.file == file) it.copy(emojis = emojis) else it })
     }
@@ -275,6 +286,7 @@ class PackStore(context: Context) {
                 Sticker(s.getString("file"), (0 until em.length()).map { em.getString(it) }, animated)
             },
             version = json.optInt("version", 1),
+            sentVersion = json.optInt("sentVersion", 0),
         )
     }.getOrNull()
 
@@ -284,6 +296,7 @@ class PackStore(context: Context) {
             .put("name", pack.name)
             .put("publisher", pack.publisher)
             .put("version", pack.version)
+            .put("sentVersion", pack.sentVersion)
             .put("animated", pack.animated)
             .put("stickers", JSONArray().apply {
                 pack.stickers.forEach { s ->

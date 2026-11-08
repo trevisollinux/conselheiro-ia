@@ -139,6 +139,8 @@ fun PackListScreen(
     }
     var creating by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var autoBackup by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val backup = rememberBackupActions(store, snackbar, onImported = { version++ })
 
@@ -155,6 +157,10 @@ fun PackListScreen(
                                 menu = false
                                 backup.export(packs.map { it.id }, backupFileName("unusual-stickers"))
                             },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Backup automático") },
+                            onClick = { menu = false; autoBackup = true },
                         )
                         DropdownMenuItem(
                             text = { Text("Importar backup (.zip)") },
@@ -236,6 +242,13 @@ fun PackListScreen(
             }
             item { Spacer(Modifier.height(72.dp)) }
         }
+    }
+
+    if (autoBackup) {
+        AutoBackupDialog(
+            onDismiss = { autoBackup = false },
+            onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } },
+        )
     }
 
     if (creating) {
@@ -435,6 +448,17 @@ fun PackScreen(
             Column(Modifier.padding(16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { menuFor = null; onEdit(file) }, Modifier.fillMaxWidth()) { Text("Editar") }
                 Button(onClick = { menuFor = null; emojiFor = file }, Modifier.fillMaxWidth()) { Text("Emojis") }
+                Button(onClick = {
+                    menuFor = null
+                    val copy = store.duplicateSticker(packId, file)
+                    changed()
+                    scope.launch {
+                        snackbar.showSnackbar(
+                            if (copy != null) "Figurinha duplicada: edite a cópia para fazer uma variação"
+                            else "O pacote já tem 30 figurinhas (o máximo do WhatsApp)"
+                        )
+                    }
+                }, Modifier.fillMaxWidth()) { Text("Duplicar") }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { store.move(packId, file, -1); changed() }) { Text("◀ Mover") }
                     TextButton(onClick = { store.move(packId, file, 1); changed() }) { Text("Mover ▶") }

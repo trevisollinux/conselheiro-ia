@@ -165,6 +165,24 @@ class PackStore(context: Context) {
             file
         }
 
+    /** Copia uma figurinha (com os dados de reedição) logo depois dela. Null se o pacote já está cheio. */
+    fun duplicateSticker(packId: String, file: String): String? = synchronized(LOCK) {
+        val pack = read(packId) ?: return@synchronized null
+        if (pack.stickers.size >= Pack.MAX_STICKERS) return@synchronized null
+        val idx = pack.stickers.indexOfFirst { it.file == file }
+        if (idx < 0) return@synchronized null
+        val src = pack.stickers[idx]
+        val copy = "s" + UUID.randomUUID().toString().replace("-", "").take(12) + ".webp"
+        File(dir(packId), src.file).copyTo(File(dir(packId), copy))
+        thumbFile(packId, src.file).takeIf { it.exists() }?.copyTo(thumbFile(packId, copy))
+        editDir(packId, src.file).takeIf { it.exists() }?.copyRecursively(editDir(packId, copy))
+        val list = pack.stickers.toMutableList().apply { add(idx + 1, src.copy(file = copy)) }
+        val updated = pack.copy(stickers = list, version = pack.version + 1)
+        write(updated)
+        ensureWrapped(updated)
+        copy
+    }
+
     /** Marca a versão atual como mandada ao WhatsApp (sem mudar a versão). */
     fun markSent(packId: String) = synchronized(LOCK) {
         val pack = read(packId) ?: return@synchronized

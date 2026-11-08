@@ -13,8 +13,8 @@ android {
         applicationId = "com.trevisolli.unusualstickers"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "1.4"
+        versionCode = 13
+        versionName = "1.5"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
@@ -78,6 +78,9 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+    // Backup automático semanal numa pasta escolhida pelo usuário.
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("androidx.documentfile:documentfile:1.0.1")
 
     // Recorte automático do fundo, no próprio celular (sem internet, sem custo).
     implementation("com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1")

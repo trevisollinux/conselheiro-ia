@@ -53,6 +53,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -225,7 +226,8 @@ fun PackListScreen(
                         Column(Modifier.weight(1f)) {
                             Text(p.name, style = MaterialTheme.typography.titleMedium)
                             Text(
-                                (if (p.animated) "🎞️ " else "") + "${p.stickers.size} figurinha(s) · ${p.publisher}",
+                                (if (p.animated) "🎞️ " else "") + "${p.stickers.size} figurinha(s) · ${p.publisher}" +
+                                    if (p.changedSinceSent) "\n🔄 Mudanças para atualizar no WhatsApp" else "",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -307,8 +309,16 @@ fun PackScreen(
     var emojiFor by remember { mutableStateOf<String?>(null) }
     val backup = rememberBackupActions(store, snackbar)
 
+    // O WhatsApp já tem este pacote? (pergunta oficial; refeita ao voltar do WhatsApp e a cada mudança)
+    var waCheck by remember { mutableStateOf(0) }
+    val inWhatsApp by produceState<Boolean?>(null, packId, waCheck, version, refreshKey) {
+        value = withContext(Dispatchers.IO) { WhatsApp.isPackAdded(context, packId) }
+    }
+
     val whatsapp = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         WhatsApp.describeResult(r.resultCode, r.data)?.let { msg -> scope.launch { snackbar.showSnackbar(msg) } }
+        waCheck++
+        version++
     }
 
     fun changed() { version++ }
@@ -345,24 +355,39 @@ fun PackScreen(
         Column(Modifier.padding(pad).fillMaxSize()) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 val missing = Pack.MIN_STICKERS - p.stickers.size
-                Button(
-                    onClick = {
-                        val apps = WhatsApp.installed(context)
-                        if (apps.isEmpty()) {
-                            scope.launch { snackbar.showSnackbar("WhatsApp não encontrado neste celular") }
-                        } else {
-                            // Com WhatsApp e WhatsApp Business, o Android pergunta qual usar.
-                            val target = if (apps.size == 1) apps.first() else null
-                            runCatching { whatsapp.launch(WhatsApp.addPackIntent(context, p, target)) }
-                                .onFailure { scope.launch { snackbar.showSnackbar("Não consegui abrir o WhatsApp") } }
-                        }
-                    },
-                    enabled = p.readyForWhatsApp,
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Adicionar ao WhatsApp") }
+                val added = inWhatsApp == true
+                // Já está no WhatsApp e mudou desde o último envio (ou nunca foi marcado como enviado).
+                val needsUpdate = added && p.sentVersion != p.version
+                val send: () -> Unit = {
+                    val apps = WhatsApp.installed(context)
+                    if (apps.isEmpty()) {
+                        scope.launch { snackbar.showSnackbar("WhatsApp não encontrado neste celular") }
+                    } else {
+                        store.markSent(packId)
+                        // Com WhatsApp e WhatsApp Business, o Android pergunta qual usar.
+                        val target = if (apps.size == 1) apps.first() else null
+                        runCatching { whatsapp.launch(WhatsApp.addPackIntent(context, p, target)) }
+                            .onFailure { scope.launch { snackbar.showSnackbar("Não consegui abrir o WhatsApp") } }
+                    }
+                }
+                when {
+                    !p.readyForWhatsApp -> Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+                        Text("Adicionar ao WhatsApp")
+                    }
+                    added && !needsUpdate -> OutlinedButton(onClick = send, modifier = Modifier.fillMaxWidth()) {
+                        Text("✓ No WhatsApp, tudo atualizado")
+                    }
+                    needsUpdate -> SparkleButton("Atualizar no WhatsApp", onClick = send, modifier = Modifier.fillMaxWidth())
+                    else -> SparkleButton("Adicionar ao WhatsApp", onClick = send, modifier = Modifier.fillMaxWidth())
+                }
                 Text(
-                    if (missing > 0) "Faltam $missing figurinha(s) para o mínimo do WhatsApp (3)."
-                    else "${p.stickers.size}/30 figurinhas. Depois de editar, toque de novo para atualizar no WhatsApp.",
+                    when {
+                        missing > 0 -> "Faltam $missing figurinha(s) para o mínimo do WhatsApp (3)."
+                        needsUpdate -> "Você mudou este pacote. O WhatsApp costuma buscar as novidades sozinho; " +
+                            "toque em Atualizar para mandar agora."
+                        added -> "${p.stickers.size}/30 figurinhas. Quando você editar, aparece o botão Atualizar."
+                        else -> "${p.stickers.size}/30 figurinhas."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 4.dp),
                 )

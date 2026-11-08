@@ -113,7 +113,9 @@ Um segundo app, no módulo `sticker/` (antes chamado Conselheiro Sticker): cria 
 Tudo fica no celular, sem conta e sem servidor.
 
 - **Pacotes:** de 3 a 30 figurinhas, com nome, autor e ícone gerado da primeira figurinha. **Adicionar ao WhatsApp**
-  (ou WhatsApp Business) pela integração oficial; depois de editar, toque de novo para atualizar.
+  (ou WhatsApp Business) pela integração oficial.
+  O app pergunta ao WhatsApp se o pacote já está lá: o botão vira **✓ No WhatsApp** e, quando você muda o pacote,
+  **✨ Atualizar no WhatsApp** (com brilhinhos); a lista de pacotes avisa quais têm mudanças para mandar.
 - **Recortar:** **retângulo** com alças nos cantos e lados (livre, quadrado ou círculo),
   ✨ recorte automático do fundo (ML Kit, no aparelho), **laço** (contorne o que fica),
   **borracha** e **pincel** (pinta o que fica; **Pintar do zero** apaga tudo para pintar só um pedaço), com Desfazer.
@@ -154,7 +156,7 @@ animada, o app manda as paradas como animação de 2 quadros iguais (`w_*.webp`)
    (até 3, usados na busca do WhatsApp).
 5. Aba **Texto**: **+ Texto** (o primeiro vai em cima, o segundo embaixo). Toque num texto para selecionar, arraste
    para mover, pinça para tamanho e giro. Troque fonte, cores, borda e CAIXA ALTA.
-6. **Salvar**. Com 3 figurinhas ou mais, **Adicionar ao WhatsApp**. Depois de mudar algo, toque de novo para atualizar.
+6. **Salvar**. Com 3 figurinhas ou mais, **Adicionar ao WhatsApp**. Depois de mudar algo, aparece **Atualizar no WhatsApp**.
 
 Na grade do pacote, tocar numa figurinha abre **Editar**, **Emojis**, **Mover** (muda a ordem; a primeira vira o
 ícone) e **Apagar**.

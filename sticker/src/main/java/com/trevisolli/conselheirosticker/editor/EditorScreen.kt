@@ -81,11 +81,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -108,6 +110,7 @@ import com.trevisolli.conselheirosticker.data.Emojis
 import com.trevisolli.conselheirosticker.data.PackStore
 import com.trevisolli.conselheirosticker.data.WebpEncoder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.min
@@ -292,6 +295,21 @@ fun EditorScreen(
 
     BackHandler { confirmExit = true }
 
+    // Desfazer de textos, ajustes e efeitos: cada mudança vira um passo quando "assenta" (0,45 s parado).
+    LaunchedEffect(state) {
+        val st = state ?: return@LaunchedEffect
+        var committed = st.props()
+        snapshotFlow { st.props() }.collectLatest { p ->
+            kotlinx.coroutines.delay(450)
+            if (p == committed) return@collectLatest
+            if (st.skipNextCommit) st.skipNextCommit = false else st.pushProps(committed)
+            committed = p
+        }
+    }
+
+    // Fundo da prévia: xadrez (transparência), conversa clara ou conversa escura, como no WhatsApp.
+    var previewBg by remember { mutableIntStateOf(0) }
+
     // Prévia animada nas abas Ajustar e Texto (para enquanto salva).
     // Os efeitos ficam parados na aba Texto, para dar para tocar e arrastar os textos.
     val st0 = state
@@ -339,7 +357,7 @@ fun EditorScreen(
                 },
                 actions = {
                     val st = state
-                    if (st != null && tab == EditTab.Cut) {
+                    if (st != null) {
                         TextButton(onClick = { st.undo() }, enabled = st.canUndo) { Text("Desfazer") }
                     }
                     Button(onClick = { save() }, enabled = state != null && busy == null,
@@ -384,7 +402,19 @@ fun EditorScreen(
                 if (tab == EditTab.Cut) {
                     CutView(st, cutMode.value, brushSize.floatValue, Modifier.fillMaxSize())
                 } else {
-                    StickerPreview(st, fonts, tab, Modifier.size(side))
+                    Box(Modifier.size(side)) {
+                        StickerPreview(st, fonts, tab, previewBg, Modifier.fillMaxSize())
+                        TextButton(
+                            onClick = { previewBg = (previewBg + 1) % 3 },
+                            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+                                .clip(RoundedCornerShape(50)).background(Color(0x991B1530)),
+                        ) {
+                            Text(
+                                when (previewBg) { 0 -> "🏁 Fundo"; 1 -> "☀️ Conversa"; else -> "🌙 Conversa" },
+                                color = Color.White, style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                    }
                 }
                 busy?.let {
                     Column(
@@ -788,7 +818,7 @@ private fun CutControls(st: EditorState, onAuto: () -> Unit) {
 // ---------------------------------------------------------------- Prévia 512
 
 @Composable
-private fun StickerPreview(st: EditorState, fonts: Fonts, tab: EditTab, modifier: Modifier) {
+private fun StickerPreview(st: EditorState, fonts: Fonts, tab: EditTab, background: Int, modifier: Modifier) {
     Canvas(
         modifier
             .clip(RoundedCornerShape(12.dp))
@@ -823,7 +853,11 @@ private fun StickerPreview(st: EditorState, fonts: Fonts, tab: EditTab, modifier
                 }
             }
     ) {
-        checkerboard()
+        when (background) {
+            1 -> drawRect(Color(0xFFEFE7DE)) // papel de parede claro do WhatsApp
+            2 -> drawRect(Color(0xFF0B141A)) // modo escuro do WhatsApp
+            else -> checkerboard()
+        }
         drawIntoCanvas { Render.draw(it.nativeCanvas, size.width, st, fonts, showSelection = tab == EditTab.Text) }
     }
 }

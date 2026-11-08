@@ -137,7 +137,10 @@ Tudo fica no celular, sem conta e sem servidor.
   😂 chuva de emoji (usa o emoji da figurinha) e 💓 pulsar. Tudo desenhado pelo app, sem imagens de terceiros.
 - **Tudo no mesmo pacote:** paradas e animadas convivem num pacote só.
 - **Compartilhar:** em qualquer app, Compartilhar uma foto, GIF ou vídeo → Unusual Stickers.
-- Toda figurinha guarda a foto original e os textos: **Editar** reabre tudo editável.
+- Toda figurinha guarda a foto original e os textos: **Editar** reabre tudo editável. **Desfazer** (no topo do editor)
+  vale para recorte, textos, ajustes e efeitos.
+- **Prévia com fundo de conversa:** no editor, o botão no canto da prévia alterna entre xadrez, conversa clara e
+  conversa escura, para ver como a figurinha fica no WhatsApp.
 - **Backup sem cadastro:** exporta os pacotes num `.zip` e importa de volta (detalhes abaixo).
 
 Formato que o WhatsApp exige (o app cuida sozinho): WebP 512×512 com até 100 KB (animada: WebP animado com até
@@ -158,13 +161,16 @@ animada, o app manda as paradas como animação de 2 quadros iguais (`w_*.webp`)
    para mover, pinça para tamanho e giro. Troque fonte, cores, borda e CAIXA ALTA.
 6. **Salvar**. Com 3 figurinhas ou mais, **Adicionar ao WhatsApp**. Depois de mudar algo, aparece **Atualizar no WhatsApp**.
 
-Na grade do pacote, tocar numa figurinha abre **Editar**, **Emojis**, **Mover** (muda a ordem; a primeira vira o
+Na grade do pacote, tocar numa figurinha abre **Editar**, **Emojis**, **Duplicar** (para fazer variações), **Mover** (muda a ordem; a primeira vira o
 ícone) e **Apagar**.
 
 ### Backup (sem conta)
 
 - **Exportar todos:** na tela inicial, menu **⋮ → Exportar todos os pacotes**. **Um pacote:** dentro dele, botão de
   compartilhar no topo. O Android pergunta onde salvar o `.zip`: Google Drive, Downloads, pendrive…
+- **Backup automático:** menu **⋮ → Backup automático → Escolher pasta e ligar**. Toda semana o app salva o `.zip` numa
+  pasta do celular (ex.: Documentos) e guarda os 3 últimos; o arquivo fica lá mesmo se o app for desinstalado. O Google
+  Drive não deixa apps gravarem sozinhos, então para ele use o Exportar.
 - **Importar:** menu **⋮ → Importar backup (.zip)**. Um pacote com o mesmo identificador é substituído pelo do arquivo;
   os outros continuam como estão. Serve também para passar um pacote para outra pessoa que tenha o app.
 - O `.zip` leva as figurinhas prontas e os dados para reeditar (foto original, recorte e textos).

@@ -88,25 +88,71 @@ class EditorState(
 
     var emojis by mutableStateOf("😂")
 
-    private val undo = ArrayDeque<Bitmap>()
+    // ---------- Desfazer (recorte, textos, ajustes e efeitos) ----------
+
+    /** O que dá para desfazer fora o recorte: textos, posição, borda, efeitos e emojis. */
+    data class Props(
+        val texts: List<TextLayer>,
+        val scale: Float,
+        val offset: Offset,
+        val rotation: Float,
+        val outline: Boolean,
+        val outlineWidth: Float,
+        val outlineColor: Int,
+        val effects: Set<Effect>,
+        val emojis: String,
+    )
+
+    fun props() = Props(texts.toList(), scale, offset, rotation, outline, outlineWidth, outlineColor, effects, emojis)
+
+    private fun applyProps(p: Props) {
+        texts.clear(); texts.addAll(p.texts)
+        if (selected !in texts.indices) selected = -1
+        scale = p.scale; offset = p.offset; rotation = p.rotation
+        outline = p.outline; outlineWidth = p.outlineWidth; outlineColor = p.outlineColor
+        effects = p.effects; emojis = p.emojis
+    }
+
+    private sealed interface Step {
+        class Mask(val bitmap: Bitmap) : Step
+        class Edit(val props: Props) : Step
+    }
+
+    private val undo = ArrayDeque<Step>()
     var canUndo by mutableStateOf(false)
         private set
 
-    // ---------- Recorte ----------
+    /** O desfazer acabou de restaurar um estado: a próxima mudança "assentada" não vira passo novo. */
+    var skipNextCommit = false
 
-    fun pushUndo() {
-        undo.addLast(mask.copy(Bitmap.Config.ALPHA_8, true))
-        while (undo.size > 15) undo.removeFirst().recycle()
+    private fun push(step: Step) {
+        undo.addLast(step)
+        while (undo.size > 30) (undo.removeFirst() as? Step.Mask)?.bitmap?.recycle()
         canUndo = true
     }
 
+    /** Guarda a máscara antes de mexer no recorte. */
+    fun pushUndo() = push(Step.Mask(mask.copy(Bitmap.Config.ALPHA_8, true)))
+
+    /** Guarda como estavam textos/ajustes/efeitos antes de uma mudança (chamado quando a mudança assenta). */
+    fun pushProps(before: Props) = push(Step.Edit(before))
+
     fun undo() {
-        val prev = undo.removeLastOrNull() ?: return
-        Canvas(mask).drawBitmap(prev, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) })
-        prev.recycle()
+        when (val step = undo.removeLastOrNull() ?: return) {
+            is Step.Mask -> {
+                Canvas(mask).drawBitmap(step.bitmap, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) })
+                step.bitmap.recycle()
+                touched()
+            }
+            is Step.Edit -> {
+                skipNextCommit = true
+                applyProps(step.props)
+            }
+        }
         canUndo = undo.isNotEmpty()
-        touched()
     }
+
+    // ---------- Recorte ----------
 
     fun resetMask() {
         pushUndo()

@@ -40,6 +40,8 @@ class MainActivity : ComponentActivity() {
         shared = sharedImage(intent)
         val store = PackStore(this)
         val fonts = Fonts(this)
+        // Mantém o backup semanal agendado (se o usuário ligou).
+        com.trevisolli.conselheirosticker.data.AutoBackup.schedule(this)
 
         setContent {
             StickerTheme {

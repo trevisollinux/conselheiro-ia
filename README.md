@@ -113,7 +113,7 @@ Um segundo app, no módulo `sticker/` (antes chamado Conselheiro Sticker): cria 
 Tudo fica no celular, sem conta e sem servidor.
 
 - **Pacotes:** de 3 a 30 figurinhas, com nome, autor e ícone gerado da primeira figurinha. **Adicionar ao WhatsApp**
-  (ou WhatsApp Business) pela integração oficial; depois de editar, toque de novo para atualizar.
+  (ou WhatsApp Business) pela integração oficial.
   O app pergunta ao WhatsApp se o pacote já está lá: o botão vira **✓ No WhatsApp** e, quando você muda o pacote,
   **✨ Atualizar no WhatsApp** (com brilhinhos); a lista de pacotes avisa quais têm mudanças para mandar.
 - **Recortar:** **retângulo** com alças nos cantos e lados (livre, quadrado ou círculo),

@@ -3,6 +3,8 @@
 Seu conselheiro pessoal no Android: agenda e tarefas juntas num widget, um resumo do que importa no dia
 e um assistente que anota por você, por texto ou voz.
 
+📘 **Passo a passo de tudo (instalar, IA, Todoist, e-mail com senha de app, WhatsApp, widgets…): [docs/GUIA.md](docs/GUIA.md)**
+
 O repositório também tem o **[Unusual Stickers](#unusual-stickers-app-de-figurinhas)**, um app separado para criar
 figurinhas do WhatsApp sem anúncios.
 

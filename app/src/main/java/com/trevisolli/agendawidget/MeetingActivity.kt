@@ -43,6 +43,7 @@ class MeetingActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        MeetingState.state.value = MeetingState.state.value.copy(blockedByCall = false)
         if (!MeetingState.state.value.recording) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                 MeetingService.start(this)
@@ -70,9 +71,27 @@ class MeetingActivity : ComponentActivity() {
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        if (s.silentSeconds >= 15) {
+                        if (s.blockedByCall) {
                             Text(
-                                "Não estou ouvindo nada. Durante ligações, o Android costuma bloquear o microfone para outros apps.",
+                                "Você está numa ligação: gravar agora cortaria a sua voz para a outra pessoa. " +
+                                    "Depois da ligação, toque no 🎤 e conte em poucas palavras o que foi combinado: eu anoto tudo.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            TextButton(onClick = { finish() }) { Text("Entendi") }
+                            return@Column
+                        }
+                        if (s.pausedForCall) {
+                            Text(
+                                "⏸ Pausado durante a ligação, para não atrapalhar. Volto a gravar quando ela terminar.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        } else if (s.silentSeconds >= 15) {
+                            Text(
+                                "Não estou ouvindo nada. Chegue o celular mais perto de quem fala.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 textAlign = TextAlign.Center,
                                 color = MaterialTheme.colorScheme.error,

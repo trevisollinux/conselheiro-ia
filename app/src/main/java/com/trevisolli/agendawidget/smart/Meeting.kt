@@ -27,7 +27,12 @@ import java.io.File
 
 /** Estado da gravação, lido pela tela. */
 object MeetingState {
-    data class S(val recording: Boolean = false, val seconds: Int = 0, val silentSeconds: Int = 0, val level: Int = 0)
+    data class S(
+        val recording: Boolean = false, val seconds: Int = 0, val silentSeconds: Int = 0, val level: Int = 0,
+        /** Pausado porque há uma ligação: o microfone fica com o WhatsApp/telefone. */
+        val pausedForCall: Boolean = false,
+        val blockedByCall: Boolean = false,
+    )
 
     val state = MutableStateFlow(S())
     const val MAX_SECONDS = 50 * 60
@@ -54,6 +59,11 @@ class MeetingService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private fun inCall(): Boolean {
+        val mode = getSystemService(android.media.AudioManager::class.java)?.mode ?: return false
+        return mode == android.media.AudioManager.MODE_IN_CALL || mode == android.media.AudioManager.MODE_IN_COMMUNICATION
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             finish()
@@ -61,6 +71,13 @@ class MeetingService : Service() {
         }
         if (recorder != null) return START_NOT_STICKY
         startForegroundCompat()
+        // Em ligação, o microfone é da ligação: gravar aqui cortaria a sua voz no WhatsApp.
+        if (inCall()) {
+            MeetingState.state.value = MeetingState.S(blockedByCall = true)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val f = file(this).apply { delete() }
         val r = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else @Suppress("DEPRECATION") MediaRecorder()
         try {
@@ -83,8 +100,21 @@ class MeetingService : Service() {
         scope.launch {
             while (isActive && recorder != null) {
                 delay(1000)
-                val amp = runCatching { recorder?.maxAmplitude ?: 0 }.getOrDefault(0)
                 val s = MeetingState.state.value
+                // Entrou uma ligação: pausa e devolve o microfone; quando ela acaba, volta a gravar sozinho.
+                val call = inCall()
+                if (call && !s.pausedForCall) {
+                    runCatching { recorder?.pause() }
+                    MeetingState.state.value = s.copy(pausedForCall = true, silentSeconds = 0)
+                    continue
+                }
+                if (!call && s.pausedForCall) {
+                    runCatching { recorder?.resume() }
+                    MeetingState.state.value = s.copy(pausedForCall = false)
+                    continue
+                }
+                if (s.pausedForCall) continue
+                val amp = runCatching { recorder?.maxAmplitude ?: 0 }.getOrDefault(0)
                 MeetingState.state.value = s.copy(
                     seconds = s.seconds + 1,
                     silentSeconds = if (amp < 30) s.silentSeconds + 1 else 0,

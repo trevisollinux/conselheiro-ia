@@ -56,7 +56,10 @@ object InboxStore {
     fun promptBlock(list: List<Msg>): String {
         if (list.isEmpty()) return ""
         return "Mensagens recebidas (mais recentes por último):\n" +
-            list.takeLast(30).joinToString("\n") { "- [${it.app}] ${it.sender}: ${it.text.replace('\n', ' ').take(140)}" } + "\n"
+            list.sortedBy { it.time }.takeLast(40).joinToString("\n") {
+                val hm = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(it.time))
+                "- $hm [${it.app}] ${it.sender}: ${it.text.replace('\n', ' ').take(140)}"
+            } + "\n"
     }
 
     private fun save(context: Context, list: List<Msg>) {

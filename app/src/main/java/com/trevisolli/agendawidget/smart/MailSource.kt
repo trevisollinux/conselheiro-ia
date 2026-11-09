@@ -67,13 +67,68 @@ object MailSource {
         if ("AUTHENTICATIONFAILED" in m || "Invalid credentials" in m) "e-mail ou senha de app incorretos" else m.take(120)
     }
 
+    /** "Última checagem 14:40 ✅ 3 novos" ou "❌ motivo" — para as configurações e para a conversa. */
+    fun statusLine(context: Context): String {
+        val p = prefs(context)
+        val t = p.getLong("mail_ok", 0)
+        val err = p.getString("mail_error", "").orEmpty()
+        val hhmm = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+        val ok = if (t > 0) "última leitura ${hhmm.format(java.util.Date(t))}" else "ainda não leu nenhum e-mail"
+        return if (err.isNotBlank()) "❌ $err ($ok)" else "✅ $ok"
+    }
+
+    /**
+     * Leitura rápida para a conversa: baixa os e-mails novos agora e põe só na lista de mensagens
+     * (não avança o marcador, então a leitura completa em segundo plano ainda analisa cada um depois).
+     * No máximo 1 vez por minuto.
+     */
+    fun peek(context: Context) {
+        if (!configured(context)) return
+        val p = prefs(context)
+        if (System.currentTimeMillis() - p.getLong("mail_peeked", 0) < 60_000L) return
+        p.edit().putLong("mail_peeked", System.currentTimeMillis()).apply()
+        runCatching {
+            val (store, inbox) = open(address(context), password(context))
+            try {
+                val since = System.currentTimeMillis() - 24 * 3600_000L
+                val count = inbox.messageCount
+                if (count == 0) return@runCatching
+                inbox.getMessages(maxOf(1, count - 40), count)
+                    .filter { (it.receivedDate?.time ?: 0) >= since }
+                    .forEach { m ->
+                        val from = (m.from?.firstOrNull() as? InternetAddress)?.let { it.personal ?: it.address }.orEmpty()
+                        val body = (m.subject.orEmpty() + "\n" + text(m)).trim().take(3000)
+                        if (body.length >= 6) {
+                            InboxStore.add(context, InboxStore.Msg("Gmail", from, body, m.receivedDate?.time ?: System.currentTimeMillis()))
+                        }
+                    }
+                p.edit().putLong("mail_ok", System.currentTimeMillis()).putString("mail_error", "").apply()
+            } finally {
+                runCatching { inbox.close(false) }
+                runCatching { store.close() }
+            }
+        }.onFailure { p.edit().putString("mail_error", friendly(it)).apply() }
+    }
+
+    private fun friendly(e: Throwable): String {
+        val m = e.message.orEmpty()
+        return when {
+            "AUTHENTICATIONFAILED" in m || "Invalid credentials" in m -> "senha de app recusada — crie outra e reconecte"
+            "UnknownHost" in e.toString() || "connect" in m.lowercase() -> "sem conexão com o servidor de e-mail"
+            else -> m.take(100).ifBlank { e.javaClass.simpleName }
+        }
+    }
+
     /** No máximo a cada 10 min (chamado pela atualização do widget). */
     fun poll(context: Context, force: Boolean = false) {
         if (!configured(context)) return
         val p = prefs(context)
         if (!force && System.currentTimeMillis() - p.getLong("mail_checked", 0) < 10 * 60_000L) return
         p.edit().putLong("mail_checked", System.currentTimeMillis()).apply()
-        val (store, inbox) = open(address(context), password(context))
+        val (store, inbox) = runCatching { open(address(context), password(context)) }.getOrElse {
+            p.edit().putString("mail_error", friendly(it)).apply()
+            throw it
+        }
         try {
             val last = p.getLong("mail_uid", 0)
             val messages: List<Message> = if (last == 0L) {
@@ -92,9 +147,11 @@ object MailSource {
                 val from = (m.from?.firstOrNull() as? InternetAddress)?.let { it.personal ?: it.address }.orEmpty()
                 val body = (m.subject.orEmpty() + "\n" + text(m)).trim().take(3000)
                 if (body.length >= 6) runCatching { Intake.process(context, "Gmail", from, body, isEmail = true) }
+                // Marca cada e-mail já tratado: se o worker for interrompido, não recomeça do zero.
+                p.edit().putLong("mail_uid", maxUid).apply()
             }
             if (maxUid == 0L) maxUid = inbox.uidNext - 1
-            p.edit().putLong("mail_uid", maxUid).apply()
+            p.edit().putLong("mail_uid", maxUid).putLong("mail_ok", System.currentTimeMillis()).putString("mail_error", "").apply()
         } finally {
             runCatching { inbox.close(false) }
             runCatching { store.close() }

@@ -66,6 +66,19 @@ object ChatStore {
         }
     }
 
+    /** Histórico que vai para a IA: até [max] mensagens, parando numa pausa de 2 h ("nova conversa"). */
+    fun contextHistory(context: Context, max: Int = 20): List<ChatMessage> {
+        val list = all(context)
+        val out = ArrayDeque<ChatMessage>()
+        for (m in list.asReversed()) {
+            val next = out.firstOrNull()
+            if (next != null && next.time - m.time > 2 * 3600_000L) break
+            out.addFirst(m)
+            if (out.size >= max) break
+        }
+        return out.toList()
+    }
+
     @Synchronized
     fun add(context: Context, m: ChatMessage) = save(context, (all(context) + m).takeLast(MAX))
 

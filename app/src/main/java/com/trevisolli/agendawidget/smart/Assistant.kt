@@ -165,7 +165,7 @@ object Assistant {
         context: Context, shown: String?, text: String?, audio: Pair<ByteArray, String>?, image: ByteArray? = null,
         meeting: Boolean = false,
     ): ChatMessage {
-        val history = ChatStore.all(context).takeLast(8)
+        val history = ChatStore.contextHistory(context, 20)
         if (shown != null) ChatStore.add(context, ChatMessage(fromUser = true, text = shown))
         val settings = Settings(context)
         val items = AgendaRepository.load(context).items
@@ -528,12 +528,24 @@ object Assistant {
             "Se for algo a fazer (comprar, pagar, ligar, lembrar), use create_task. Pode criar várias ações. " +
             "Títulos curtos, sem a data. Datas relativas (amanhã, sexta) a partir de hoje. " +
             "Se for pergunta sobre a agenda, o tempo ou as mensagens recebidas (WhatsApp, e-mail), responda com base nos dados " +
-            "fornecidos e deixe actions vazio. Ao criar algo ao ar livre com chuva prevista, avise no reply. " +
+            "fornecidos (cada mensagem tem a hora; só diga que conferiu o e-mail se ele aparecer na lista, e se a linha \"E-mail (IMAP)\" mostrar ❌, avise o erro) e deixe actions vazio. Ao criar algo ao ar livre com chuva prevista, avise no reply. " +
             "O reply confirma em até 2 frases; não repita a lista do que foi criado (o app mostra). " +
             "Coisas que se repetem (todo dia, toda semana) viram create_task com repeat. " +
             "Listas (de compras, de mala, de presentes, passos de algo) viram UMA create_task com o nome da lista " +
             "(ex.: \"Lista de compras\") e cada item em subtasks, curto e com inicial maiúscula. " +
             "Se a mensagem vier em ÁUDIO anexo, inclua \"heard\": a transcrição fiel do que foi dito."
+
+    private val QUESTION = Regex(
+        "^(o que|oque|qual|quais|quando|como|por ?que|quem|onde|quanto|será|voc[êe]|me (ajuda|explica|diz|conta|resume)|" +
+            "explica|resume|acha|devo|vale a pena|tem (algum|algo)|chegou|preciso)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Pergunta ou papo (vai no modelo principal e pode responder mais por extenso); o resto é comando. */
+    private fun isConversation(text: String): Boolean {
+        val t = text.trim()
+        return t.contains('?') || QUESTION.containsMatchIn(t) || t.length > 140
+    }
 
     private fun aiPlan(
         context: Context, text: String, items: List<AgendaItem>, history: List<ChatMessage>,
@@ -543,6 +555,9 @@ object Assistant {
     ): Plan {
         val s = Settings(context)
         val today = LocalDate.now()
+        // Só em pergunta de texto/voz: puxa os e-mails novos na hora (a conversa não depende do worker de 30 min).
+        if (audio == null && image == null && !meeting) MailSource.peek(context)
+        val conversational = audio == null && image == null && !meeting && isConversation(text)
         val prompt = buildString {
             append("Hoje é ${today.dayOfWeek.getDisplayName(TextStyle.FULL, locale)}, $today, ${LocalTime.now().format(hhmm)}. ")
             append("Fuso ${ZoneId.systemDefault().id}.\n")
@@ -552,11 +567,12 @@ object Assistant {
             if (items.isEmpty()) append("(vazia)\n")
             WeatherSource.load(context)?.let { append(WeatherSource.forecastLine(it)).append("\n") }
             append(InboxStore.promptBlock(InboxStore.recent(context, hours = 24)))
+            if (MailSource.configured(context)) append("E-mail (IMAP): ${MailSource.statusLine(context)}\n")
             append(Memory.promptBlock(context))
             append(Slots.freeBlock(items))
             if (history.isNotEmpty()) {
                 append("Conversa recente:\n")
-                history.forEach { append(if (it.fromUser) "Usuário: " else "Você: ").append(it.text.take(200)).append("\n") }
+                history.forEach { append(if (it.fromUser) "Usuário: " else "Você: ").append(it.text.take(400)).append("\n") }
             }
             when {
                 meeting -> append(
@@ -571,12 +587,25 @@ object Assistant {
                         "Leia e faça o que ela pede; uma lista de itens vira create_task com subtasks. " +
                         if (text.isNotBlank()) "Legenda da pessoa: $text" else "",
                 )
-                else -> append("Nova mensagem do usuário: ").append(text)
+                else -> {
+                    if (conversational) append(
+                        "Esta mensagem é uma CONVERSA (pergunta, dúvida ou pedido de opinião), não só um comando: " +
+                            "responda de forma completa e útil, com raciocínio e opinião própria como um bom conselheiro, " +
+                            "em até ~6 frases curtas (ignore o limite de 2 frases), usando a agenda, as mensagens e a memória. " +
+                            "Só crie ações se a pessoa pedir.\n",
+                    )
+                    append("Nova mensagem do usuário: ").append(text)
+                }
             }
         }
-        // Texto vai no modelo leve (rápido, cota maior); áudio precisa do principal.
+        // Comando simples vai no modelo leve (rápido, cota maior); conversa e mídia vão no principal.
         val media = audio != null || image != null
-        val model = if (!media && s.aiLightReady) s.lightModel else s.effectiveModel
+        val model = when {
+            media -> s.effectiveModel
+            conversational && s.aiReady -> s.effectiveModel
+            s.aiLightReady -> s.lightModel
+            else -> s.effectiveModel
+        }
         val raw = AiClient.complete(
             s.aiProvider, s.aiKey, model, SYSTEM, prompt, jpeg = image, audio = audio,
             fastTimeoutMs = when {

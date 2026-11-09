@@ -277,6 +277,11 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
                         photoMenu = false
                         context.startActivity(Intent(context, com.trevisolli.agendawidget.MeetingActivity::class.java))
                     })
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("🧹 Limpar conversa") }, onClick = {
+                        photoMenu = false
+                        ChatStore.clear(context)
+                        messages = emptyList()
+                    })
                     androidx.compose.material3.DropdownMenuItem(text = { Text("🖼️ Escolher da galeria") }, onClick = {
                         photoMenu = false
                         pickPhoto.launch(

@@ -528,7 +528,7 @@ object Assistant {
             "Se for algo a fazer (comprar, pagar, ligar, lembrar), use create_task. Pode criar várias ações. " +
             "Títulos curtos, sem a data. Datas relativas (amanhã, sexta) a partir de hoje. " +
             "Se for pergunta sobre a agenda, o tempo ou as mensagens recebidas (WhatsApp, e-mail), responda com base nos dados " +
-            "fornecidos e deixe actions vazio. Ao criar algo ao ar livre com chuva prevista, avise no reply. " +
+            "fornecidos (cada mensagem tem a hora; só diga que conferiu o e-mail se ele aparecer na lista, e se a linha \"E-mail (IMAP)\" mostrar ❌, avise o erro) e deixe actions vazio. Ao criar algo ao ar livre com chuva prevista, avise no reply. " +
             "O reply confirma em até 2 frases; não repita a lista do que foi criado (o app mostra). " +
             "Coisas que se repetem (todo dia, toda semana) viram create_task com repeat. " +
             "Listas (de compras, de mala, de presentes, passos de algo) viram UMA create_task com o nome da lista " +
@@ -543,6 +543,8 @@ object Assistant {
     ): Plan {
         val s = Settings(context)
         val today = LocalDate.now()
+        // Só em pergunta de texto/voz: puxa os e-mails novos na hora (a conversa não depende do worker de 30 min).
+        if (audio == null && image == null && !meeting) MailSource.peek(context)
         val prompt = buildString {
             append("Hoje é ${today.dayOfWeek.getDisplayName(TextStyle.FULL, locale)}, $today, ${LocalTime.now().format(hhmm)}. ")
             append("Fuso ${ZoneId.systemDefault().id}.\n")
@@ -552,6 +554,7 @@ object Assistant {
             if (items.isEmpty()) append("(vazia)\n")
             WeatherSource.load(context)?.let { append(WeatherSource.forecastLine(it)).append("\n") }
             append(InboxStore.promptBlock(InboxStore.recent(context, hours = 24)))
+            if (MailSource.configured(context)) append("E-mail (IMAP): ${MailSource.statusLine(context)}\n")
             append(Memory.promptBlock(context))
             append(Slots.freeBlock(items))
             if (history.isNotEmpty()) {

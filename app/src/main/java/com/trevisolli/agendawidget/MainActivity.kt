@@ -572,7 +572,8 @@ class MainActivity : ComponentActivity() {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (com.trevisolli.agendawidget.smart.MailSource.configured(this@MainActivity)) {
-                    Text("✅ Lendo ${com.trevisolli.agendawidget.smart.MailSource.address(this@MainActivity)}")
+                    Text("Lendo ${com.trevisolli.agendawidget.smart.MailSource.address(this@MainActivity)}")
+                    Text(com.trevisolli.agendawidget.smart.MailSource.statusLine(this@MainActivity), style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = {
                             mailStatus = "Verificando…"

@@ -79,6 +79,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -484,23 +486,39 @@ private fun TrimPanel(info: ClipInfo, onConfirm: (startMs: Int, endMs: Int) -> U
     val total = info.durationMs.toFloat()
     val maxLen = Clips.MAX_CLIP_MS.toFloat()
     var range by remember(info) { mutableStateOf(0f..minOf(total, 4000f)) }
+    // A prévia mostra o quadro da ponta que está sendo mexida (início ou fim do trecho).
+    var showingEnd by remember(info) { mutableStateOf(false) }
+    val context = LocalContext.current
+    val previewer = remember(info) { runCatching { Clips.FramePreview(context, info) }.getOrNull() }
+    DisposableEffect(previewer) { onDispose { previewer?.close() } }
+    val targetMs = (if (showingEnd) range.endInclusive else range.start).toInt()
+    val frame by produceState(info.preview, previewer, targetMs / 50) {
+        kotlinx.coroutines.delay(80) // espera o dedo parar um pouco antes de ler o quadro
+        val f = withContext(Dispatchers.IO) { previewer?.frame(targetMs) }
+        if (f != null) value = f
+    }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Escolha o trecho", style = MaterialTheme.typography.titleMedium)
-        info.preview?.let {
+        frame?.let {
             androidx.compose.foundation.Image(
                 it.asImageBitmap(), contentDescription = null,
                 modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(12.dp)),
             )
         }
+        Text(
+            (if (showingEnd) "Mostrando o fim: %.1f s" else "Mostrando o início: %.1f s").format(targetMs / 1000f),
+            style = MaterialTheme.typography.bodySmall,
+        )
         val len = range.endInclusive - range.start
         Text("De %.1f s a %.1f s (%.1f s)".format(range.start / 1000, range.endInclusive / 1000, len / 1000))
         RangeSlider(
             value = range,
             onValueChange = { r ->
+                showingEnd = r.start == range.start && r.endInclusive != range.endInclusive
                 // Janela de no máximo 10 s: mexer uma ponta arrasta a outra.
                 range = when {
                     r.endInclusive - r.start <= maxLen -> r

@@ -43,6 +43,8 @@ object Assistant {
             val subtasks: List<String> = emptyList(),
         ) : Action()
         data class Complete(val title: String) : Action()
+        /** Apagar evento da agenda ou tarefa do Todoist: só prepara o botão; a pessoa confirma. */
+        data class Delete(val title: String, val date: LocalDate?, val isTask: Boolean) : Action()
         /** Ações de um toque: o app prepara, a pessoa confirma. */
         data class Message(val to: String, val text: String, val app: String) : Action()
         data class Call(val to: String) : Action()
@@ -294,6 +296,24 @@ object Assistant {
                             } + if (a.subtasks.isNotEmpty()) "\n" + a.subtasks.joinToString("\n") { "   ▫️ $it" } else ""
                         }
                     }
+                    is Action.Delete -> {
+                        val zone = ZoneId.systemDefault()
+                        val target = findDeletable(items, a.title, a.date, a.isTask)
+                        if (target == null) {
+                            problems += if (a.isTask) "não achei a tarefa \"${a.title}\""
+                            else "não achei \"${a.title}\" na agenda (convites, eventos recorrentes e agendas só de leitura eu não apago; abra no Google Agenda)"
+                        } else {
+                            val day = Instant.ofEpochMilli(target.startMillis).atZone(zone)
+                            val whenTxt = whenText(day.toLocalDate(), if (target.dateOnly) null else day.toLocalTime())
+                            val key = if (a.isTask) "T:${target.taskId}" else target.moveKey!!
+                            buttons += QuickAction(
+                                QuickAction.DELETE,
+                                "🗑️ Apagar \"${target.title}\" ($whenTxt)",
+                                key,
+                            )
+                            done += "🗑️ Confirme abaixo para apagar: ${target.title} · $whenTxt"
+                        }
+                    }
                     is Action.Complete -> {
                         val target = findTask(items, a.title)
                         if (target?.taskId == null) {
@@ -363,6 +383,19 @@ object Assistant {
     }
 
     private fun norm(s: String) = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}"), "").lowercase().trim()
+
+    /** Item que dá para apagar: tarefa do Todoist, ou evento comum da agenda (moveKey "E:"; nunca recorrente/convite). */
+    private fun findDeletable(items: List<AgendaItem>, title: String, date: LocalDate?, task: Boolean): AgendaItem? {
+        if (task) return findTask(items, title)
+        val q = norm(title)
+        val zone = ZoneId.systemDefault()
+        val events = items.filter { it.moveKey?.startsWith("E:") == true }
+        val byTitle = events.filter { norm(it.title) == q }.ifEmpty {
+            events.filter { norm(it.title).contains(q) || q.contains(norm(it.title)) }
+        }
+        if (date != null) byTitle.firstOrNull { Instant.ofEpochMilli(it.startMillis).atZone(zone).toLocalDate() == date }?.let { return it }
+        return byTitle.minByOrNull { it.startMillis }
+    }
 
     private fun findTask(items: List<AgendaItem>, title: String): AgendaItem? {
         val q = norm(title)
@@ -507,6 +540,8 @@ object Assistant {
             "\"repeat\": null ou regra do Todoist EM INGLÊS quando repetir (\"every day at 8am\", \"every monday at 9am\", \"every month on the 5th\")," +
             "\"subtasks\": [] ou lista de itens}; " +
             "{\"type\":\"complete_task\",\"title\": título exato de uma tarefa da lista}; " +
+            "{\"type\":\"delete_event\",\"title\": título exato de um evento da lista,\"date\":\"YYYY-MM-DD\" do evento}; " +
+            "{\"type\":\"delete_task\",\"title\": título exato de uma tarefa da lista}; " +
             "{\"type\":\"send_message\",\"to\": nome do contato ou número,\"text\": a mensagem pronta, em 1ª pessoa,\"app\":\"whatsapp\" ou \"sms\"}; " +
             "{\"type\":\"call\",\"to\": nome ou número}; " +
             "{\"type\":\"route\",\"place\": endereço ou nome do lugar}; " +
@@ -520,6 +555,8 @@ object Assistant {
             "\"responde a Helena que sim\" = reply (use as mensagens recebidas para entender o contexto). " +
             "Promessas e combinados (\"fiquei de mandar o orçamento pro João até sexta\") = create_task com o prazo. " +
             "Para encaixar horários (\"quando tenho uma tarde livre?\", \"marca no primeiro horário livre\"), use os horários livres. " +
+            "\"apaga/cancela/remove o compromisso/evento X\" = delete_event (da agenda); \"apaga a tarefa X\" = delete_task. " +
+            "Só prepara um botão de confirmação: no reply diga que é só tocar para confirmar, nunca diga que já apagou. " +
             "Boleto, PIX ou conta (texto ou imagem) = bill. " +
             "Use remind_at_place para \"quando eu chegar no X, me lembra de Y\" e save_place para \"salva aqui como X\". " +
             "send_message/call/route/track só preparam um botão; a pessoa confirma. Para \"avisa a Helena que…\", use send_message " +
@@ -687,6 +724,8 @@ object Assistant {
                     }.orEmpty(),
                 )
                 "complete_task" -> actions += Action.Complete(title)
+                "delete_event" -> actions += Action.Delete(title, date, false)
+                "delete_task" -> actions += Action.Delete(title, null, true)
             }
         }
         return Plan(json.optString("reply").ifBlank { null }, actions, json.optString("heard").takeIf { !json.isNull("heard") && it.isNotBlank() })

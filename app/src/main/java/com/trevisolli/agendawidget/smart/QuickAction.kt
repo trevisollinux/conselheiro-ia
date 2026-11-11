@@ -30,6 +30,8 @@ data class QuickAction(val kind: String, val label: String, val target: String =
         const val COPY = "copy"
         /** Responde pela notificação do WhatsApp (sem abrir); sem ela, abre o WhatsApp com o texto. */
         const val REPLY = "reply"
+        /** Apaga evento ("E:<id>") ou tarefa do Todoist ("T:<id>") depois do toque de confirmação. */
+        const val DELETE = "delete"
 
         fun fromJson(o: JSONObject) = QuickAction(o.getString("kind"), o.getString("label"), o.optString("target"), o.optString("text"))
     }
@@ -47,6 +49,30 @@ object QuickActions {
             QuickAction.COPY -> {
                 context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Consigliere", a.target))
                 Toast.makeText(context, "Copiado", Toast.LENGTH_SHORT).show()
+                return
+            }
+            QuickAction.DELETE -> {
+                val app = context.applicationContext
+                val id = a.target.substringAfter(':')
+                val isTask = a.target.startsWith("T:")
+                Thread {
+                    val ok = runCatching {
+                        if (isTask) {
+                            com.trevisolli.agendawidget.data.TodoistSource.delete(com.trevisolli.agendawidget.data.Settings(app).todoistToken, id)
+                        } else {
+                            check(com.trevisolli.agendawidget.data.CalendarWriter.canWrite(app)) { "sem permissão" }
+                            com.trevisolli.agendawidget.data.CalendarWriter.delete(app, id.toLong())
+                        }
+                    }.isSuccess
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        Toast.makeText(
+                            app,
+                            if (ok) "Apagado 🗑️" else "Não consegui apagar (libere \"Criar eventos\" nas Configurações ou apague no Google Agenda)",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                    if (ok) com.trevisolli.agendawidget.widget.RefreshWorker.runNow(app)
+                }.start()
                 return
             }
             QuickAction.REPLY -> {

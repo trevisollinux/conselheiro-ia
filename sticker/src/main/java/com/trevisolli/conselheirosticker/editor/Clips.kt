@@ -93,13 +93,13 @@ object Clips {
         } ?: false
 
     @Suppress("DEPRECATION")
-    private fun decodeGif(context: Context, uri: Uri): android.graphics.Movie {
+    internal fun decodeGif(context: Context, uri: Uri): android.graphics.Movie {
         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Não consegui abrir o GIF")
         return android.graphics.Movie.decodeByteArray(bytes, 0, bytes.size) ?: error("GIF inválido")
     }
 
     @Suppress("DEPRECATION")
-    private fun gifFrame(movie: android.graphics.Movie, timeMs: Int): Bitmap {
+    internal fun gifFrame(movie: android.graphics.Movie, timeMs: Int): Bitmap {
         val w = movie.width().coerceAtLeast(1)
         val h = movie.height().coerceAtLeast(1)
         val k = minOf(1f, MAX_SIDE.toFloat() / maxOf(w, h))
@@ -109,7 +109,7 @@ object Clips {
         return out
     }
 
-    private fun videoFrame(r: MediaMetadataRetriever, timeMs: Int): Bitmap {
+    internal fun videoFrame(r: MediaMetadataRetriever, timeMs: Int): Bitmap {
         val us = timeMs * 1000L
         val raw = if (Build.VERSION.SDK_INT >= 27) {
             r.getScaledFrameAtTime(us, MediaMetadataRetriever.OPTION_CLOSEST, MAX_SIDE, MAX_SIDE)
@@ -122,5 +122,27 @@ object Clips {
         } else raw
         return if (scaled.config == Bitmap.Config.ARGB_8888 && scaled.isMutable) scaled
         else scaled.copy(Bitmap.Config.ARGB_8888, true).also { scaled.recycle() }
+    }
+
+    /**
+     * Mostra um quadro qualquer do GIF/vídeo (para a prévia do trecho), deixando o arquivo aberto
+     * enquanto a pessoa mexe na faixa. Use de uma thread só por vez e feche no fim.
+     */
+    class FramePreview(context: Context, private val info: ClipInfo) : java.io.Closeable {
+        private val retriever: MediaMetadataRetriever? =
+            if (info.isGif) null else MediaMetadataRetriever().apply { setDataSource(context, info.uri) }
+        @Suppress("DEPRECATION")
+        private val movie: android.graphics.Movie? = if (info.isGif) decodeGif(context, info.uri) else null
+
+        @Synchronized
+        fun frame(timeMs: Int): Bitmap? = runCatching {
+            val t = timeMs.coerceIn(0, info.durationMs)
+            movie?.let { gifFrame(it, t) } ?: retriever?.let { videoFrame(it, t) }
+        }.getOrNull()
+
+        @Synchronized
+        override fun close() {
+            runCatching { retriever?.release() }
+        }
     }
 }

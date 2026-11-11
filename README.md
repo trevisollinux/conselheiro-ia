@@ -130,7 +130,7 @@ Tudo fica no celular, sem conta e sem servidor.
   não pode vir no app, mas dá para importar a sua).
 - **Só texto:** figurinha com fundo transparente.
 - **Animadas (GIF e vídeo):** toque **+ Figurinha → GIF** ou **→ Vídeo** e escolha o
-  trecho (até 10 s). Algo do YouTube ou de outro app: grave a tela do celular e use o vídeo gravado.
+  trecho (até 10 s); a prévia mostra o quadro exato do início ou do fim enquanto você ajusta. Algo do YouTube ou de outro app: grave a tela do celular e use o vídeo gravado.
   O recorte (retângulo, círculo, laço, borracha), a borda e os textos valem para todos os quadros; a prévia anima
   nas abas Ajustar e Efeitos. O app ajusta quadros e qualidade sozinho para caber nos 500 KB do WhatsApp.
 - **Efeitos animados:** na aba **Efeitos** do editor, uma foto parada vira animada (dá para combinar, ex.: fogo +

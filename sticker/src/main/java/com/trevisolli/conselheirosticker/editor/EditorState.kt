@@ -168,12 +168,22 @@ class EditorState(
     /** Fica só o que está dentro da moldura (retângulo ou círculo); o resto vira transparente. */
     fun cropTo(r: ComposeRect, oval: Boolean) {
         pushUndo()
-        mask.eraseColor(Color.TRANSPARENT)
+        // Apaga só o que está fora da moldura: o que já tinha sido recortado (ex.: fundo tirado
+        // pelo automático) continua recortado.
         val rf = android.graphics.RectF(r.left, r.top, r.right, r.bottom)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
-        Canvas(mask).apply { if (oval) drawOval(rf, paint) else drawRect(rf, paint) }
+        val outside = Path().apply {
+            if (oval) addOval(rf, Path.Direction.CW) else addRect(rf, Path.Direction.CW)
+            fillType = Path.FillType.INVERSE_WINDING
+        }
+        Canvas(mask).drawPath(outside, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+        })
+        frameTouched = false
         touched()
     }
+
+    /** A moldura foi mexida e ainda não virou corte (aplicado sozinho ao salvar ou trocar de aba). */
+    var frameTouched by mutableStateOf(false)
 
     /** Apaga tudo, para pintar com o pincel só o que fica. */
     fun clearMask() {

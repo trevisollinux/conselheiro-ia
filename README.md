@@ -154,7 +154,8 @@ animada, o app manda as paradas como animação de 2 quadros iguais (`w_*.webp`)
 1. **Novo pacote** → dê um nome e o autor (o autor fica lembrado para os próximos).
 2. **+ Figurinha** → **Foto da galeria** ou **Só texto**.
 3. Aba **Recortar**: a foto abre inteira, com a moldura de corte. Arraste os cantos e os lados (ou o meio, para mover),
-   escolha **Livre**, **Quadrado** ou **Círculo** e toque **✂️ Cortar**. Se preferir, use **✨ Automático** (tira o fundo),
+   escolha **Livre**, **Quadrado** ou **Círculo** e toque **✂️ Cortar seleção** (logo abaixo da imagem; se esquecer, o corte é
+   aplicado ao Salvar ou ao trocar de aba). O corte soma com o que já foi recortado. Se preferir, use **✨ Automático** (tira o fundo),
    **Laço** (contorne o que fica), **Borracha** e **Pincel** (com **Pintar do zero** para pintar só o que fica); dois
    dedos dão zoom. **Desfazer** no topo e **Recomeçar** volta à foto inteira.
 4. Aba **Ajustar**: arraste e use dois dedos para posicionar; ligue o **contorno de adesivo**; escolha os emojis

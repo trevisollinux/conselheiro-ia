@@ -242,6 +242,7 @@ fun EditorScreen(
         scope.launch {
             busy = "Salvando…"
             try {
+                applyPendingCrop(st)
                 val replace = (source as? EditorSource.Existing)?.file
                 if (st.willAnimate) {
                     // GIF/vídeo: um quadro por quadro do trecho. Foto com efeito: 16 quadros da mesma imagem.
@@ -377,7 +378,11 @@ fun EditorScreen(
         Column(Modifier.padding(pad).fillMaxSize().imePadding()) {
             ScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = 0.dp) {
                 EditTab.entries.forEach { t ->
-                    Tab(selected = tab == t, onClick = { tab = t }, text = { Text(t.label) })
+                    Tab(selected = tab == t, onClick = {
+                        // Saiu do recorte com a moldura mexida: aplica o corte (ninguém perde a seleção).
+                        if (tab == EditTab.Cut && t != EditTab.Cut) state?.let { applyPendingCrop(it) }
+                        tab = t
+                    }, text = { Text(t.label) })
                 }
             }
             if (st == null) {
@@ -546,6 +551,11 @@ private val cutMode = mutableStateOf(CutMode.Frame)
 private val brushSize = mutableFloatStateOf(40f)
 private val frameShape = mutableStateOf(FrameShape.Free)
 
+/** Aplica a moldura se ela foi mexida e ainda não virou corte. */
+private fun applyPendingCrop(st: EditorState) {
+    if (st.frameTouched) st.cropTo(st.frame, oval = frameShape.value == FrameShape.Circle)
+}
+
 /** Formato da moldura de corte. */
 private enum class FrameShape(val label: String) { Free("Livre"), Square("Quadrado"), Circle("Círculo") }
 
@@ -610,6 +620,7 @@ private fun CutView(st: EditorState, mode: CutMode, brush: Float, modifier: Modi
                         val b = content(p)
                         when (mode) {
                             CutMode.Frame -> if (grab != Grab.None) {
+                                st.frameTouched = true
                                 st.frame = st.frame.dragged(grab, (b.x - a.x) * k, (b.y - a.y) * k, shape != FrameShape.Free,
                                     st.source.width.toFloat(), st.source.height.toFloat())
                             }
@@ -767,6 +778,17 @@ private fun ComposeRect.squared(): ComposeRect {
 
 @Composable
 private fun CutControls(st: EditorState, onAuto: () -> Unit) {
+    if (cutMode.value == CutMode.Frame) {
+        // Logo abaixo da imagem, em destaque: é a ação principal da moldura.
+        Button(
+            onClick = { st.cropTo(st.frame, oval = frameShape.value == FrameShape.Circle) },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("✂️ Cortar seleção") }
+        Text(
+            "Mexeu na moldura? O corte também é aplicado ao tocar em Salvar ou ao ir para outra aba.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
     Row(
         Modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -789,13 +811,11 @@ private fun CutControls(st: EditorState, onAuto: () -> Unit) {
                         onClick = {
                             frameShape.value = f
                             if (f != FrameShape.Free) st.frame = st.frame.squared()
+                            st.frameTouched = true
                         },
                         label = { Text(f.label) },
                     )
                 }
-            }
-            Button(onClick = { st.cropTo(st.frame, oval = frameShape.value == FrameShape.Circle) }) {
-                Text("✂️ Cortar")
             }
         }
         CutMode.Lasso -> Text("Contorne com o dedo o que quer manter.", style = MaterialTheme.typography.bodySmall)

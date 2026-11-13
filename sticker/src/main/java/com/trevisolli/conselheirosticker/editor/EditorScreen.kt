@@ -108,6 +108,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.trevisolli.conselheirosticker.data.Emojis
 import com.trevisolli.conselheirosticker.data.PackStore
 import com.trevisolli.conselheirosticker.data.WebpEncoder
@@ -497,6 +498,25 @@ private fun TrimPanel(info: ClipInfo, onConfirm: (startMs: Int, endMs: Int) -> U
     val previewer = remember(info) { runCatching { Clips.FramePreview(context, info) }.getOrNull() }
     DisposableEffect(previewer) { onDispose { previewer?.close() } }
     val targetMs = (if (showingEnd) range.endInclusive else range.start).toInt()
+    // ▶ Ver trecho: toca só o pedaço escolhido, em loop (vídeo pelo player do Android, sem som;
+    // GIF quadro a quadro).
+    var playing by remember(info) { mutableStateOf(false) }
+    var gifFrame by remember(info) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    val startMs = range.start.toInt()
+    val endMs = range.endInclusive.toInt()
+    if (info.isGif) {
+        LaunchedEffect(playing, startMs, endMs) {
+            if (!playing) return@LaunchedEffect
+            var t = startMs
+            while (true) {
+                val f = withContext(Dispatchers.IO) { previewer?.frame(t) }
+                if (f != null) gifFrame = f
+                kotlinx.coroutines.delay(100)
+                t += 100
+                if (t > endMs) t = startMs
+            }
+        }
+    }
     val frame by produceState(info.preview, previewer, targetMs / 50) {
         kotlinx.coroutines.delay(80) // espera o dedo parar um pouco antes de ler o quadro
         val f = withContext(Dispatchers.IO) { previewer?.frame(targetMs) }
@@ -508,21 +528,34 @@ private fun TrimPanel(info: ClipInfo, onConfirm: (startMs: Int, endMs: Int) -> U
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Escolha o trecho", style = MaterialTheme.typography.titleMedium)
-        frame?.let {
-            androidx.compose.foundation.Image(
-                it.asImageBitmap(), contentDescription = null,
-                modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(12.dp)),
+        Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
+            if (playing && !info.isGif) {
+                TrimVideoPlayer(info.uri, startMs, endMs, Modifier.height(220.dp))
+            } else {
+                (if (playing) gifFrame ?: frame else frame)?.let {
+                    androidx.compose.foundation.Image(
+                        it.asImageBitmap(), contentDescription = null,
+                        modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(12.dp)),
+                    )
+                }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = { playing = !playing }) {
+                Text(if (playing) "⏸ Parar" else "▶ Ver trecho")
+            }
+            Text(
+                if (playing) "Tocando o trecho em loop"
+                else (if (showingEnd) "Mostrando o fim: %.1f s" else "Mostrando o início: %.1f s").format(targetMs / 1000f),
+                style = MaterialTheme.typography.bodySmall,
             )
         }
-        Text(
-            (if (showingEnd) "Mostrando o fim: %.1f s" else "Mostrando o início: %.1f s").format(targetMs / 1000f),
-            style = MaterialTheme.typography.bodySmall,
-        )
         val len = range.endInclusive - range.start
         Text("De %.1f s a %.1f s (%.1f s)".format(range.start / 1000, range.endInclusive / 1000, len / 1000))
         RangeSlider(
             value = range,
             onValueChange = { r ->
+                playing = false // mexeu na faixa: volta a mostrar o quadro da ponta
                 showingEnd = r.start == range.start && r.endInclusive != range.endInclusive
                 // Janela de no máximo 10 s: mexer uma ponta arrasta a outra.
                 range = when {
@@ -539,6 +572,38 @@ private fun TrimPanel(info: ClipInfo, onConfirm: (startMs: Int, endMs: Int) -> U
         )
         Button(onClick = { onConfirm(range.start.toInt(), range.endInclusive.toInt()) }, enabled = len >= 200f) {
             Text("Usar este trecho")
+        }
+    }
+}
+
+/** Toca o vídeo só entre [startMs] e [endMs], sem som, voltando ao início do trecho no fim. */
+@Composable
+private fun TrimVideoPlayer(uri: Uri, startMs: Int, endMs: Int, modifier: Modifier) {
+    var view by remember { mutableStateOf<android.widget.VideoView?>(null) }
+    AndroidView(
+        factory = { ctx ->
+            android.widget.VideoView(ctx).apply {
+                setOnPreparedListener { mp ->
+                    mp.setVolume(0f, 0f)
+                    mp.isLooping = false
+                    seekTo(startMs)
+                    start()
+                }
+                setOnCompletionListener { seekTo(startMs); start() }
+                setVideoURI(uri)
+                view = this
+            }
+        },
+        modifier = modifier,
+        onRelease = { it.stopPlayback() },
+    )
+    // Chegou no fim do trecho (ou ficou antes do começo): volta para o início.
+    LaunchedEffect(view, startMs, endMs) {
+        val v = view ?: return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(50)
+            val pos = v.currentPosition
+            if (v.isPlaying && (pos >= endMs || pos < startMs - 300)) v.seekTo(startMs)
         }
     }
 }

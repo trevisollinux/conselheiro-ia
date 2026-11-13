@@ -19,13 +19,13 @@ object MailSource {
     private fun prefs(context: Context) = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
     fun address(context: Context) = prefs(context).getString("mail_address", "").orEmpty()
-    private fun password(context: Context) = prefs(context).getString("mail_password", "").orEmpty()
+    private fun password(context: Context) = com.trevisolli.agendawidget.data.Secrets.get(prefs(context), "mail_password")
     fun configured(context: Context) = address(context).isNotBlank() && password(context).isNotBlank()
 
     fun save(context: Context, address: String, password: String) {
+        com.trevisolli.agendawidget.data.Secrets.put(prefs(context), "mail_password", password.replace(" ", ""))
         prefs(context).edit()
             .putString("mail_address", address.trim())
-            .putString("mail_password", password.replace(" ", ""))
             .putLong("mail_uid", 0)
             .putLong("mail_checked", 0)
             .apply()

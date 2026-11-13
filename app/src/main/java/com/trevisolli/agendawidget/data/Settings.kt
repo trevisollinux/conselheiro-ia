@@ -18,8 +18,8 @@ class Settings(context: Context) {
         set(value) = prefs.edit().putBoolean("onboarded", value).apply()
 
     var todoistToken: String
-        get() = prefs.getString("todoist_token", "").orEmpty()
-        set(value) = prefs.edit().putString("todoist_token", value.trim()).apply()
+        get() = Secrets.get(prefs, "todoist_token")
+        set(value) = Secrets.put(prefs, "todoist_token", value.trim())
 
     /** Quantos dias à frente mostrar. */
     var days: Int
@@ -36,8 +36,8 @@ class Settings(context: Context) {
         set(value) = prefs.edit().putString("ai_provider", value.name).apply()
 
     var aiKey: String
-        get() = prefs.getString("ai_key", "").orEmpty()
-        set(value) = prefs.edit().putString("ai_key", value.trim()).apply()
+        get() = Secrets.get(prefs, "ai_key")
+        set(value) = Secrets.put(prefs, "ai_key", value.trim())
 
     /** Vazio = modelo padrão do provedor. */
     var aiModel: String
@@ -79,8 +79,8 @@ class Settings(context: Context) {
 
     /** Token de integração interna do Notion ("Internal Integration Secret"). */
     var notionToken: String
-        get() = prefs.getString("notion_token", "").orEmpty()
-        set(value) = prefs.edit().putString("notion_token", value.trim()).apply()
+        get() = Secrets.get(prefs, "notion_token")
+        set(value) = Secrets.put(prefs, "notion_token", value.trim())
 
     var notionLastScan: Long
         get() = prefs.getLong("notion_last_scan", 0)

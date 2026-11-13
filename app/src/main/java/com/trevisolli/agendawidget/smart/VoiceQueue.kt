@@ -83,6 +83,7 @@ class VoiceQueueWorker(context: Context, params: WorkerParameters) : CoroutineWo
                 // IA ainda fora: tenta mais tarde (2, 4, 6… min; o refresh de 30 min também reagenda).
                 return if (runAttemptCount < 20) Result.retry() else Result.failure()
             } catch (e: Exception) {
+                FailLog.add(ctx, "Áudio guardado", e)
                 file.delete()
                 VoiceQueue.notify(ctx, "Não consegui entender um áudio guardado: ${e.message?.take(80)}")
             }

@@ -91,6 +91,7 @@ object Summary {
             // Pausa avisada só em Configurações → Inteligência.
             ruleText
         } catch (e: Exception) {
+            FailLog.add(context, "Resumo do dia (IA)", AiClient.friendly(e))
             errors += "IA: ${AiClient.friendly(e)}"
             ruleText
         }

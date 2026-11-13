@@ -32,6 +32,7 @@ object AiClient {
 
     fun attach(prefs: android.content.SharedPreferences) {
         this.prefs = prefs
+        AiUsage.prefs = prefs
     }
 
     /** A cota é por modelo: o leve pode estar pausado e o principal não (e vice-versa). */
@@ -203,6 +204,7 @@ object AiClient {
             headers["anthropic-beta"] = "server-side-fallback-2026-07-01"
         }
         val res = Http.postJson("https://api.anthropic.com/v1/messages", headers, body)
+        res.optJSONObject("usage")?.let { AiUsage.record(model, it.optLong("input_tokens"), it.optLong("output_tokens")) }
         if (res.optString("stop_reason") == "refusal") throw IOException("a IA recusou o pedido")
         val blocks = res.getJSONArray("content")
         return buildString {
@@ -234,6 +236,7 @@ object AiClient {
             mapOf("Authorization" to "Bearer $key"),
             body,
         )
+        res.optJSONObject("usage")?.let { AiUsage.record(model, it.optLong("prompt_tokens"), it.optLong("completion_tokens")) }
         return res.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content")
     }
 
@@ -269,6 +272,10 @@ object AiClient {
             }
         } else {
             Http.postJson(url, headers, body)
+        }
+        // Raciocínio ("thoughts") é cobrado como saída.
+        res.optJSONObject("usageMetadata")?.let {
+            AiUsage.record(model, it.optLong("promptTokenCount"), it.optLong("candidatesTokenCount") + it.optLong("thoughtsTokenCount"))
         }
         val out = res.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts")
         return buildString {

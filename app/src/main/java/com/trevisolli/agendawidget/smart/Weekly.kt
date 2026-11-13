@@ -44,7 +44,7 @@ object Weekly {
                     "até 6 linhas curtas, começando pelo que pede preparo (prazos, contas, aniversários). Sem markdown.",
                 rules,
             ).trim().ifBlank { rules }
-        }.getOrDefault(rules)
+        }.onFailure { FailLog.add(context, "Revisão da semana (IA)", it) }.getOrDefault(rules)
     }
 
     /** Uma vez por semana, domingo a partir das 19h. */

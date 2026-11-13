@@ -203,12 +203,6 @@ class MainActivity : ComponentActivity() {
         val parcels = remember(resumeCount, snapshot, suggestionsVersion) { com.trevisolli.agendawidget.smart.Parcels.all(this) }
         val birthdays = remember(resumeCount) { com.trevisolli.agendawidget.smart.Birthdays.on(this) }
         val bills = remember(resumeCount, snapshot, suggestionsVersion) { com.trevisolli.agendawidget.smart.Bills.all(this) }
-        var memoryVersion by remember { mutableStateOf(0) }
-        val facts = remember(resumeCount, memoryVersion) { com.trevisolli.agendawidget.smart.Memory.all(this) }
-        var mailAddress by remember { mutableStateOf(com.trevisolli.agendawidget.smart.MailSource.address(this)) }
-        var mailPassword by remember { mutableStateOf("") }
-        var mailStatus by remember { mutableStateOf<String?>(null) }
-        var weeklyOn by remember { mutableStateOf(getSharedPreferences("settings", MODE_PRIVATE).getBoolean("weekly_on", true)) }
         var placesVersion by remember { mutableStateOf(0) }
         val savedPlaces = remember(resumeCount, placesVersion) { com.trevisolli.agendawidget.smart.Places.places(this) }
         val placeReminders = remember(resumeCount, placesVersion) { com.trevisolli.agendawidget.smart.Places.reminders(this) }
@@ -565,63 +559,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            Section("E-mail") {
-                Text(
-                    "Lê a caixa de entrada inteira (não só as notificações) para achar compromissos, contas e rastreios. " +
-                        "Use uma \"senha de app\": conta Google → Segurança → Verificação em duas etapas → Senhas de app.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                if (com.trevisolli.agendawidget.smart.MailSource.configured(this@MainActivity)) {
-                    Text("Lendo ${com.trevisolli.agendawidget.smart.MailSource.address(this@MainActivity)}")
-                    Text(com.trevisolli.agendawidget.smart.MailSource.statusLine(this@MainActivity), style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = {
-                            mailStatus = "Verificando…"
-                            scope.launch {
-                                mailStatus = withContext(Dispatchers.IO) {
-                                    runCatching { com.trevisolli.agendawidget.smart.MailSource.poll(this@MainActivity, force = true); "✅ Caixa verificada" }
-                                        .getOrElse { "❌ ${it.message?.take(100)}" }
-                                }
-                                refresh()
-                            }
-                        }) { Text("Verificar agora") }
-                        OutlinedButton(onClick = {
-                            com.trevisolli.agendawidget.smart.MailSource.clear(this@MainActivity)
-                            mailAddress = ""
-                            mailStatus = null
-                        }) { Text("Desconectar") }
-                    }
-                } else {
-                    OutlinedTextField(
-                        value = mailAddress, onValueChange = { mailAddress = it.trim() },
-                        label = { Text("E-mail (Gmail, Outlook…)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = mailPassword, onValueChange = { mailPassword = it },
-                        label = { Text("Senha de app (16 letras)") }, singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedButton(onClick = { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://myaccount.google.com/apppasswords"))) }) {
-                        Text("Criar senha de app (Google)")
-                    }
-                    Button(onClick = {
-                        mailStatus = "Testando…"
-                        scope.launch {
-                            val err = withContext(Dispatchers.IO) { com.trevisolli.agendawidget.smart.MailSource.test(mailAddress, mailPassword) }
-                            if (err == null) {
-                                com.trevisolli.agendawidget.smart.MailSource.save(this@MainActivity, mailAddress, mailPassword)
-                                mailPassword = ""
-                                mailStatus = "✅ Conectado. Vou olhar os e-mails a cada atualização."
-                                withContext(Dispatchers.IO) { runCatching { com.trevisolli.agendawidget.smart.MailSource.poll(this@MainActivity, force = true) } }
-                                refresh()
-                            } else {
-                                mailStatus = "❌ $err"
-                            }
-                        }
-                    }, enabled = mailAddress.contains("@") && mailPassword.length >= 8) { Text("Conectar") }
-                }
-                mailStatus?.let { Text(it) }
-            }
+            com.trevisolli.agendawidget.ui.settings.MailSettings(onChanged = { refresh() })
 
             Section("Inteligência") {
                 Text(
@@ -1053,42 +991,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            Section("Memória") {
-                Text(
-                    "Diga \"lembra que a senha do Wi-Fi da mãe é…\" e depois pergunte \"qual a senha do Wi-Fi da mãe?\". Fica só no celular.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                if (facts.isEmpty()) Text("Nada guardado ainda.", style = MaterialTheme.typography.bodySmall)
-                facts.forEach { f ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("🧠 ${f.text}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                        IconButton(onClick = {
-                            com.trevisolli.agendawidget.smart.Memory.remove(this@MainActivity, f.id)
-                            memoryVersion++
-                        }) { Text("✕", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    }
-                }
-            }
-
-            Section("Revisão da semana") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Domingo às 19h, resumo da semana que vem", modifier = Modifier.weight(1f))
-                    Switch(checked = weeklyOn, onCheckedChange = {
-                        weeklyOn = it
-                        getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("weekly_on", it).apply()
-                    })
-                }
-                TextButton(onClick = {
-                    scope.launch {
-                        val text = withContext(Dispatchers.IO) { com.trevisolli.agendawidget.smart.Weekly.build(this@MainActivity) }
-                        com.trevisolli.agendawidget.smart.ChatStore.add(
-                            this@MainActivity,
-                            com.trevisolli.agendawidget.smart.ChatMessage(fromUser = false, text = "🗓️ Sua semana:\n$text"),
-                        )
-                        snackbar.showSnackbar("Revisão pronta na aba Conversa")
-                    }
-                }) { Text("Ver agora") }
-            }
+            com.trevisolli.agendawidget.ui.settings.MemorySettings(refreshKey = resumeCount)
+            com.trevisolli.agendawidget.ui.settings.WeeklySettings(onReady = { msg -> scope.launch { snackbar.showSnackbar(msg) } })
 
             Section("Lugares") {
                 Text(
@@ -1198,25 +1102,10 @@ class MainActivity : ComponentActivity() {
                 }
                 backupMessage?.let { Text(it) }
             }
-            Section("Bateria") {
-                Text(
-                    "Deixe o app \"sem restrições\" para o widget atualizar sozinho.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                OutlinedButton(onClick = {
-                    startActivity(Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                }) { Text("Abrir configurações de bateria") }
+            com.trevisolli.agendawidget.ui.settings.DiagnosticsSettings(refreshKey = resumeCount)
+            com.trevisolli.agendawidget.ui.settings.BatterySettings()
             }
-            }
-            Section("Sobre") {
-                Text("Consigliere ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = {
-                        startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Support.PRIVACY_URL)))
-                    }) { Text("Privacidade") }
-                    OutlinedButton(onClick = { Support.contact(this@MainActivity, "Consigliere: contato", "") }) { Text("Fale conosco") }
-                }
-            }
+            com.trevisolli.agendawidget.ui.settings.AboutSettings()
 
                     }
 
@@ -1666,19 +1555,11 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun GroupTitle(text: String) {
-        Text(text, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp))
-    }
+    private fun GroupTitle(text: String) = com.trevisolli.agendawidget.ui.settings.SettingsGroupTitle(text)
 
     @Composable
-    private fun Section(title: String, content: @Composable () -> Unit) {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                content()
-            }
-        }
-    }
+    private fun Section(title: String, content: @Composable () -> Unit) =
+        com.trevisolli.agendawidget.ui.settings.SettingsSection(title, content)
 
     /** Amostra compacta do widget com o fundo escolhido. */
     @Composable

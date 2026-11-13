@@ -83,6 +83,7 @@ object Briefing {
             ).trim()
             text.ifBlank { ruleText }
         } catch (e: Exception) {
+            FailLog.add(context, "Briefing (IA)", e)
             ruleText
         }
     }

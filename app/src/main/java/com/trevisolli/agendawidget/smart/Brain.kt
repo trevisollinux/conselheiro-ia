@@ -112,6 +112,7 @@ object Brain {
         return try {
             ai(context, text, origin, light = true).also { if (it == null) why("IA: não parece compromisso seu") }
         } catch (e: Exception) {
+            FailLog.add(context, "Leitura de mensagens (IA)", AiClient.friendly(e))
             if (r.hasKeyword) rules(text, origin) else null.also { why("IA fora: ${AiClient.friendly(e)}") }
         }
     }

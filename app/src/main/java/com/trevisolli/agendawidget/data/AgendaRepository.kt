@@ -56,6 +56,7 @@ object AgendaRepository {
                 errors += "Notion: ${e.message?.take(120)}"
             }
         }
+        errors.forEach { com.trevisolli.agendawidget.smart.FailLog.add(context, it.substringBefore(':'), it.substringAfter(": ")) }
         // Atrasadas primeiro; depois por data, com itens de dia inteiro antes dos com hora.
         items.sortWith(compareBy<AgendaItem>({ !it.overdue }, { it.startMillis }, { !it.dateOnly }, { it.title }))
         val summary = Summary.build(context, items, errors)

@@ -52,6 +52,7 @@ object NotionScanner {
                         try {
                             Brain.ai(context, line, origin, light = true)
                         } catch (e: Exception) {
+                            FailLog.add(context, "Notion (IA)", e)
                             Brain.rules(line, origin)
                         }
                     } else {

@@ -78,3 +78,11 @@ class AudioImportTest {
         assertEquals(listOf(0xFF, 0xF1, 0x50, 0x80, 0x0D, 0x7F, 0xFC), h)
     }
 }
+
+class AiUsageTest {
+    @Test fun precoPorFamilia() {
+        assertEquals(0.10 to 0.40, AiUsage.price("gemini-3.5-flash-lite"))
+        assertEquals(0.30 to 2.50, AiUsage.price("gemini-3.8-flash"))
+        assertEquals(1.0 to 5.0, AiUsage.price("claude-haiku-5-5"))
+    }
+}

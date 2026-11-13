@@ -18,15 +18,21 @@ figurinhas do WhatsApp sem anúncios.
   "terminei a ração da Amelie" conclui; "o que tenho amanhã?" responde. Tudo com **Desfazer**.
   - **Listas:** "lista de compras: leite, pão e ovos" vira uma tarefa com subtarefas no Todoist.
   - **Repetição:** "dar o remédio todo dia às 8h" vira tarefa recorrente.
+  - **Editar e apagar:** "passa a reunião para 15h", "renomeia para…" editam na hora; "apaga a consulta de quinta"
+    prepara um botão 🗑️ para confirmar. Os dois têm Desfazer (convites e eventos recorrentes ficam de fora).
+  - **Perguntas** vão no modelo principal, com respostas mais completas; comandos simples, no modelo leve.
 - **Ações de um toque:** "avisa a Helena que vou atrasar" prepara a mensagem no WhatsApp; "liga pro dentista" disca;
   "como chego no shopping" abre a rota. O Consigliere prepara e você confirma: nada é enviado sozinho.
 - **Fotos 📷:** na conversa, tire ou escolha uma foto (lista escrita à mão, print, convite, receita). A IA lê e executa;
   sem IA, o texto é lido no aparelho e várias linhas viram uma lista com subtarefas. Ao compartilhar uma imagem com o app,
   "Pedir ao Consigliere" faz o mesmo.
 - **Secretária:**
-  - **E-mail (IMAP):** lê a caixa de entrada inteira com uma senha de app; mesmos filtros das notificações.
+  - **E-mail (IMAP):** lê a caixa de entrada inteira com uma senha de app; mesmos filtros das notificações. Na conversa,
+    os e-mails novos são lidos na hora, e a IA pode abrir um e-mail inteiro ou procurar um mais antigo (até 45 dias).
   - **🎙️ Gravar conversa ou reunião:** grava em primeiro plano (até 50 min) e o Gemini devolve resumo + combinados já criados.
     Durante ligações o Android costuma bloquear o microfone para outros apps.
+  - **Áudio compartilhado:** gravação de ligação (do app de telefone), áudio do WhatsApp ou do gravador → Compartilhar →
+    Consigliere vira resumo + combinados (MP3, M4A, AAC, OGG, WAV; até ~60 min).
   - **💬 Responder pelo WhatsApp:** sugestões vêm com a resposta pronta e "Responder" envia pela própria notificação;
     "responde a Helena que sim" também.
   - **🧠 Memória:** "lembra que…" e depois pergunte.
@@ -50,6 +56,8 @@ figurinhas do WhatsApp sem anúncios.
 - **Resumos da manhã e da noite:** no app ("Preparar meu dia"), com notificação opcional.
 - **Notion (opcional):** procura datas nas páginas compartilhadas com a integração.
 - **Tempo:** Open-Meteo, pela cidade digitada ou pela localização aproximada.
+- **Diagnóstico:** Configurações → Avançado → **Uso da IA** (chamadas, tokens e custo estimado de hoje e de 30 dias) e
+  **O que falhou** (IA, Todoist, e-mail, briefings). Chaves, tokens e a senha de app ficam cifrados no aparelho (Android Keystore).
 
 ## Widgets
 
@@ -107,6 +115,9 @@ O QR contém o token do Todoist e a chave de IA: trate como senha.
 - `smart/`: IA (`AiClient`, `LightModel`), assistente (`Assistant`), regras em português (`RuleParser`), resumo, briefings,
   leitura de notificações, Notion, voz (`VoiceRecorder`, `VoiceQueue`)
 - `widget/`: widgets em Jetpack Glance (`AgendaWidget`, `VoiceWidget`, `ChatBar`), fundos e paisagens, atualização (`RefreshWorker`)
+- `ui/settings/`: seções das Configurações (e-mail, memória, revisão da semana, uso da IA, o que falhou, sobre)
+- `app/src/test/`: testes de JVM (datas, boleto, rastreio, edição de horário…). O workflow **Check** compila e testa
+  as branches; a release só sai da `main` com testes verdes.
 - `tools/fetch_art.py`: baixa a coleção de arte de reserva usada quando o Met está fora do ar
 
 ## Unusual Stickers (app de figurinhas)

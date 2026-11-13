@@ -129,7 +129,7 @@ Tudo fica no celular, sem conta e sem servidor.
   (ou WhatsApp Business) pela integração oficial.
   O app pergunta ao WhatsApp se o pacote já está lá: o botão vira **✓ No WhatsApp** e, quando você muda o pacote,
   **✨ Atualizar no WhatsApp** (com brilhinhos); a lista de pacotes avisa quais têm mudanças para mandar.
-- **Recortar:** **retângulo** com alças nos cantos e lados (livre, quadrado ou círculo),
+- **Recortar:** **moldura** (✂️ Moldura) com alças nos cantos e lados (livre, quadrado ou círculo),
   ✨ recorte automático do fundo (ML Kit, no aparelho), **laço** (contorne o que fica),
   **borracha** e **pincel** (pinta o que fica; **Pintar do zero** apaga tudo para pintar só um pedaço), com Desfazer.
   **Dois dedos** dão zoom e movem a foto para acertar os detalhes.
@@ -143,8 +143,9 @@ Tudo fica no celular, sem conta e sem servidor.
 - **Animadas (GIF e vídeo):** toque **+ Figurinha → GIF** ou **→ Vídeo** e escolha o
   trecho (até 10 s); a prévia mostra o quadro exato do início ou do fim enquanto você ajusta, e **▶ Ver trecho**
   toca só o pedaço escolhido, em loop. Algo do YouTube ou de outro app: grave a tela do celular e use o vídeo gravado.
-  O recorte (retângulo, círculo, laço, borracha), a borda e os textos valem para todos os quadros; a prévia anima
-  nas abas Ajustar e Efeitos. O app ajusta quadros e qualidade sozinho para caber nos 500 KB do WhatsApp.
+  O recorte (moldura, laço, borracha, pincel), a borda e os textos valem para todos os quadros; a prévia anima
+  também na aba Recortar (com ⏸ Pausar para recortar com calma) e em Ajustar e Efeitos. Depois de Cortar seleção, a
+  moldura some e aparece o resultado. O app ajusta quadros e qualidade sozinho para caber nos 500 KB do WhatsApp.
 - **Efeitos animados:** na aba **Efeitos** do editor, uma foto parada vira animada (dá para combinar, ex.: fogo +
   tremor; também funcionam em GIF e vídeo): 🔥 fogo (com brilho e faíscas), 👾 fogo 16 bits (pixel art), ⚡ raios,
   🫨 tremor, 🔍 zoom dramático, 📺 glitch, 🌈 arco-íris, ✨ brilhos, ❤️ corações, 💫 tontura, ❄️ neve, 🎉 confete,
@@ -201,7 +202,7 @@ pelas regras de pagamento do Google Play.)
 ### Limitações (por enquanto)
 
 - Animadas: até 50 quadros (10 por segundo); trechos longos ficam com menos quadros. O recorte automático não
-  funciona em animações (use retângulo ou laço).
+  funciona em animações (use a moldura ou o laço).
 - O recorte automático usa o Google Play services: na primeira vez o modelo pode demorar a baixar. Sem ele, o laço
   e a borracha funcionam normalmente.
 - O backup é manual (Exportar); o app não envia nada sozinho para a nuvem além do backup automático do Android.

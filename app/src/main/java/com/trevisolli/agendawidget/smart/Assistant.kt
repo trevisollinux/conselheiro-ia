@@ -45,6 +45,8 @@ object Assistant {
         data class Complete(val title: String) : Action()
         /** Apagar evento da agenda ou tarefa do Todoist: só prepara o botão; a pessoa confirma. */
         data class Delete(val title: String, val date: LocalDate?, val isTask: Boolean) : Action()
+        /** Pedido da IA para ver e-mails/mensagens inteiros; o app busca e pergunta de novo com o texto. */
+        data class ReadEmail(val query: String) : Action()
         /** Mudar título, dia, hora ou duração de um item existente (executa e deixa Desfazer). */
         data class Edit(
             val title: String, val date: LocalDate?, val isTask: Boolean,
@@ -191,8 +193,18 @@ object Assistant {
             Plan(null, emptyList())
         } else if (settings.aiLightReady || settings.aiReady) {
             try {
-                aiPlan(context, text, items, history)
+                val first = aiPlan(context, text, items, history)
+                val lookups = first.actions.filterIsInstance<Action.ReadEmail>()
+                if (lookups.isEmpty()) {
+                    first
+                } else {
+                    // 2º passo: a IA pediu o texto completo; busca e pergunta de novo já com ele.
+                    val found = lookups.take(2).joinToString("\n") { lookupMessages(context, it.query) }
+                    aiPlan(context, text, items, history, extra = found)
+                        .let { p -> p.copy(actions = p.actions.filterNot { it is Action.ReadEmail }) }
+                }
             } catch (e: Exception) {
+                FailLog.add(context, "Conversa (IA)", e)
                 rulesPlanCtx(context, text, items).let { it.copy(reply = (it.reply ?: "") + "\n(IA indisponível, usei o modo automático)") }
             }
         } else {
@@ -319,6 +331,7 @@ object Assistant {
                             done += "🗑️ Confirme abaixo para apagar: ${target.title} · $whenTxt"
                         }
                     }
+                    is Action.ReadEmail -> Unit
                     is Action.Edit -> {
                         val target = findDeletable(items, a.title, a.date, a.isTask)
                         if (target == null) {
@@ -418,6 +431,25 @@ object Assistant {
     }
 
     private fun norm(s: String) = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}"), "").lowercase().trim()
+
+    /** Mensagens que batem com a busca: primeiro as guardadas (WhatsApp, e-mail recente), depois a caixa pelo IMAP. */
+    private fun lookupMessages(context: Context, query: String): String {
+        val words = norm(query).split(Regex("\\s+")).filter { it.length >= 3 }
+        val hhmm = java.text.SimpleDateFormat("dd/MM HH:mm", locale)
+        val local = InboxStore.all(context).filter { m ->
+            val hay = norm(m.sender + " " + m.text)
+            words.isNotEmpty() && words.all { it in hay }
+        }.sortedByDescending { it.time }.take(3).map { m ->
+            "- ${hhmm.format(java.util.Date(m.time))} [${m.app}] ${m.sender}: ${m.text.replace('\n', ' ').take(2500)}"
+        }
+        val remote = if (local.size >= 2) emptyList() else runCatching { MailSource.search(context, query) }
+            .onFailure { FailLog.add(context, "Busca de e-mail", it) }
+            .getOrDefault(emptyList())
+            .filter { f -> local.none { f.subject.isNotBlank() && f.subject in it } }
+            .map { f -> "- ${hhmm.format(java.util.Date(f.time))} [E-mail] ${f.from} · ${f.subject}: ${f.text}" }
+        val all = local + remote
+        return if (all.isEmpty()) "(nada encontrado para \"$query\")" else "Busca \"$query\":\n" + all.joinToString("\n")
+    }
 
     /** Item que dá para apagar: tarefa do Todoist, ou evento comum da agenda (moveKey "E:"; nunca recorrente/convite). */
     private fun findDeletable(items: List<AgendaItem>, title: String, date: LocalDate?, task: Boolean): AgendaItem? {
@@ -595,6 +627,8 @@ object Assistant {
             "Para encaixar horários (\"quando tenho uma tarde livre?\", \"marca no primeiro horário livre\"), use os horários livres. " +
             "\"apaga/cancela/remove o compromisso/evento X\" = delete_event (da agenda); \"apaga a tarefa X\" = delete_task. " +
             "Só prepara um botão de confirmação: no reply diga que é só tocar para confirmar, nunca diga que já apagou. " +
+            "Para ler um e-mail ou mensagem INTEIRO (a lista só mostra o começo) ou procurar um mais antigo, responda só com " +
+            "{\"type\":\"read_email\",\"query\": 1 a 3 palavras do remetente ou assunto} e reply vazio; o app busca e te manda o texto. " +
             "\"muda/passa/remarca/renomeia X\" (algo que JÁ existe na lista) = edit_event ou edit_task, nunca criar outro; " +
             "preencha só o que muda. " +
             "Boleto, PIX ou conta (texto ou imagem) = bill. " +
@@ -630,6 +664,8 @@ object Assistant {
         audio: Pair<ByteArray, String>? = null,
         image: ByteArray? = null,
         meeting: Boolean = false,
+        /** Texto completo de e-mails/mensagens que a IA pediu (2º passo do read_email). */
+        extra: String? = null,
     ): Plan {
         val s = Settings(context)
         val today = LocalDate.now()
@@ -648,6 +684,10 @@ object Assistant {
             if (MailSource.configured(context)) append("E-mail (IMAP): ${MailSource.statusLine(context)}\n")
             append(Memory.promptBlock(context))
             append(Slots.freeBlock(items))
+            if (extra != null) {
+                append("RESULTADO DA BUSCA que você pediu (texto completo; responda com base nele, não peça read_email de novo):\n")
+                append(extra).append("\n")
+            }
             if (history.isNotEmpty()) {
                 append("Conversa recente:\n")
                 history.forEach { append(if (it.fromUser) "Usuário: " else "Você: ").append(it.text.take(400)).append("\n") }
@@ -736,6 +776,10 @@ object Assistant {
                         a.optString("payee").ifBlank { "conta" }, a.optString("value").takeIf { !a.isNull("value") && it.isNotBlank() },
                         due, a.optString("code").filter { !it.isWhitespace() }.takeIf { !a.isNull("code") && it.length >= 20 },
                     )
+                    continue
+                }
+                "read_email" -> {
+                    a.optString("query").trim().takeIf { it.isNotBlank() }?.let { actions += Action.ReadEmail(it) }
                     continue
                 }
                 "remind_at_place" -> {

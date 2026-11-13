@@ -67,6 +67,39 @@ object MailSource {
         if ("AUTHENTICATIONFAILED" in m || "Invalid credentials" in m) "e-mail ou senha de app incorretos" else m.take(120)
     }
 
+    data class Found(val from: String, val subject: String, val time: Long, val text: String)
+
+    /**
+     * Busca na caixa (até [days] dias): remetente, assunto ou corpo com [query].
+     * Para a conversa abrir um e-mail inteiro ou um mais antigo do que a lista recente.
+     */
+    fun search(context: Context, query: String, days: Int = 45, max: Int = 4): List<Found> {
+        if (!configured(context) || query.isBlank()) return emptyList()
+        val (store, inbox) = open(address(context), password(context))
+        try {
+            val since = java.util.Date(System.currentTimeMillis() - days * 86_400_000L)
+            val words = query.trim().split(Regex("\\s+")).filter { it.length >= 3 }.take(4).ifEmpty { listOf(query.trim()) }
+            // Cada palavra precisa aparecer no remetente, no assunto ou no corpo.
+            val terms = words.map { w ->
+                javax.mail.search.OrTerm(
+                    arrayOf(javax.mail.search.FromStringTerm(w), javax.mail.search.SubjectTerm(w), javax.mail.search.BodyTerm(w)),
+                ) as javax.mail.search.SearchTerm
+            } + javax.mail.search.ReceivedDateTerm(javax.mail.search.ComparisonTerm.GE, since)
+            val found = inbox.search(javax.mail.search.AndTerm(terms.toTypedArray()))
+            return found.sortedByDescending { it.receivedDate?.time ?: 0 }.take(max).map { m ->
+                Found(
+                    from = (m.from?.firstOrNull() as? InternetAddress)?.let { it.personal ?: it.address }.orEmpty(),
+                    subject = m.subject.orEmpty(),
+                    time = m.receivedDate?.time ?: 0,
+                    text = text(m).replace(Regex("\\s+"), " ").trim().take(2500),
+                )
+            }
+        } finally {
+            runCatching { inbox.close(false) }
+            runCatching { store.close() }
+        }
+    }
+
     /** "Última checagem 14:40 ✅ 3 novos" ou "❌ motivo" — para as configurações e para a conversa. */
     fun statusLine(context: Context): String {
         val p = prefs(context)
@@ -107,7 +140,10 @@ object MailSource {
                 runCatching { inbox.close(false) }
                 runCatching { store.close() }
             }
-        }.onFailure { p.edit().putString("mail_error", friendly(it)).apply() }
+        }.onFailure {
+            p.edit().putString("mail_error", friendly(it)).apply()
+            FailLog.add(context, "E-mail", friendly(it))
+        }
     }
 
     private fun friendly(e: Throwable): String {
@@ -127,6 +163,7 @@ object MailSource {
         p.edit().putLong("mail_checked", System.currentTimeMillis()).apply()
         val (store, inbox) = runCatching { open(address(context), password(context)) }.getOrElse {
             p.edit().putString("mail_error", friendly(it)).apply()
+            FailLog.add(context, "E-mail", friendly(it))
             throw it
         }
         try {

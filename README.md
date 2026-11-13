@@ -156,6 +156,9 @@ Tudo fica no celular, sem conta e sem servidor.
   vale para recorte, textos, ajustes e efeitos.
 - **Prévia com fundo de conversa:** no editor, o botão no canto da prévia alterna entre xadrez, conversa clara e
   conversa escura, para ver como a figurinha fica no WhatsApp.
+- **Versão web:** [`docs/figurinhas/`](docs/figurinhas/index.html) (GitHub Pages, em `/figurinhas/`) faz figurinhas avulsas no navegador,
+  no celular ou no computador: mover/zoom/girar, formato, borda e texto; sai WebP 512×512 até 100 KB. No celular usa
+  **Compartilhar**; no WhatsApp Web, **Baixar** e Anexar → Figurinha. Pacotes no ícone de figurinhas só pelo app.
 - **Backup sem cadastro:** exporta os pacotes num `.zip` e importa de volta (detalhes abaixo).
 
 Formato que o WhatsApp exige (o app cuida sozinho): WebP 512×512 com até 100 KB (animada: WebP animado com até

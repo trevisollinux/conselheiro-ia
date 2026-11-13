@@ -12,6 +12,8 @@ data class Undo(val kind: String, val id: String) {
         const val EVENT = "event"
         const val TASK = "task"
         const val REOPEN = "reopen"
+        /** Recria um item apagado; o id é a cópia guardada (JSON). */
+        const val RESTORE = "restore"
     }
 }
 
@@ -85,6 +87,11 @@ object ChatStore {
     @Synchronized
     fun markUndone(context: Context, id: String) =
         save(context, all(context).map { if (it.id == id) it.copy(undone = true) else it })
+
+    /** Tira um botão já usado (ex.: Apagar) para não repetir a ação. */
+    @Synchronized
+    fun dropAction(context: Context, messageId: String, action: QuickAction) =
+        save(context, all(context).map { if (it.id == messageId) it.copy(actions = it.actions - action) else it })
 
     @Synchronized
     fun clear(context: Context) = save(context, emptyList())

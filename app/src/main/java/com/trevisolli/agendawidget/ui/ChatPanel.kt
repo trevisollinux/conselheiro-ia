@@ -212,6 +212,22 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
                     } else {
                         null
                     },
+                    onAction = { a ->
+                        if (a.kind == com.trevisolli.agendawidget.smart.QuickAction.DELETE) {
+                            // Apaga aqui mesmo: some o botão e aparece a mensagem com "Desfazer".
+                            scope.launch {
+                                val err = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    com.trevisolli.agendawidget.smart.QuickActions.deleteNow(context, a)
+                                        .also { if (it == null) ChatStore.dropAction(context, m.id, a) }
+                                }
+                                if (err != null) android.widget.Toast.makeText(context, "Não consegui apagar: $err", android.widget.Toast.LENGTH_LONG).show()
+                                messages = ChatStore.all(context)
+                                onChanged()
+                            }
+                        } else {
+                            com.trevisolli.agendawidget.smart.QuickActions.launch(context, a)
+                        }
+                    },
                 )
             }
             if (busy) item { Bubble(ChatMessage(fromUser = false, text = "…"), onUndo = null) }
@@ -316,7 +332,7 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
 }
 
 @Composable
-private fun Bubble(m: ChatMessage, onUndo: (() -> Unit)?) {
+private fun Bubble(m: ChatMessage, onUndo: (() -> Unit)?, onAction: ((com.trevisolli.agendawidget.smart.QuickAction) -> Unit)? = null) {
     val hhmm = DateTimeFormatter.ofPattern("HH:mm")
     Row(
         Modifier.fillMaxWidth(),
@@ -356,7 +372,7 @@ private fun Bubble(m: ChatMessage, onUndo: (() -> Unit)?) {
                 val ctx = LocalContext.current
                 Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     m.actions.forEach { a ->
-                        androidx.compose.material3.FilledTonalButton(onClick = { com.trevisolli.agendawidget.smart.QuickActions.launch(ctx, a) }) {
+                        androidx.compose.material3.FilledTonalButton(onClick = { onAction?.invoke(a) ?: com.trevisolli.agendawidget.smart.QuickActions.launch(ctx, a) }) {
                             Text(a.label)
                         }
                     }

@@ -53,25 +53,11 @@ object QuickActions {
             }
             QuickAction.DELETE -> {
                 val app = context.applicationContext
-                val id = a.target.substringAfter(':')
-                val isTask = a.target.startsWith("T:")
                 Thread {
-                    val ok = runCatching {
-                        if (isTask) {
-                            com.trevisolli.agendawidget.data.TodoistSource.delete(com.trevisolli.agendawidget.data.Settings(app).todoistToken, id)
-                        } else {
-                            check(com.trevisolli.agendawidget.data.CalendarWriter.canWrite(app)) { "sem permissão" }
-                            com.trevisolli.agendawidget.data.CalendarWriter.delete(app, id.toLong())
-                        }
-                    }.isSuccess
+                    val err = deleteNow(app, a)
                     android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        Toast.makeText(
-                            app,
-                            if (ok) "Apagado 🗑️" else "Não consegui apagar (libere \"Criar eventos\" nas Configurações ou apague no Google Agenda)",
-                            Toast.LENGTH_LONG,
-                        ).show()
+                        Toast.makeText(app, err?.let { "Não consegui apagar: $it" } ?: "Apagado 🗑️ (dá para desfazer na conversa)", Toast.LENGTH_LONG).show()
                     }
-                    if (ok) com.trevisolli.agendawidget.widget.RefreshWorker.runNow(app)
                 }.start()
                 return
             }
@@ -123,6 +109,27 @@ object QuickActions {
                 Toast.makeText(context, "Não encontrei um app para isso", Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    /**
+     * Apaga de verdade (chamar fora da thread principal) e registra na conversa com "Desfazer".
+     * Devolve null se deu certo, ou o motivo do erro.
+     */
+    fun deleteNow(context: Context, a: QuickAction): String? = runCatching {
+        val copy = com.trevisolli.agendawidget.data.Trash.delete(context, a.target)
+        ChatStore.add(
+            context,
+            ChatMessage(
+                fromUser = false,
+                text = "🗑️ Apagado: ${com.trevisolli.agendawidget.data.Trash.title(copy)}",
+                undo = listOf(Undo(Undo.RESTORE, copy)),
+            ),
+        )
+        com.trevisolli.agendawidget.widget.RefreshWorker.runNow(context)
+        null
+    }.getOrElse { e ->
+        FailLog.add(context, "Apagar", e)
+        e.message?.take(100) ?: "erro"
     }
 
     /** Número já no formato internacional, só dígitos (ex.: 5511999990000). Aceita nome do contato ou número. */

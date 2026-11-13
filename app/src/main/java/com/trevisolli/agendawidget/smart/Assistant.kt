@@ -357,17 +357,22 @@ object Assistant {
     /** Desfaz o que uma resposta criou. */
     suspend fun undo(context: Context, message: ChatMessage) = withContext(Dispatchers.IO) {
         val token = Settings(context).todoistToken
-        message.undo.forEach { u ->
+        val failed = message.undo.count { u ->
             runCatching {
                 when (u.kind) {
                     Undo.EVENT -> CalendarWriter.delete(context, u.id.toLong())
                     Undo.TASK -> TodoistSource.delete(token, u.id)
                     Undo.REOPEN -> TodoistSource.reopen(token, u.id)
+                    Undo.RESTORE -> com.trevisolli.agendawidget.data.Trash.restore(context, u.id)
                 }
-            }
+            }.onFailure { FailLog.add(context, "Desfazer", it) }.isFailure
+        }
+        if (failed == message.undo.size && failed > 0) {
+            ChatStore.add(context, ChatMessage(fromUser = false, text = "⚠️ Não consegui desfazer (veja Configurações → Avançado → O que falhou)."))
+            return@withContext
         }
         ChatStore.markUndone(context, message.id)
-        ChatStore.add(context, ChatMessage(fromUser = false, text = "↩️ Desfeito."))
+        ChatStore.add(context, ChatMessage(fromUser = false, text = if (failed > 0) "↩️ Desfeito em parte." else "↩️ Desfeito."))
         com.trevisolli.agendawidget.widget.RefreshWorker.runNow(context)
     }
 

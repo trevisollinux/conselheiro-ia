@@ -133,7 +133,8 @@ Tudo fica no celular, sem conta e sem servidor.
   trecho (até 10 s); a prévia mostra o quadro exato do início ou do fim enquanto você ajusta, e **▶ Ver trecho**
   toca só o pedaço escolhido, em loop. Algo do YouTube ou de outro app: grave a tela do celular e use o vídeo gravado.
   O recorte (retângulo, círculo, laço, borracha), a borda e os textos valem para todos os quadros; a prévia anima
-  nas abas Ajustar e Efeitos. O app ajusta quadros e qualidade sozinho para caber nos 500 KB do WhatsApp.
+  também na aba Recortar (com ⏸ Pausar para recortar com calma) e em Ajustar e Efeitos. Depois de Cortar seleção, a
+  moldura some e aparece o resultado. O app ajusta quadros e qualidade sozinho para caber nos 500 KB do WhatsApp.
 - **Efeitos animados:** na aba **Efeitos** do editor, uma foto parada vira animada (dá para combinar, ex.: fogo +
   tremor; também funcionam em GIF e vídeo): 🔥 fogo (com brilho e faíscas), 👾 fogo 16 bits (pixel art), ⚡ raios,
   🫨 tremor, 🔍 zoom dramático, 📺 glitch, 🌈 arco-íris, ✨ brilhos, ❤️ corações, 💫 tontura, ❄️ neve, 🎉 confete,

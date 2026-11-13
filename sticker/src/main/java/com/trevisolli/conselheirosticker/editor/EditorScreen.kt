@@ -318,9 +318,12 @@ fun EditorScreen(
     // Os efeitos ficam parados na aba Texto, para dar para tocar e arrastar os textos.
     val st0 = state
     val effectsOn = st0?.effects?.isNotEmpty() == true
-    LaunchedEffect(state, tab, busy, effectsOn) {
+    // Na aba Recortar, o vídeo/GIF também anima (dá para pausar para recortar com calma).
+    var cutPlaying by remember { mutableStateOf(true) }
+    LaunchedEffect(state, tab, busy, effectsOn, cutPlaying) {
         val st = state ?: return@LaunchedEffect
-        if (tab == EditTab.Cut || busy != null) return@LaunchedEffect
+        if (busy != null) return@LaunchedEffect
+        if (tab == EditTab.Cut && !(st.isAnimated && cutPlaying)) return@LaunchedEffect
         if (st.isAnimated) {
             val ds = st.durations!!
             while (true) {
@@ -408,7 +411,19 @@ fun EditorScreen(
             ) {
                 val side = min(maxWidth.value, maxHeight.value).dp
                 if (tab == EditTab.Cut) {
-                    CutView(st, cutMode.value, brushSize.floatValue, Modifier.fillMaxSize())
+                    Box(Modifier.fillMaxSize()) {
+                        CutView(st, cutMode.value, brushSize.floatValue, Modifier.fillMaxSize())
+                        if (st.isAnimated) {
+                            TextButton(
+                                onClick = { cutPlaying = !cutPlaying },
+                                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+                                    .clip(RoundedCornerShape(50)).background(Color(0x991B1530)),
+                            ) {
+                                Text(if (cutPlaying) "⏸ Pausar" else "▶ Animar", color = Color.White,
+                                    style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
                 } else {
                     Box(Modifier.size(side)) {
                         StickerPreview(st, fonts, tab, previewBg, Modifier.fillMaxSize())
@@ -686,6 +701,7 @@ private fun CutView(st: EditorState, mode: CutMode, brush: Float, modifier: Modi
                         when (mode) {
                             CutMode.Frame -> if (grab != Grab.None) {
                                 st.frameTouched = true
+                                st.frameApplied = false
                                 st.frame = st.frame.dragged(grab, (b.x - a.x) * k, (b.y - a.y) * k, shape != FrameShape.Free,
                                     st.source.width.toFloat(), st.source.height.toFloat())
                             }
@@ -714,18 +730,21 @@ private fun CutView(st: EditorState, mode: CutMode, brush: Float, modifier: Modi
             }) {
                 drawIntoCanvas { c ->
                     val nc = c.nativeCanvas
-                    val src = Rect(0, 0, st.source.width, st.source.height)
+                    // Vídeo/GIF: mostra o quadro atual (a animação toca aqui também).
+                    val img = st.frames?.getOrNull(st.frameIndex) ?: st.source
+                    val src = Rect(0, 0, img.width, img.height)
                     val dst = RectF(0f, 0f, size.width, size.height)
                     // A parte removida aparece apagadinha, para saber o que dá para devolver com o pincel.
-                    nc.drawBitmap(st.source, src, dst, Paint(Paint.FILTER_BITMAP_FLAG).apply { alpha = 60 })
+                    nc.drawBitmap(img, src, dst, Paint(Paint.FILTER_BITMAP_FLAG).apply { alpha = 60 })
                     val layer = nc.saveLayer(dst, null)
-                    nc.drawBitmap(st.source, src, dst, Paint(Paint.FILTER_BITMAP_FLAG))
+                    nc.drawBitmap(img, src, dst, Paint(Paint.FILTER_BITMAP_FLAG))
                     nc.drawBitmap(st.mask, src, dst, Paint(Paint.FILTER_BITMAP_FLAG).apply {
                         xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
                     })
                     nc.restoreToCount(layer)
                 }
-                if (mode == CutMode.Frame) drawFrame(st.frame, size.width / st.source.width, shape)
+                // Depois de cortar, a moldura some para o resultado aparecer; volta ao mexer nela.
+                if (mode == CutMode.Frame && !st.frameApplied) drawFrame(st.frame, size.width / st.source.width, shape)
                 if (lassoPoints.size > 1) {
                     val p = androidx.compose.ui.graphics.Path().apply {
                         moveTo(lassoPoints[0].x, lassoPoints[0].y)
@@ -850,7 +869,8 @@ private fun CutControls(st: EditorState, onAuto: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
         ) { Text("✂️ Cortar seleção") }
         Text(
-            "Mexeu na moldura? O corte também é aplicado ao tocar em Salvar ou ao ir para outra aba.",
+            if (st.frameApplied) "✓ Corte aplicado. Arraste um canto da moldura para cortar de novo, ou use Desfazer."
+            else "Mexeu na moldura? O corte também é aplicado ao tocar em Salvar ou ao ir para outra aba.",
             style = MaterialTheme.typography.bodySmall,
         )
     }
@@ -877,6 +897,7 @@ private fun CutControls(st: EditorState, onAuto: () -> Unit) {
                             frameShape.value = f
                             if (f != FrameShape.Free) st.frame = st.frame.squared()
                             st.frameTouched = true
+                            st.frameApplied = false
                         },
                         label = { Text(f.label) },
                     )

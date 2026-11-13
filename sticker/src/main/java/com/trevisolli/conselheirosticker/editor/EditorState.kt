@@ -142,6 +142,7 @@ class EditorState(
             is Step.Mask -> {
                 Canvas(mask).drawBitmap(step.bitmap, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) })
                 step.bitmap.recycle()
+                frameApplied = false // a moldura volta a aparecer
                 touched()
             }
             is Step.Edit -> {
@@ -156,6 +157,7 @@ class EditorState(
 
     fun resetMask() {
         pushUndo()
+        frameApplied = false
         mask.eraseColor(Color.BLACK)
         touched()
     }
@@ -173,6 +175,7 @@ class EditorState(
         val rf = android.graphics.RectF(r.left, r.top, r.right, r.bottom)
         keepOnly { c, paint -> if (oval) c.drawOval(rf, paint) else c.drawRect(rf, paint) }
         frameTouched = false
+        frameApplied = true
         touched()
     }
 
@@ -186,6 +189,9 @@ class EditorState(
         Canvas(mask).drawBitmap(keep, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) })
         keep.recycle()
     }
+
+    /** Acabou de cortar com a moldura: ela fica escondida até ser mexida de novo. */
+    var frameApplied by mutableStateOf(false)
 
     /** A moldura foi mexida e ainda não virou corte (aplicado sozinho ao salvar ou trocar de aba). */
     var frameTouched by mutableStateOf(false)

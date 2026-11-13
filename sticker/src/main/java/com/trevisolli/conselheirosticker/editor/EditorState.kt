@@ -171,15 +171,20 @@ class EditorState(
         // Apaga só o que está fora da moldura: o que já tinha sido recortado (ex.: fundo tirado
         // pelo automático) continua recortado.
         val rf = android.graphics.RectF(r.left, r.top, r.right, r.bottom)
-        val outside = Path().apply {
-            if (oval) addOval(rf, Path.Direction.CW) else addRect(rf, Path.Direction.CW)
-            fillType = Path.FillType.INVERSE_WINDING
-        }
-        Canvas(mask).drawPath(outside, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
-        })
+        keepOnly { c, paint -> if (oval) c.drawOval(rf, paint) else c.drawRect(rf, paint) }
         frameTouched = false
         touched()
+    }
+
+    /**
+     * Mantém da máscara só o que a forma desenhada cobre: a forma vai para uma camada à parte e
+     * a máscara fica com a interseção (DST_IN). Assim nada dentro da forma é apagado.
+     */
+    private fun keepOnly(shape: (Canvas, Paint) -> Unit) {
+        val keep = Bitmap.createBitmap(mask.width, mask.height, Bitmap.Config.ALPHA_8)
+        shape(Canvas(keep), Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK })
+        Canvas(mask).drawBitmap(keep, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) })
+        keep.recycle()
     }
 
     /** A moldura foi mexida e ainda não virou corte (aplicado sozinho ao salvar ou trocar de aba). */
@@ -199,10 +204,8 @@ class EditorState(
     /** Mantém só o que está dentro do contorno desenhado com o dedo. */
     fun lasso(path: Path) {
         pushUndo()
-        val p = Path(path).apply { close(); fillType = Path.FillType.INVERSE_WINDING }
-        Canvas(mask).drawPath(p, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
-        })
+        val p = Path(path).apply { close() }
+        keepOnly { c, paint -> c.drawPath(p, paint) }
         touched()
     }
 

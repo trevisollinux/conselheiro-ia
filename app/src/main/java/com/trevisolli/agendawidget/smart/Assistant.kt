@@ -45,6 +45,11 @@ object Assistant {
         data class Complete(val title: String) : Action()
         /** Apagar evento da agenda ou tarefa do Todoist: só prepara o botão; a pessoa confirma. */
         data class Delete(val title: String, val date: LocalDate?, val isTask: Boolean) : Action()
+        /** Mudar título, dia, hora ou duração de um item existente (executa e deixa Desfazer). */
+        data class Edit(
+            val title: String, val date: LocalDate?, val isTask: Boolean,
+            val newTitle: String?, val newDate: LocalDate?, val newTime: LocalTime?, val minutes: Int?,
+        ) : Action()
         /** Ações de um toque: o app prepara, a pessoa confirma. */
         data class Message(val to: String, val text: String, val app: String) : Action()
         data class Call(val to: String) : Action()
@@ -314,6 +319,30 @@ object Assistant {
                             done += "🗑️ Confirme abaixo para apagar: ${target.title} · $whenTxt"
                         }
                     }
+                    is Action.Edit -> {
+                        val target = findDeletable(items, a.title, a.date, a.isTask)
+                        if (target == null) {
+                            problems += if (a.isTask) "não achei a tarefa \"${a.title}\""
+                            else "não achei \"${a.title}\" na agenda (convites e eventos recorrentes eu não edito; abra no Google Agenda)"
+                        } else {
+                            val key = if (a.isTask) "T:${target.taskId}" else target.moveKey!!
+                            val before = com.trevisolli.agendawidget.data.Editor.edit(
+                                context, key,
+                                com.trevisolli.agendawidget.data.Editor.Change(a.newTitle, a.newDate, a.newTime, a.minutes),
+                            )
+                            undo += Undo(Undo.EDIT, before)
+                            val parts = listOfNotNull(
+                                a.newTitle?.let { "agora \"$it\"" },
+                                if (a.newDate != null || a.newTime != null) {
+                                    val zone = ZoneId.systemDefault()
+                                    val old = Instant.ofEpochMilli(target.startMillis).atZone(zone)
+                                    whenText(a.newDate ?: old.toLocalDate(), a.newTime ?: if (target.dateOnly) null else old.toLocalTime())
+                                } else null,
+                                a.minutes?.let { "$it min" },
+                            )
+                            done += "✏️ ${target.title}: ${parts.joinToString(" · ")}"
+                        }
+                    }
                     is Action.Complete -> {
                         val target = findTask(items, a.title)
                         if (target?.taskId == null) {
@@ -364,6 +393,7 @@ object Assistant {
                     Undo.TASK -> TodoistSource.delete(token, u.id)
                     Undo.REOPEN -> TodoistSource.reopen(token, u.id)
                     Undo.RESTORE -> com.trevisolli.agendawidget.data.Trash.restore(context, u.id)
+                    Undo.EDIT -> com.trevisolli.agendawidget.data.Editor.revert(context, u.id)
                 }
             }.onFailure { FailLog.add(context, "Desfazer", it) }.isFailure
         }
@@ -547,6 +577,9 @@ object Assistant {
             "{\"type\":\"complete_task\",\"title\": título exato de uma tarefa da lista}; " +
             "{\"type\":\"delete_event\",\"title\": título exato de um evento da lista,\"date\":\"YYYY-MM-DD\" do evento}; " +
             "{\"type\":\"delete_task\",\"title\": título exato de uma tarefa da lista}; " +
+            "{\"type\":\"edit_event\",\"title\": título exato de um evento da lista,\"date\": dia atual dele \"YYYY-MM-DD\"," +
+            "\"new_title\": string ou null,\"new_date\": \"YYYY-MM-DD\" ou null,\"new_time\": \"HH:MM\" ou null,\"duration_min\": número ou null}; " +
+            "{\"type\":\"edit_task\",\"title\": título exato de uma tarefa da lista,\"new_title\",\"new_date\",\"new_time\" (iguais ao edit_event)}; " +
             "{\"type\":\"send_message\",\"to\": nome do contato ou número,\"text\": a mensagem pronta, em 1ª pessoa,\"app\":\"whatsapp\" ou \"sms\"}; " +
             "{\"type\":\"call\",\"to\": nome ou número}; " +
             "{\"type\":\"route\",\"place\": endereço ou nome do lugar}; " +
@@ -562,6 +595,8 @@ object Assistant {
             "Para encaixar horários (\"quando tenho uma tarde livre?\", \"marca no primeiro horário livre\"), use os horários livres. " +
             "\"apaga/cancela/remove o compromisso/evento X\" = delete_event (da agenda); \"apaga a tarefa X\" = delete_task. " +
             "Só prepara um botão de confirmação: no reply diga que é só tocar para confirmar, nunca diga que já apagou. " +
+            "\"muda/passa/remarca/renomeia X\" (algo que JÁ existe na lista) = edit_event ou edit_task, nunca criar outro; " +
+            "preencha só o que muda. " +
             "Boleto, PIX ou conta (texto ou imagem) = bill. " +
             "Use remind_at_place para \"quando eu chegar no X, me lembra de Y\" e save_place para \"salva aqui como X\". " +
             "send_message/call/route/track só preparam um botão; a pessoa confirma. Para \"avisa a Helena que…\", use send_message " +
@@ -732,6 +767,17 @@ object Assistant {
                 "complete_task" -> actions += Action.Complete(title)
                 "delete_event" -> actions += Action.Delete(title, date, false)
                 "delete_task" -> actions += Action.Delete(title, null, true)
+                "edit_event", "edit_task" -> {
+                    val newDate = a.optString("new_date").takeIf { !a.isNull("new_date") && it.length == 10 }
+                        ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                    val newTime = a.optString("new_time").takeIf { !a.isNull("new_time") && it.length >= 4 }
+                        ?.let { runCatching { LocalTime.parse(it.padStart(5, '0')) }.getOrNull() }
+                    val newTitle = a.optString("new_title").takeIf { !a.isNull("new_title") && it.isNotBlank() }?.trim()
+                    val minutes = a.optInt("duration_min", 0).takeIf { it in 5..1440 }
+                    if (newDate != null || newTime != null || newTitle != null || minutes != null) {
+                        actions += Action.Edit(title, date, a.optString("type") == "edit_task", newTitle, newDate, newTime, minutes)
+                    }
+                }
             }
         }
         return Plan(json.optString("reply").ifBlank { null }, actions, json.optString("heard").takeIf { !json.isNull("heard") && it.isNotBlank() })

@@ -14,6 +14,8 @@ data class Undo(val kind: String, val id: String) {
         const val REOPEN = "reopen"
         /** Recria um item apagado; o id é a cópia guardada (JSON). */
         const val RESTORE = "restore"
+        /** Volta uma edição; o id é o estado anterior (JSON). */
+        const val EDIT = "edit"
     }
 }
 

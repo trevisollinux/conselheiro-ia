@@ -184,10 +184,22 @@ class EditorState(
      * a máscara fica com a interseção (DST_IN). Assim nada dentro da forma é apagado.
      */
     private fun keepOnly(shape: (Canvas, Paint) -> Unit) {
-        val keep = Bitmap.createBitmap(mask.width, mask.height, Bitmap.Config.ALPHA_8)
+        // Conta feita pixel a pixel (o mesmo caminho do recorte automático), sem depender de como
+        // cada Android combina camadas de alfa.
+        val w = mask.width
+        val h = mask.height
+        val keep = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         shape(Canvas(keep), Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK })
-        Canvas(mask).drawBitmap(keep, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) })
+        val kp = IntArray(w * h)
+        keep.getPixels(kp, 0, w, 0, 0, w, h)
         keep.recycle()
+        val mp = IntArray(w * h)
+        mask.getPixels(mp, 0, w, 0, 0, w, h)
+        for (i in mp.indices) {
+            val a = (mp[i] ushr 24) * (kp[i] ushr 24) / 255
+            mp[i] = a shl 24
+        }
+        mask.setPixels(mp, 0, w, 0, 0, w, h)
     }
 
     /** Acabou de cortar com a moldura: ela fica escondida até ser mexida de novo. */

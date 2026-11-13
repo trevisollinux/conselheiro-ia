@@ -129,7 +129,7 @@ sealed interface EditorSource {
 
 private enum class EditTab(val label: String) { Cut("Recortar"), Adjust("Ajustar"), Text("Texto"), Effects("Efeitos") }
 private enum class CutMode(val label: String) {
-    Frame("Retângulo"), Lasso("Laço"), Erase("Borracha"), Restore("Pincel")
+    Frame("✂️ Moldura"), Lasso("Laço"), Erase("Borracha"), Restore("Pincel")
 }
 
 private val PALETTE = listOf(
@@ -874,6 +874,7 @@ private fun CutControls(st: EditorState, onAuto: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
         )
     }
+    Text("Ferramenta", style = MaterialTheme.typography.labelLarge)
     Row(
         Modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -886,6 +887,7 @@ private fun CutControls(st: EditorState, onAuto: () -> Unit) {
         CutMode.Frame -> {
             Text("Arraste os cantos e os lados para ajustar; arraste o meio para mover.",
                 style = MaterialTheme.typography.bodySmall)
+            Text("Formato da moldura", style = MaterialTheme.typography.labelLarge)
             Row(
                 Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

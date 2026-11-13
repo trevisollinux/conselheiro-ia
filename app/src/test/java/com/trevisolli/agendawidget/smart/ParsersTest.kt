@@ -70,3 +70,11 @@ class ParsersTest {
         assertFalse(NotificationWatcher.AUTOMATED.containsMatchIn("joão: consulta com dr. paulo quinta às 15h"))
     }
 }
+
+class AudioImportTest {
+    @Test fun cabecalhoAdts() {
+        // AAC-LC, 44,1 kHz, estéreo, quadro de 100 bytes.
+        val h = AudioImport.adtsHeader(100, 2, 44100, 2).map { it.toInt() and 0xFF }
+        assertEquals(listOf(0xFF, 0xF1, 0x50, 0x80, 0x0D, 0x7F, 0xFC), h)
+    }
+}

@@ -88,6 +88,30 @@ class ConfirmActivity : ComponentActivity() {
         } else {
             null
         }
+        // Áudio (gravação de ligação, áudio do WhatsApp…): resume como uma conversa gravada.
+        if (isSend && stored == null && intent.type?.startsWith("audio/") == true) {
+            val uri = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+            val app = applicationContext
+            val mime = intent.type
+            if (uri == null) {
+                Toast.makeText(this, "Não recebi o áudio", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(this, "Ouvindo a gravação… aviso quando o resumo ficar pronto", Toast.LENGTH_LONG).show()
+                com.trevisolli.agendawidget.smart.Background.scope.launch {
+                    val (title, text, actions) = try {
+                        val (bytes, type) = com.trevisolli.agendawidget.smart.AudioImport.prepare(app, uri, mime)
+                        val answer = com.trevisolli.agendawidget.smart.Assistant.handleMeeting(app, bytes, type)
+                        Triple("📝 Resumo do áudio", answer.text, answer.actions)
+                    } catch (e: Exception) {
+                        com.trevisolli.agendawidget.smart.FailLog.add(app, "Áudio compartilhado", e)
+                        Triple("⚠️ Não consegui ouvir o áudio", e.message ?: "erro", emptyList())
+                    }
+                    com.trevisolli.agendawidget.smart.Notify.post(app, "meeting_done", "Resumos de conversas", 94, title, text, actions)
+                }
+            }
+            finish()
+            return
+        }
         // Arquivo de texto ou .zip (ex.: "Exportar conversa" do WhatsApp): o assistente lê e extrai os combinados.
         val doc: Uri? = if (isSend && image == null) IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java) else null
         if (doc != null && stored == null) {

@@ -120,6 +120,12 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
             </intent-filter>
+            <!-- Gravação de ligação, áudio do WhatsApp ou do gravador → resumo e combinados -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="audio/*" />
+            </intent-filter>
             <!-- Aparece no menu de texto selecionado (Copiar · Colar · ConsigliereIA) -->
             <intent-filter>
                 <action android:name="android.intent.action.PROCESS_TEXT" />

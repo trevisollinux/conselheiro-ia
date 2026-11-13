@@ -62,6 +62,10 @@ android {
     packaging {
         resources.excludes += listOf("META-INF/LICENSE.md", "META-INF/NOTICE.md", "META-INF/LICENSE.txt", "META-INF/NOTICE.txt")
     }
+    testOptions {
+        // Testes de JVM: chamadas ao Android devolvem valores padrão em vez de quebrar.
+        unitTests.isReturnDefaultValues = true
+    }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -90,4 +94,6 @@ dependencies {
     // IMAP (e-mail) no Android
     implementation("com.sun.mail:android-mail:1.6.7")
     implementation("com.sun.mail:android-activation:1.6.7")
+
+    testImplementation("junit:junit:4.13.2")
 }

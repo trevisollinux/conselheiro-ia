@@ -30,6 +30,10 @@ jobs:
       - name: Coleção de arte de reserva (Met Museum)
         run: python3 tools/fetch_art.py app/src/main/assets/art || true
 
+      # Teste quebrado = nenhuma release nova.
+      - name: Testes
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+
       - name: Build
         run: ./gradlew --no-daemon :app:assembleDebug
 

@@ -573,13 +573,14 @@ object Assistant {
             "Se a mensagem vier em ÁUDIO anexo, inclua \"heard\": a transcrição fiel do que foi dito."
 
     private val QUESTION = Regex(
-        "^(o que|oque|qual|quais|quando|como|por ?que|quem|onde|quanto|será|voc[êe]|me (ajuda|explica|diz|conta|resume)|" +
+        // (?U): \b do Java entende "ê", "á" como letra (senão "você acha…" e "será…" não casam).
+        "(?U)^(o que|oque|qual|quais|quando|como|por ?que|quem|onde|quanto|será|voc[êe]|me (ajuda|explica|diz|conta|resume)|" +
             "explica|resume|acha|devo|vale a pena|tem (algum|algo)|chegou|preciso)\\b",
         RegexOption.IGNORE_CASE,
     )
 
     /** Pergunta ou papo (vai no modelo principal e pode responder mais por extenso); o resto é comando. */
-    private fun isConversation(text: String): Boolean {
+    internal fun isConversation(text: String): Boolean {
         val t = text.trim()
         return t.contains('?') || QUESTION.containsMatchIn(t) || t.length > 140
     }

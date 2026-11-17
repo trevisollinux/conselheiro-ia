@@ -647,9 +647,10 @@ object Assistant {
             "Se a mensagem vier em ÁUDIO anexo, inclua \"heard\": a transcrição fiel do que foi dito."
 
     private val QUESTION = Regex(
-        // (?U): \b do Java entende "ê", "á" como letra (senão "você acha…" e "será…" não casam).
-        "(?U)^(o que|oque|qual|quais|quando|como|por ?que|quem|onde|quanto|será|voc[êe]|me (ajuda|explica|diz|conta|resume)|" +
-            "explica|resume|acha|devo|vale a pena|tem (algum|algo)|chegou|preciso)\\b",
+        // Fim de palavra por lookahead (espaço, pontuação ou fim), não \b: no Java "você"/"será" não fecham palavra,
+        // e flags embutidas como (?U) derrubam o app no Android (o regex do Android é o ICU e não as aceita).
+        "^(o que|oque|qual|quais|quando|como|por ?que|quem|onde|quanto|será|voc[êe]|me (ajuda|explica|diz|conta|resume)|" +
+            "explica|resume|acha|devo|vale a pena|tem (algum|algo)|chegou|preciso)(?=[\\s,.!?;:]|$)",
         RegexOption.IGNORE_CASE,
     )
 

@@ -22,9 +22,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun GeminiVoiceSettings() {
+internal fun GeminiVoiceSettings(aiVersion: Int = 0) {
     val context = LocalContext.current
-    val settings = Settings(context)
+    // [aiVersion] muda ao salvar a IA (ou voltar à tela): relê chave e provedor sem precisar sair das Configurações.
+    val settings = remember(aiVersion) { Settings(context) }
     val apiKey = settings.keyFor(AiProvider.GEMINI)
     val configured = settings.useAi && settings.aiProvider == AiProvider.GEMINI && apiKey.isNotBlank()
     key(apiKey, configured) {

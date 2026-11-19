@@ -202,6 +202,8 @@ class MainActivity : ComponentActivity() {
         var notifDisclosure by remember { mutableStateOf(false) }
         var showNotifLog by remember { mutableStateOf(false) }
         var aiTest by remember { mutableStateOf<String?>(null) }
+        // Muda quando a IA é salva: as seções de voz releem a chave e o provedor na hora.
+        var aiVersion by remember { mutableIntStateOf(0) }
 
         var detect by remember { mutableStateOf(settings.detectNotifications) }
         var groups by remember { mutableStateOf(settings.notifGroups) }
@@ -311,6 +313,7 @@ class MainActivity : ComponentActivity() {
             if (!useAi) {
                 settings.useAi = false
                 settings.summaryCacheKey = ""
+                aiVersion++
                 aiTest = null
                 refresh()
                 return
@@ -351,6 +354,7 @@ class MainActivity : ComponentActivity() {
                     settings.aiThinking = thinking
                     settings.useAi = true
                     settings.summaryCacheKey = ""
+                    aiVersion++
                     aiTest = "✅ ${selectedProvider.label} respondeu. Principal: $effective · Leve: ${settings.lightModel}"
                     refresh()
                 } catch (e: Exception) {
@@ -683,8 +687,8 @@ class MainActivity : ComponentActivity() {
                     })
                 }
             }
-            com.trevisolli.agendawidget.ui.settings.GeminiVoiceSettings()
-            com.trevisolli.agendawidget.ui.settings.WakeVoiceSettings()
+            com.trevisolli.agendawidget.ui.settings.GeminiVoiceSettings(aiVersion + resumeCount)
+            com.trevisolli.agendawidget.ui.settings.WakeVoiceSettings(aiVersion + resumeCount)
             Section("Tema do app") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AppTheme.entries.forEach { t ->

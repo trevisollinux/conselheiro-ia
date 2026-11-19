@@ -18,6 +18,10 @@
 
     <!-- Android 11+: enxergar o serviço de reconhecimento de voz (o mesmo do teclado) -->
     <queries>
+        <!-- Motores de voz (texto para fala), para preferir a voz do Google -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
         <package android:name="com.whatsapp" />
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />

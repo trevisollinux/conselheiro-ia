@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 
 @Composable
-internal fun WakeVoiceSettings() {
+internal fun WakeVoiceSettings(aiVersion: Int = 0) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
@@ -39,10 +39,13 @@ internal fun WakeVoiceSettings() {
     val timing by WakeVoiceService.timing.collectAsState()
     val activation by WakeVoiceService.activationTime.collectAsState()
     val microphoneStatus by WakeVoiceService.microphoneStatus.collectAsState()
-    val settings = Settings(context)
-    val geminiReady = settings.useAi && settings.aiProvider == AiProvider.GEMINI && settings.aiKey.isNotBlank()
+    // [aiVersion] muda ao salvar a IA (ou voltar à tela): o botão libera sem precisar sair das Configurações.
+    val settings = remember(aiVersion) { Settings(context) }
+    val geminiReady = remember(aiVersion) {
+        settings.useAi && settings.aiProvider == AiProvider.GEMINI && settings.aiKey.isNotBlank()
+    }
     val active = WakeVoiceService.active(status)
-    var live by remember { mutableStateOf(settings.geminiLiveVoice) }
+    var live by remember(aiVersion) { mutableStateOf(settings.geminiLiveVoice) }
     var installed by remember { mutableStateOf(WakeModel.installed(context)) }
     var preparing by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }

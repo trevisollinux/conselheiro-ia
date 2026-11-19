@@ -125,7 +125,7 @@ Para desligar: **Desconectar** no app e apague a senha em **myaccount.google.com
   estiver aberta. Diga “pode parar” ou toque em **OK** para encerrar. Em **Configurações → Personalizar → Voz**,
   você também pode ativar a resposta falada para o microfone do widget.
 - **Ativação por voz** em **Configurações → Personalizar**. Baixe o modelo local uma vez (48 MB) e ative
-  com o app aberto. Com a tela apagada, diga “Consigliere” seguido da pergunta. Você também pode
+  com o app aberto. Com a tela ligada ou apagada, diga “Consigliere” seguido da pergunta. Você também pode
   dizer só “Consigliere” e esperar o bip. Depois da resposta, espere o bip para continuar sem repetir o nome.
   Diga “tchau” para voltar à escuta da palavra de ativação. Bloqueado, o celular responde a perguntas gerais. Desbloqueie para consultar dados pessoais ou criar algo. Use
   **Desativar** na notificação para parar a escuta. Depois de reiniciar o celular, ative de novo pelo app.

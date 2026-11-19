@@ -97,7 +97,7 @@ object Assistant {
     /** Sem rede de segurança: o erro sobe (usado também pela fila de áudios). */
     suspend fun hear(
         context: Context, audio: ByteArray, mime: String, onFarewell: (() -> Unit)? = null,
-        allowPersonalActions: () -> Boolean = { true },
+        quickVoice: Boolean = false, allowPersonalActions: () -> Boolean = { true },
     ): ChatMessage = withContext(Dispatchers.IO) {
         val s = Settings(context)
         if (s.aiProvider == AiProvider.OPENAI) {
@@ -105,7 +105,7 @@ object Assistant {
             if (text.isBlank()) throw IllegalStateException("não ouvi nada")
             process(context, "🎤 $text", text, null, onFarewell = onFarewell, allowPersonalActions = allowPersonalActions)
         } else {
-            process(context, null, null, audio to mime, onFarewell = onFarewell, allowPersonalActions = allowPersonalActions)
+            process(context, null, null, audio to mime, onFarewell = onFarewell, quickVoice = quickVoice, allowPersonalActions = allowPersonalActions)
         }
     }
 
@@ -175,7 +175,7 @@ object Assistant {
     /** [shown]: o que aparece no balão do usuário; com áudio, vem da transcrição. */
     private suspend fun process(
         context: Context, shown: String?, text: String?, audio: Pair<ByteArray, String>?, image: ByteArray? = null,
-        meeting: Boolean = false, onFarewell: (() -> Unit)? = null, allowPersonalActions: () -> Boolean = { true },
+        meeting: Boolean = false, onFarewell: (() -> Unit)? = null, quickVoice: Boolean = false, allowPersonalActions: () -> Boolean = { true },
     ): ChatMessage {
         if (!allowPersonalActions()) return ChatMessage(fromUser = false, text = "Desbloqueie o celular e pergunte de novo.")
         if (onFarewell != null && text?.let(VoiceConversation::isFarewell) == true) {
@@ -194,7 +194,7 @@ object Assistant {
             aiPlan(context, "", items, history, audio, meeting = true)
         } else if (audio != null) {
             // Sem fallback: erro sobe para handleAudio.
-            aiPlan(context, "", items, history, audio).also {
+            aiPlan(context, "", items, history, audio, quickVoice = quickVoice).also {
                 ChatStore.add(context, ChatMessage(fromUser = true, text = "🎤 " + (it.heard ?: "(áudio)")))
             }
         } else if (text == null) {
@@ -681,6 +681,7 @@ object Assistant {
         meeting: Boolean = false,
         /** Texto completo de e-mails/mensagens que a IA pediu (2º passo do read_email). */
         extra: String? = null,
+        quickVoice: Boolean = false,
     ): Plan {
         val s = Settings(context)
         val today = LocalDate.now()
@@ -740,6 +741,7 @@ object Assistant {
         val main = s.effectiveModelFor(provider)
         val light = s.effectiveLightModelFor(provider)
         val model = when {
+            quickVoice && AiClient.pausedUntil(light) == 0L -> light
             media -> main
             conversational && AiClient.pausedUntil(main) == 0L -> main
             AiClient.pausedUntil(light) == 0L -> light
@@ -747,9 +749,10 @@ object Assistant {
         }
         val raw = AiClient.complete(
             provider, s.keyFor(provider), model, SYSTEM, prompt, jpeg = image, audio = audio,
-            thinking = if (media || conversational || model != light) s.thinkingFor(provider) else AiThinking.LOW,
+            thinking = if (!quickVoice && (media || conversational || model != light)) s.thinkingFor(provider) else AiThinking.LOW,
             fastTimeoutMs = when {
                 meeting -> 240_000
+                quickVoice -> 30_000
                 conversational || media -> 60_000
                 else -> 20_000
             },

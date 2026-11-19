@@ -38,6 +38,7 @@ internal fun WakeVoiceSettings() {
     val status by WakeVoiceService.status.collectAsState()
     val timing by WakeVoiceService.timing.collectAsState()
     val activation by WakeVoiceService.activationTime.collectAsState()
+    val microphoneStatus by WakeVoiceService.microphoneStatus.collectAsState()
     val settings = Settings(context)
     val geminiReady = settings.useAi && settings.aiProvider == AiProvider.GEMINI && settings.aiKey.isNotBlank()
     val active = WakeVoiceService.active(status)
@@ -103,6 +104,9 @@ internal fun WakeVoiceSettings() {
             style = MaterialTheme.typography.bodySmall,
         )
         Text(if (preparing) "Baixando e preparando o modelo…" else status)
+        if (active && status in setOf(WakeVoiceService.LISTENING, WakeVoiceService.WAITING_FOR_MIC)) {
+            microphoneStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        }
         activation?.let {
             val time = java.text.DateFormat.getTimeInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(it))
             Text("Última ativação às $time", style = MaterialTheme.typography.bodySmall)

@@ -130,6 +130,8 @@ Para desligar: **Desconectar** no app e apague a senha em **myaccount.google.com
   Diga “tchau” para voltar à escuta da palavra de ativação. Bloqueado, o celular responde a perguntas gerais. Desbloqueie para consultar dados pessoais ou criar algo. Use
   **Desativar** na notificação para parar a escuta. Depois de reiniciar o celular, ative de novo pelo app.
   O reconhecimento da palavra usa [Vosk](https://alphacephei.com/vosk/models) (modelo pequeno de italiano, Apache 2.0).
+- Se a palavra de ativação parar de funcionar, confira o sinal do microfone e o horário da **Última ativação**
+  em **Ativação por voz**. Enquanto outro app estiver usando o microfone, o Android pode silenciar a escuta.
 - **Modo rápido com Gemini Live** em **Configurações → Personalizar → Ativação por voz**. Ligue a opção,
   chame “Consigliere” e fale após o bip. O app envia e recebe áudio em tempo real usando a sua chave.
   Usa a voz Aoede e consulta agenda, mensagens e previsão. O conteúdo pessoal exige desbloqueio.

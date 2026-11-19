@@ -11,8 +11,9 @@ import java.util.Locale
 internal class SpokenReply(context: Context) {
     private val main = Handler(Looper.getMainLooper())
     private var ready: Boolean? = null
-    private var pending: Pair<String, (Boolean) -> Unit>? = null
-    private var listener: Pair<String, (Boolean) -> Unit>? = null
+    private data class Request(val text: String, val onStarted: () -> Unit, val done: (Boolean) -> Unit)
+    private var pending: Request? = null
+    private var listener: Pair<String, Request>? = null
     private var sequence = 0
     private var closed = false
     private val engine = TextToSpeech(context.applicationContext) { result ->
@@ -22,21 +23,23 @@ internal class SpokenReply(context: Context) {
     private fun initialize(result: Int) {
         ready = result == TextToSpeech.SUCCESS && engine.setLanguage(Locale.forLanguageTag("pt-BR")) >= 0
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) = Unit
+            override fun onStart(utteranceId: String?) {
+                main.post { listener?.takeIf { it.first == utteranceId }?.second?.onStarted?.invoke() }
+            }
             override fun onDone(utteranceId: String?) { main.post { complete(utteranceId, true) } }
             @Deprecated("Callback legado do Android")
             override fun onError(utteranceId: String?) { main.post { complete(utteranceId, false) } }
             override fun onError(utteranceId: String?, errorCode: Int) { onError(utteranceId) }
         })
-        pending?.let { (text, done) ->
+        pending?.let { request ->
             pending = null
-            speak(text, done)
+            speak(request.text, request.onStarted, request.done)
         }
     }
 
-    fun speak(text: String, done: (Boolean) -> Unit) {
+    fun speak(text: String, onStarted: () -> Unit = {}, done: (Boolean) -> Unit) {
         if (ready == null) {
-            val request = text to done
+            val request = Request(text, onStarted, done)
             pending = request
             main.postDelayed({
                 if (pending === request) {
@@ -54,14 +57,14 @@ internal class SpokenReply(context: Context) {
             .replace(Regex("[*_#`]+"), "")
             .take(TextToSpeech.getMaxSpeechInputLength())
         val id = "reply-${++sequence}"
-        listener = id to done
+        listener = id to Request(text, onStarted, done)
         if (engine.speak(line, TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) complete(id, false)
     }
 
     private fun complete(id: String?, result: Boolean) {
         val entry = listener?.takeIf { it.first == id } ?: return
         listener = null
-        entry.second(result)
+        entry.second.done(result)
     }
 
     fun stop() {

@@ -32,6 +32,8 @@ internal fun WakeVoiceSettings() {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
     val status by WakeVoiceService.status.collectAsState()
+    val timing by WakeVoiceService.timing.collectAsState()
+    val activation by WakeVoiceService.activationTime.collectAsState()
     val settings = Settings(context)
     val geminiReady = settings.useAi && settings.aiProvider == AiProvider.GEMINI && settings.aiKey.isNotBlank()
     val active = WakeVoiceService.active(status)
@@ -84,6 +86,16 @@ internal fun WakeVoiceSettings() {
             style = MaterialTheme.typography.bodySmall,
         )
         Text(if (preparing) "Baixando e preparando o modelo…" else status)
+        activation?.let {
+            val time = java.text.DateFormat.getTimeInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(it))
+            Text("Última ativação às $time", style = MaterialTheme.typography.bodySmall)
+        }
+        timing?.let {
+            val locale = java.util.Locale.forLanguageTag("pt-BR")
+            val model = String.format(locale, "%.1f s", it.modelMs / 1000.0)
+            val audio = it.audioMs?.let { ms -> String.format(locale, "%.1f s", ms / 1000.0) } ?: "aguardando áudio"
+            Text("Última resposta · Gemini $model · início da fala $audio", style = MaterialTheme.typography.bodySmall)
+        }
         message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         if (!geminiReady && !active) Text("Ative o Gemini em Inteligência para usar este modo.", style = MaterialTheme.typography.bodySmall)
         Button(

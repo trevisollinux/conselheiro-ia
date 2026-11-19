@@ -35,3 +35,22 @@ class WakeAudioTest {
         assertFalse(WakePhrase.isActivation("consigliere", 0.10))
     }
 }
+
+class VoiceConversationTest {
+    @Test fun despedidaComOuSemPalavraDeAtivacao() {
+        assertTrue(VoiceConversation.isFarewell("Consiglieri, tchau!"))
+        assertTrue(VoiceConversation.isFarewell("Tchau."))
+        assertTrue(VoiceConversation.isFarewell("Conselheiro, tchau"))
+        assertFalse(VoiceConversation.isFarewell("Consigliere, como se diz tchau em italiano?"))
+        assertEquals("qual é a temperatura amanhã?", VoiceConversation.withoutActivation("Consigliere, qual é a temperatura amanhã?"))
+    }
+
+    @Test fun gravadorMantemAOrdemAoDarAVoltaNoBuffer() {
+        val buffer = WakeBuffer(4)
+        buffer.add(shortArrayOf(1, 2, 3), 3)
+        buffer.add(shortArrayOf(4, 5, 6), 3)
+        assertArrayEquals(byteArrayOf(3, 0, 4, 0, 5, 0, 6, 0), buffer.pcm())
+        buffer.clear()
+        assertArrayEquals(byteArrayOf(), buffer.pcm())
+    }
+}

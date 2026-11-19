@@ -446,7 +446,7 @@ object Assistant {
     private fun norm(s: String) = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}"), "").lowercase().trim()
 
     /** Mensagens que batem com a busca: primeiro as guardadas (WhatsApp, e-mail recente), depois a caixa pelo IMAP. */
-    private fun lookupMessages(context: Context, query: String): String {
+    internal fun lookupMessages(context: Context, query: String): String {
         val words = norm(query).split(Regex("\\s+")).filter { it.length >= 3 }
         val hhmm = java.text.SimpleDateFormat("dd/MM HH:mm", locale)
         val local = InboxStore.all(context).filter { m ->

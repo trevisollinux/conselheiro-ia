@@ -4,7 +4,11 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Button
+import androidx.compose.material3.Switch
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,6 +41,7 @@ internal fun WakeVoiceSettings() {
     val settings = Settings(context)
     val geminiReady = settings.useAi && settings.aiProvider == AiProvider.GEMINI && settings.aiKey.isNotBlank()
     val active = WakeVoiceService.active(status)
+    var live by remember { mutableStateOf(settings.geminiLiveVoice) }
     var installed by remember { mutableStateOf(WakeModel.installed(context)) }
     var preparing by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -85,6 +90,18 @@ internal fun WakeVoiceSettings() {
             "Com o celular bloqueado, o Consigliere responde perguntas gerais. Desbloqueie para acessar dados pessoais ou executar ações.",
             style = MaterialTheme.typography.bodySmall,
         )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Modo rápido com Gemini Live", modifier = Modifier.weight(1f))
+            Switch(checked = live, enabled = geminiReady, onCheckedChange = {
+                settings.geminiLiveVoice = it
+                live = it
+            })
+        }
+        Text(
+            "O modo rápido envia o áudio em tempo real enquanto a conversa está aberta e usa a voz Aoede do Gemini. " +
+                "Para usar sua voz personalizada, desligue o modo rápido.",
+            style = MaterialTheme.typography.bodySmall,
+        )
         Text(if (preparing) "Baixando e preparando o modelo…" else status)
         activation?.let {
             val time = java.text.DateFormat.getTimeInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(it))
@@ -94,7 +111,11 @@ internal fun WakeVoiceSettings() {
             val locale = java.util.Locale.forLanguageTag("pt-BR")
             val model = String.format(locale, "%.1f s", it.modelMs / 1000.0)
             val audio = it.audioMs?.let { ms -> String.format(locale, "%.1f s", ms / 1000.0) } ?: "aguardando áudio"
-            Text("Última resposta · Gemini $model · início da fala $audio", style = MaterialTheme.typography.bodySmall)
+            Text(
+                if (it.live) "Gemini Live · fim da fala até o áudio, aproximadamente $model"
+                else "Última resposta · Gemini $model · início da fala $audio",
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
         message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         if (!geminiReady && !active) Text("Ative o Gemini em Inteligência para usar este modo.", style = MaterialTheme.typography.bodySmall)

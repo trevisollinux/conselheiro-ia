@@ -74,6 +74,7 @@ android {
 
 dependencies {
     implementation("com.alphacephei:vosk-android:0.3.75")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
     implementation("androidx.compose.material3:material3")
@@ -97,4 +98,5 @@ dependencies {
     implementation("com.sun.mail:android-activation:1.6.7")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

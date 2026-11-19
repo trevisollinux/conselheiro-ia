@@ -266,6 +266,10 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("notif_groups", false)
         set(value) = prefs.edit().putBoolean("notif_groups", value).apply()
 
+    var geminiLiveVoice: Boolean
+        get() = prefs.getBoolean("gemini_live_voice", false)
+        set(value) = prefs.edit().putBoolean("gemini_live_voice", value).apply()
+
     var speakWidgetReplies: Boolean
         get() = prefs.getBoolean("speak_widget_replies", false)
         set(value) = prefs.edit().putBoolean("speak_widget_replies", value).apply()

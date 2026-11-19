@@ -71,7 +71,7 @@ internal object GeminiSpeechStream {
                                 throw IOException("Trecho de áudio inválido")
                             }
                             if (pcm.isNotEmpty()) {
-                                val output = track ?: newTrack().also {
+                                val output = track ?: newPcmTrack().also {
                                     track = it
                                     if (!allowPlayback()) return@withContext false
                                     it.play()
@@ -108,7 +108,7 @@ internal object GeminiSpeechStream {
         }
     }
 
-    private fun newTrack(): AudioTrack {
+    fun newPcmTrack(): AudioTrack {
         val size = AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
         check(size > 0) { "Formato de áudio indisponível" }
         return AudioTrack.Builder()

@@ -16,12 +16,16 @@ internal class SpokenReply(context: Context) {
     private var listener: Pair<String, Request>? = null
     private var sequence = 0
     private var closed = false
-    private val engine = TextToSpeech(context.applicationContext) { result ->
+    // Prefere a voz do Google: o motor padrão de alguns aparelhos (ex.: Vivo) fala português com sotaque estranho.
+    // Sem o Google instalado, o Android usa o motor padrão do celular.
+    private val engine = TextToSpeech(context.applicationContext, { result ->
         main.post { if (!closed) initialize(result) }
-    }
+    }, GOOGLE_TTS)
 
     private fun initialize(result: Int) {
-        ready = result == TextToSpeech.SUCCESS && engine.setLanguage(Locale.forLanguageTag("pt-BR")) >= 0
+        val brazil = Locale.forLanguageTag("pt-BR")
+        ready = result == TextToSpeech.SUCCESS && engine.setLanguage(brazil) >= 0
+        if (ready == true) bestVoice(brazil)?.let { runCatching { engine.voice = it } }
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
                 main.post { listener?.takeIf { it.first == utteranceId }?.second?.onStarted?.invoke() }
@@ -67,6 +71,14 @@ internal class SpokenReply(context: Context) {
         entry.second.done(result)
     }
 
+    /** Voz em português do Brasil já baixada, de melhor qualidade (evita a voz padrão robótica). */
+    private fun bestVoice(locale: Locale): android.speech.tts.Voice? = runCatching {
+        engine.voices.orEmpty()
+            .filter { it.locale.language == locale.language && it.locale.country == locale.country }
+            .filter { TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features.orEmpty() }
+            .maxWithOrNull(compareBy<android.speech.tts.Voice>({ !it.isNetworkConnectionRequired }, { it.quality }))
+    }.getOrNull()
+
     fun stop() {
         pending = null
         listener = null
@@ -77,5 +89,9 @@ internal class SpokenReply(context: Context) {
         closed = true
         stop()
         engine.shutdown()
+    }
+
+    private companion object {
+        const val GOOGLE_TTS = "com.google.android.tts"
     }
 }

@@ -130,6 +130,10 @@ Para desligar: **Desconectar** no app e apague a senha em **myaccount.google.com
   Diga “tchau” para voltar à escuta da palavra de ativação. Bloqueado, o celular responde a perguntas gerais. Desbloqueie para consultar dados pessoais ou criar algo. Use
   **Desativar** na notificação para parar a escuta. Depois de reiniciar o celular, ative de novo pelo app.
   O reconhecimento da palavra usa [Vosk](https://alphacephei.com/vosk/models) (modelo pequeno de italiano, Apache 2.0).
+- **Modo rápido com Gemini Live** em **Configurações → Personalizar → Ativação por voz**. Ligue a opção,
+  chame “Consigliere” e fale após o bip. O app envia e recebe áudio em tempo real usando a sua chave.
+  Usa a voz Aoede e consulta agenda, mensagens e previsão. O conteúdo pessoal exige desbloqueio.
+  Para usar a voz personalizada, desligue o modo rápido. A disponibilidade da API depende da sua conta Gemini.
 - **Voz personalizada do Gemini** em **Configurações → Personalizar**. Descreva a voz, toque em **Criar e ouvir prévia**
   e depois em **Usar esta voz** se gostar do resultado. A síntese usa a sua chave e pode ter custo.
 - **Foto**: ➕ na conversa → **Tirar foto** ou **Escolher da galeria** (lista escrita à mão, convite, boleto…).

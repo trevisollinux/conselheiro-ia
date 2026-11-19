@@ -203,6 +203,40 @@ class WakeVoiceService : Service() {
 
     private suspend fun converse(audio: AudioRecord, frame: ShortArray, firstQuestion: ByteArray?) {
         val settings = Settings(this)
+        val liveKey = settings.keyFor(AiProvider.GEMINI)
+        if (settings.useAi && settings.aiProvider == AiProvider.GEMINI && liveKey.isNotBlank() && settings.geminiLiveVoice) {
+            val locked = deviceLocked()
+            val allowed = {
+                settings.useAi && settings.aiProvider == AiProvider.GEMINI && settings.geminiLiveVoice &&
+                    settings.keyFor(AiProvider.GEMINI) == liveKey && deviceLocked() == locked
+            }
+            state.value = LIVE_CONNECTING
+            try {
+                val outcome = GeminiLiveConversation.run(
+                    context = this, key = liveKey, audio = audio, initialPcm = firstQuestion,
+                    personal = !locked, allowed = allowed, allowPersonal = { !locked && !deviceLocked() },
+                    beginRecording = ::startRecording, read = ::read,
+                    onReady = {
+                        state.value = LIVE_LISTENING
+                        lastTiming.value = null
+                        cue(if (firstQuestion == null) 180 else 75)
+                    },
+                    onAudioStarted = { ms -> lastTiming.value = VoiceTiming(ms, live = true) },
+                )
+                if (outcome == GeminiLiveConversation.Outcome.FINISHED || !allowed()) return
+                FailLog.add(this, "Gemini Live", "Não consegui iniciar a sessão. Usei a conversa padrão.")
+                Notify.post(this, CHANNEL, "Ativação por voz", RESPONSE_STATUS_ID,
+                    "Gemini Live indisponível", "Usando a conversa padrão.")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: MicrophoneInterrupted) {
+                throw e
+            } catch (e: Exception) {
+                FailLog.add(this, "Gemini Live", AiClient.friendly(e))
+                if (allowed()) say("A conversa em tempo real foi interrompida. Chame de novo.")
+                return
+            }
+        }
         val lockedHistory = ArrayDeque<LockedReply>()
         var pending = firstQuestion
         repeat(8) {
@@ -392,7 +426,7 @@ class WakeVoiceService : Service() {
         super.onDestroy()
     }
 
-    data class VoiceTiming(val modelMs: Long, val audioMs: Long? = null)
+    data class VoiceTiming(val modelMs: Long, val audioMs: Long? = null, val live: Boolean = false)
 
     companion object {
         private val lastTiming = MutableStateFlow<VoiceTiming?>(null)
@@ -405,8 +439,10 @@ class WakeVoiceService : Service() {
         const val LISTENING = "Escutando “Consigliere”"
         const val FOLLOW_UP = "Ouvindo a pergunta"
         const val WAITING_FOR_MIC = "Aguardando o Android liberar o microfone"
+        const val LIVE_CONNECTING = "Conectando ao Gemini Live…"
+        const val LIVE_LISTENING = "Conversa com Gemini Live em andamento"
         const val WORKING = "Conversa por voz em andamento"
-        private val activeStates = setOf(STARTING, LISTENING, FOLLOW_UP, WAITING_FOR_MIC, WORKING)
+        private val activeStates = setOf(STARTING, LISTENING, FOLLOW_UP, WAITING_FOR_MIC, LIVE_CONNECTING, LIVE_LISTENING, WORKING)
         private const val NOTICE_ID = 163
         private const val RESPONSE_STATUS_ID = 164
         private const val CHANNEL = "wake_voice"

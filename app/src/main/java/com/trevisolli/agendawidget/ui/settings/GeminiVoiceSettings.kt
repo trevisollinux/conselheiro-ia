@@ -28,8 +28,8 @@ internal fun GeminiVoiceSettings() {
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
 
-    SettingsSection("Carioca e atrevida") {
-        Text("Voz feminina com sotaque carioca natural e um tom brincalhão. O Gemini cria a voz na sua conta e sintetiza cada resposta com a sua chave. Isso pode ter custo.", style = MaterialTheme.typography.bodySmall)
+    SettingsSection("Voz personalizada do Gemini") {
+        Text("O Gemini cria a voz na sua conta. Gerar áudio com a sua chave pode ter custo.", style = MaterialTheme.typography.bodySmall)
         OutlinedButton(enabled = configured && !busy, onClick = {
             busy = true
             status = if (voice.isBlank()) "Criando a voz…" else "Preparando a prévia…"

@@ -36,7 +36,7 @@ internal object GeminiVoice {
     fun voiceId(context: Context, key: String): String =
         settings(context).getString(voicePreference(key), "").orEmpty()
     suspend fun create(context: Context, key: String): Design = withContext(Dispatchers.IO) {
-        val name = "Consigliere — Carioca e atrevida"
+        val name = "Consigliere — Voz personalizada"
         val voice = JSONObject().put("model", MODEL).put("type", "prompted")
             .put("display_name", name).put("gender", "female").put("language_code", "pt-BR")
             .put("prompted", JSONObject().put(
@@ -91,7 +91,7 @@ internal object GeminiVoice {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            FailLog.add(context, "Voz carioca", AiClient.friendly(e))
+            FailLog.add(context, "Voz personalizada do Gemini", AiClient.friendly(e))
             false
         }
     }

@@ -419,7 +419,7 @@ class VoiceActivity : ComponentActivity() {
                             if (speaking) Text("Falando…", style = MaterialTheme.typography.bodySmall)
                             if (speechFailed) {
                                 Text(
-                                    if (GeminiVoice.isConfigured(this@VoiceActivity)) "Não consegui gerar a voz carioca. Toque em Ouvir novamente."
+                                    if (GeminiVoice.isConfigured(this@VoiceActivity)) "Não consegui gerar o áudio da resposta. Toque em Ouvir novamente."
                                     else "Voz em português indisponível. Ative português (Brasil) em Texto para fala no Android.",
                                     style = MaterialTheme.typography.bodySmall,
                                 )

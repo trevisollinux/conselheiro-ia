@@ -71,7 +71,7 @@ internal fun WakeVoiceSettings() {
 
     SettingsSection("Ativação por voz") {
         Text(
-            "Diga “Consigliere” com a tela apagada, espere o bip e faça a pergunta.",
+            "Diga “Consigliere” com a tela ligada ou apagada. Depois do bip, faça a pergunta.",
             style = MaterialTheme.typography.bodySmall,
         )
         Text(

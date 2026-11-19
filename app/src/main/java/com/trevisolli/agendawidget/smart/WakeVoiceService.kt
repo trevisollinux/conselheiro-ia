@@ -17,6 +17,8 @@ import android.media.ToneGenerator
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.IBinder
+import android.os.Build
+import android.os.SystemClock
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -115,8 +117,27 @@ class WakeVoiceService : Service() {
             .build()
     }
 
-    @SuppressLint("MissingPermission")
+    private class MicrophoneInterrupted : IOException("O Android interrompeu o microfone")
+
     private suspend fun listen() {
+        Model(WakeModel.path(this).absolutePath).use { model ->
+            var retries = 0
+            while (hasMicrophone(this)) {
+                try {
+                    listenWithMicrophone(model) { retries = 0 }
+                } catch (e: MicrophoneInterrupted) {
+                    currentCoroutineContext().ensureActive()
+                    if (++retries > 5) throw e
+                    state.value = WAITING_FOR_MIC
+                    delay(350L * retries)
+                }
+            }
+            throw IOException("Permissão de microfone indisponível")
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private suspend fun listenWithMicrophone(model: Model, onAudio: () -> Unit) {
         val minimum = AudioRecord.getMinBufferSize(WakeAudio.RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         check(minimum > 0) { "Microfone sem suporte ao formato de voz" }
         val audio = AudioRecord(
@@ -126,36 +147,49 @@ class WakeVoiceService : Service() {
         recorder = audio
         try {
             check(audio.state == AudioRecord.STATE_INITIALIZED) { "Microfone indisponível" }
-            Model(WakeModel.path(this).absolutePath).use { model ->
-                Recognizer(model, WakeAudio.RATE.toFloat(), WakePhrase.grammar).use { recognition ->
-                    recognition.setWords(true)
-                    val frame = ShortArray(WakeAudio.FRAME)
-                    val context = currentCoroutineContext()
-                    val recent = WakeBuffer()
-                    audio.startRecording()
-                    state.value = LISTENING
-                    while (true) {
-                        context.ensureActive()
-                        val count = read(audio, frame)
-                        if (count == 0) continue
-                        recent.add(frame, count)
-                        if (!recognition.acceptWaveForm(frame, count)) continue
-                        val activation = WakePhrase.activation(recognition.result)
-                        val firstQuestion = if (activation == WakePhrase.Activation.QUESTION) {
-                            recent.pcm()
-                        } else null
-                        recent.clear()
-                        if (activation == null) continue
-                        audio.stop()
-                        try {
-                            converse(audio, frame, firstQuestion)
-                        } finally {
-                            context.ensureActive()
+            Recognizer(model, WakeAudio.RATE.toFloat(), WakePhrase.grammar).use { recognition ->
+                recognition.setWords(true)
+                val frame = ShortArray(WakeAudio.FRAME)
+                val context = currentCoroutineContext()
+                val recent = WakeBuffer()
+                startRecording(audio)
+                state.value = LISTENING
+                var nextCheck = 0L
+                var silenced = false
+                while (true) {
+                    context.ensureActive()
+                    val count = read(audio, frame)
+                    val now = SystemClock.elapsedRealtime()
+                    if (now >= nextCheck) {
+                        nextCheck = now + 250
+                        val muted = micSilenced(audio)
+                        if (muted != silenced) {
+                            silenced = muted
+                            recent.clear()
                             recognition.reset()
-                            audio.startRecording()
-                            state.value = LISTENING
+                            state.value = if (muted) WAITING_FOR_MIC else LISTENING
                         }
                     }
+                    if (count == 0) {
+                        delay(20)
+                        continue
+                    }
+                    if (silenced) continue
+                    onAudio()
+                    recent.add(frame, count)
+                    if (!recognition.acceptWaveForm(frame, count)) continue
+                    val activation = WakePhrase.activation(recognition.result)
+                    val firstQuestion = if (activation == WakePhrase.Activation.QUESTION) {
+                        recent.pcm()
+                    } else null
+                    recent.clear()
+                    if (activation == null) continue
+                    audio.stop()
+                    converse(audio, frame, firstQuestion)
+                    context.ensureActive()
+                    recognition.reset()
+                    startRecording(audio)
+                    state.value = LISTENING
                 }
             }
         } finally {
@@ -197,7 +231,7 @@ class WakeVoiceService : Service() {
                     ChatMessage(fromUser = false, text = reply.text)
                 } else {
                     lockedHistory.clear()
-                    Assistant.hear(this, WakeAudio.wav(pcm), "audio/wav", onFarewell = { farewell = true }) { !deviceLocked() }
+                    Assistant.hear(this, WakeAudio.wav(pcm), "audio/wav", onFarewell = { farewell = true }, quickVoice = true) { !deviceLocked() }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -217,7 +251,12 @@ class WakeVoiceService : Service() {
             } else {
                 say(if (!locked && deviceLocked() && canSpeak) "Desbloqueie o celular para conferir a resposta." else text)
             }
-            if (farewell || !delivered || result.actions.isNotEmpty()) return
+            if (!delivered) {
+                Notify.post(this, CHANNEL, "Ativação por voz", RESPONSE_STATUS_ID, "Consigliere não conseguiu falar",
+                    "A escuta continua. Chame novamente.")
+                return
+            }
+            if (farewell || result.actions.isNotEmpty()) return
         }
     }
 
@@ -271,12 +310,13 @@ class WakeVoiceService : Service() {
         var quiet = 0
         var noise = 35.0
         val context = currentCoroutineContext()
-        audio.startRecording()
+        startRecording(audio)
         try {
             while (samples < WakeAudio.RATE * 15) {
                 context.ensureActive()
                 val count = read(audio, frame)
                 if (count == 0) continue
+                if (samples % WakeAudio.RATE < count && micSilenced(audio)) return null
                 samples += count
                 val talking = WakeAudio.isSpeech(frame, count, noise)
                 if (!talking && !speech) noise = noise * 0.85 + WakeAudio.rms(frame, count) * 0.15
@@ -302,11 +342,24 @@ class WakeVoiceService : Service() {
         return if (speech) output.toByteArray() else null
     }
 
+    private fun startRecording(audio: AudioRecord) {
+        try {
+            audio.startRecording()
+        } catch (_: IllegalStateException) {
+            throw MicrophoneInterrupted()
+        }
+        if (audio.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw MicrophoneInterrupted()
+    }
+
     private fun read(audio: AudioRecord, frame: ShortArray): Int {
         val count = audio.read(frame, 0, frame.size)
-        if (count < 0) throw IOException("O Android interrompeu o microfone")
+        if (count == AudioRecord.ERROR_DEAD_OBJECT || count == AudioRecord.ERROR_INVALID_OPERATION) throw MicrophoneInterrupted()
+        if (count < 0) throw IOException("Falha na leitura do microfone ($count)")
         return count
     }
+
+    private fun micSilenced(audio: AudioRecord): Boolean =
+        Build.VERSION.SDK_INT >= 29 && audio.activeRecordingConfiguration?.isClientSilenced == true
 
     private suspend fun say(text: String): Boolean = withContext(Dispatchers.Main.immediate) {
         try {
@@ -335,9 +388,11 @@ class WakeVoiceService : Service() {
         const val STARTING = "Iniciando a escuta…"
         const val LISTENING = "Escutando “Consigliere”"
         const val FOLLOW_UP = "Ouvindo a pergunta"
+        const val WAITING_FOR_MIC = "Aguardando o Android liberar o microfone"
         const val WORKING = "Conversa por voz em andamento"
-        private val activeStates = setOf(STARTING, LISTENING, FOLLOW_UP, WORKING)
+        private val activeStates = setOf(STARTING, LISTENING, FOLLOW_UP, WAITING_FOR_MIC, WORKING)
         private const val NOTICE_ID = 163
+        private const val RESPONSE_STATUS_ID = 164
         private const val CHANNEL = "wake_voice"
         private const val STOP = "com.trevisolli.agendawidget.STOP_WAKE_VOICE"
         private const val PENDING_FLAGS = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT

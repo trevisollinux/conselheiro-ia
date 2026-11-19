@@ -1,6 +1,8 @@
 package com.trevisolli.agendawidget.ui
 
+import android.Manifest
 import android.content.ActivityNotFoundException
+import android.content.pm.PackageManager
 import com.trevisolli.agendawidget.VoiceActivity
 import android.content.Intent
 import android.speech.RecognizerIntent
@@ -26,7 +28,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -39,6 +40,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +56,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.trevisolli.agendawidget.data.AgendaRepository
+import com.trevisolli.agendawidget.data.Settings
+import androidx.core.content.ContextCompat
+import com.trevisolli.agendawidget.smart.AiProvider
+import com.trevisolli.agendawidget.smart.VoiceRecorder
+import kotlinx.coroutines.delay
 import com.trevisolli.agendawidget.smart.Assistant
 import com.trevisolli.agendawidget.smart.ChatMessage
 import com.trevisolli.agendawidget.smart.ChatStore
@@ -77,11 +85,13 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
     var messages by remember { mutableStateOf(ChatStore.all(context)) }
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var inlineRecorder by remember { mutableStateOf<VoiceRecorder?>(null) }
+    var recordedSeconds by remember { mutableIntStateOf(0) }
     val listState = rememberLazyListState()
 
     fun send(text: String) {
         val t = text.trim()
-        if (t.isEmpty() || busy) return
+        if (t.isEmpty() || busy || inlineRecorder != null) return
         input = ""
         busy = true
         messages = messages + ChatMessage(fromUser = true, text = t)
@@ -103,13 +113,22 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
         onChanged()
     }
     // O gravador roda em outra tarefa: o resultado pode chegar antes; recarrega também ao voltar.
-    val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
-    androidx.compose.runtime.DisposableEffect(lifecycle) {
+    fun cancelRecording() {
+        inlineRecorder?.cancel()
+        inlineRecorder = null
+    }
+
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && !busy) messages = ChatStore.all(context)
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) cancelRecording()
         }
         lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycle.removeObserver(observer)
+            cancelRecording()
+        }
     }
 
     fun systemListen() {
@@ -171,6 +190,62 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
         }
     }
 
+    val microphone = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val prompt = if (granted) "Segure o microfone novamente para gravar." else "Permita o microfone para gravar áudio."
+        Toast.makeText(context, prompt, Toast.LENGTH_SHORT).show()
+    }
+
+    fun beginRecording() {
+        if (busy || inlineRecorder != null) return
+        if (!Assistant.canHear(context)) {
+            systemListen()
+            return
+        }
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            microphone.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        val audio = VoiceRecorder(context, Settings(context).aiProvider == AiProvider.OPENAI)
+        try {
+            audio.start()
+            recordedSeconds = 0
+            inlineRecorder = audio
+        } catch (_: Exception) {
+            audio.cancel()
+            Toast.makeText(context, "Não consegui iniciar a gravação.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun sendRecording() {
+        val recorder = inlineRecorder ?: return
+        inlineRecorder = null
+        val audio = recorder.stop()
+        if (audio == null) {
+            Toast.makeText(context, "Áudio muito curto. Segure enquanto fala.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        busy = true
+        messages = messages + ChatMessage(fromUser = true, text = "🎤 Transcrevendo…")
+        scope.launch {
+            try {
+                Assistant.handleAudio(context, audio, recorder.mime)
+            } finally {
+                messages = ChatStore.all(context)
+                busy = false
+                onChanged()
+            }
+        }
+    }
+
+    LaunchedEffect(inlineRecorder) {
+        if (inlineRecorder == null) return@LaunchedEffect
+        while (recordedSeconds < 60) {
+            delay(1000)
+            recordedSeconds++
+        }
+        sendRecording()
+    }
+
     LaunchedEffect(Unit) { if (autoVoice) listen() }
     LaunchedEffect(messages.size, busy) {
         val count = messages.size + if (busy) 1 else 0
@@ -190,7 +265,7 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
                         Bubble(
                             ChatMessage(
                                 fromUser = false,
-                                text = "Oi! Me diga o que anotar e eu coloco na agenda ou no Todoist. Pode escrever, tocar no 🎤 " +
+                                text = "Oi! Me diga o que anotar e eu coloco na agenda ou no Todoist. Pode escrever, segurar o 🎤 " +
                                     "ou usar uma das dicas aqui embaixo.",
                             ),
                             onUndo = null,
@@ -280,10 +355,18 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
             }
         }
 
+        if (inlineRecorder != null) {
+            Text(
+                "Gravando %d:%02d · ↑ Conversar · ← Cancelar".format(recordedSeconds / 60, recordedSeconds % 60),
+                modifier = Modifier.padding(start = 12.dp, top = 6.dp),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
             // 📷 Foto: lista escrita à mão, print, convite… (o texto digitado vira a legenda).
             Box {
-                IconButton(onClick = { photoMenu = true }, enabled = !busy) { Text("➕", style = MaterialTheme.typography.titleLarge) }
+                IconButton(onClick = { photoMenu = true }, enabled = !busy && inlineRecorder == null) { Text("➕", style = MaterialTheme.typography.titleLarge) }
                 androidx.compose.material3.DropdownMenu(expanded = photoMenu, onDismissRequest = { photoMenu = false }) {
                     androidx.compose.material3.DropdownMenuItem(text = { Text("📷 Tirar foto") }, onClick = {
                         photoMenu = false
@@ -309,6 +392,7 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
+                readOnly = inlineRecorder != null,
                 placeholder = { Text("Fale com o Consigliere…") },
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(24.dp),
@@ -318,10 +402,14 @@ fun ChatPanel(modifier: Modifier = Modifier, autoVoice: Boolean = false, onChang
             )
             Spacer(Modifier.width(6.dp))
             if (input.isBlank()) {
-                Box(
-                    Modifier.size(52.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary).clickable { listen() },
-                    contentAlignment = Alignment.Center,
-                ) { Text("🎤", style = MaterialTheme.typography.titleLarge) }
+                ChatMicrophone(
+                    enabled = !busy, recording = inlineRecorder != null,
+                    onStart = ::beginRecording, onRelease = ::sendRecording,
+                    onCancel = ::cancelRecording, onTap = ::listen,
+                    onConversation = {
+                        if (!busy) recorderScreen.launch(VoiceActivity.conversationIntent(context))
+                    },
+                )
             } else {
                 IconButton(onClick = { send(input) }, enabled = !busy) {
                     Icon(Icons.Filled.Send, contentDescription = "Enviar", tint = MaterialTheme.colorScheme.primary)

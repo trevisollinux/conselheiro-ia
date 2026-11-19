@@ -683,6 +683,8 @@ class MainActivity : ComponentActivity() {
                     })
                 }
             }
+            com.trevisolli.agendawidget.ui.settings.GeminiVoiceSettings()
+            com.trevisolli.agendawidget.ui.settings.WakeVoiceSettings()
             Section("Tema do app") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AppTheme.entries.forEach { t ->

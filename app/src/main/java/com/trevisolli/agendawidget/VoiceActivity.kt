@@ -60,6 +60,8 @@ import com.trevisolli.agendawidget.smart.Assistant
 import com.trevisolli.agendawidget.smart.ChatMessage
 import com.trevisolli.agendawidget.smart.VoiceRecorder
 import com.trevisolli.agendawidget.smart.SpokenReply
+import com.trevisolli.agendawidget.smart.GeminiVoice
+import kotlinx.coroutines.Job
 import com.trevisolli.agendawidget.ui.ConsigliereTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -87,6 +89,7 @@ class VoiceActivity : ComponentActivity() {
 
     private var conversation = false
     private var spoken: SpokenReply? = null
+    private var replyJob: Job? = null
     private var speaking by mutableStateOf(false)
     private var speechFailed by mutableStateOf(false)
     private var recorder: VoiceRecorder? = null
@@ -123,6 +126,7 @@ class VoiceActivity : ComponentActivity() {
 
     /** Primeiro tenta transcrever no aparelho (grátis, sem IA); se não houver, grava o áudio. */
     private fun start() {
+        replyJob?.cancel()
         spoken?.stop()
         speaking = false
         speechFailed = false
@@ -223,7 +227,7 @@ class VoiceActivity : ComponentActivity() {
         val request = text.replace(Regex("^consigliere(?:[,.:!? ]+|$)", RegexOption.IGNORE_CASE), "").trim()
         if (request.isBlank() && conversation && text.isNotBlank()) {
             phase = "done"
-            speak("Estou ouvindo.") { if (it && !isFinishing) start() else finish() }
+            speak("Estou ouvindo.", customVoice = false) { if (it && !isFinishing) start() else finish() }
             return
         }
         val stopWords = setOf("pode parar", "parar", "encerrar", "encerrar conversa", "tchau")
@@ -271,18 +275,30 @@ class VoiceActivity : ComponentActivity() {
         }
     }
 
-    private fun speak(text: String, done: (Boolean) -> Unit) {
-        val voice = spoken ?: SpokenReply(this).also { spoken = it }
+    private fun speak(text: String, customVoice: Boolean = true, done: (Boolean) -> Unit) {
         speaking = true
-        voice.speak(text) { delivered ->
-            speaking = false
-            speechFailed = !delivered
-            done(delivered)
+        speechFailed = false
+        replyJob?.cancel()
+        replyJob = lifecycleScope.launch {
+            if (customVoice && GeminiVoice.isConfigured(this@VoiceActivity)) {
+                val delivered = GeminiVoice.speak(this@VoiceActivity, text) { !isFinishing }
+                speaking = false
+                speechFailed = !delivered
+                done(delivered)
+                return@launch
+            }
+            val voice = spoken ?: SpokenReply(this@VoiceActivity).also { spoken = it }
+            voice.speak(text) { delivered ->
+                speaking = false
+                speechFailed = !delivered
+                done(delivered)
+            }
         }
     }
 
     override fun onStop() {
         super.onStop()
+        replyJob?.cancel()
         spoken?.stop()
         speaking = false
         if (phase == "live" || phase == "rec") {
@@ -401,7 +417,16 @@ class VoiceActivity : ComponentActivity() {
                             val a = answer
                             Text(a?.text ?: "", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.fillMaxWidth())
                             if (speaking) Text("Falando…", style = MaterialTheme.typography.bodySmall)
-                            if (speechFailed) Text("Voz em português indisponível no aparelho.", style = MaterialTheme.typography.bodySmall)
+                            if (speechFailed) {
+                                Text(
+                                    if (GeminiVoice.isConfigured(this@VoiceActivity)) "Não consegui gerar a voz carioca. Toque em Ouvir novamente."
+                                    else "Voz em português indisponível. Ative português (Brasil) em Texto para fala no Android.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            if (a != null && !speaking && (conversation || Settings(this@VoiceActivity).speakWidgetReplies)) {
+                                TextButton(onClick = { speak(a.text) {} }) { Text("Ouvir novamente") }
+                            }
                             a?.actions?.forEach { qa ->
                                 androidx.compose.material3.Button(
                                     onClick = {

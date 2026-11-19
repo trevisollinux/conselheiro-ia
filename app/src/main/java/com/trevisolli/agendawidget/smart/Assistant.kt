@@ -95,14 +95,16 @@ object Assistant {
     }
 
     /** Sem rede de segurança: o erro sobe (usado também pela fila de áudios). */
-    suspend fun hear(context: Context, audio: ByteArray, mime: String): ChatMessage = withContext(Dispatchers.IO) {
+    suspend fun hear(
+        context: Context, audio: ByteArray, mime: String, allowPersonalActions: () -> Boolean = { true },
+    ): ChatMessage = withContext(Dispatchers.IO) {
         val s = Settings(context)
         if (s.aiProvider == AiProvider.OPENAI) {
             val text = AiClient.transcribeOpenAi(s.keyFor(AiProvider.OPENAI), audio, "voz.m4a", mime)
             if (text.isBlank()) throw IllegalStateException("não ouvi nada")
-            process(context, "🎤 $text", text, null)
+            process(context, "🎤 $text", text, null, allowPersonalActions = allowPersonalActions)
         } else {
-            process(context, null, null, audio to mime)
+            process(context, null, null, audio to mime, allowPersonalActions = allowPersonalActions)
         }
     }
 
@@ -172,8 +174,9 @@ object Assistant {
     /** [shown]: o que aparece no balão do usuário; com áudio, vem da transcrição. */
     private suspend fun process(
         context: Context, shown: String?, text: String?, audio: Pair<ByteArray, String>?, image: ByteArray? = null,
-        meeting: Boolean = false,
+        meeting: Boolean = false, allowPersonalActions: () -> Boolean = { true },
     ): ChatMessage {
+        if (!allowPersonalActions()) return ChatMessage(fromUser = false, text = "Desbloqueie o celular e pergunte de novo.")
         val history = ChatStore.contextHistory(context, 20)
         if (shown != null) ChatStore.add(context, ChatMessage(fromUser = true, text = shown))
         val settings = Settings(context)
@@ -216,6 +219,7 @@ object Assistant {
         val undo = mutableListOf<Undo>()
         val buttons = mutableListOf<QuickAction>()
         for (a in plan.actions) {
+            if (!allowPersonalActions()) return ChatMessage(fromUser = false, text = "Desbloqueie o celular para continuar.")
             try {
                 when (a) {
                     is Action.Message -> {

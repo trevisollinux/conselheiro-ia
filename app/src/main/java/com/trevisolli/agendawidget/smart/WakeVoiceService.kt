@@ -241,7 +241,7 @@ class WakeVoiceService : Service() {
                 if (speech) {
                     output.write(bytes)
                     quiet = if (talking) 0 else quiet + count
-                    if (quiet >= WakeAudio.RATE) break
+                    if (quiet >= WakeAudio.RATE * WakeAudio.END_SILENCE_MS / 1000) break
                 } else {
                     tail.addLast(bytes)
                     if (tail.size > 2) tail.removeFirst()

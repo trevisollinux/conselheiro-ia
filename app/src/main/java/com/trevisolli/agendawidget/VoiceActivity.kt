@@ -59,6 +59,7 @@ import com.trevisolli.agendawidget.smart.AiProvider
 import com.trevisolli.agendawidget.smart.Assistant
 import com.trevisolli.agendawidget.smart.ChatMessage
 import com.trevisolli.agendawidget.smart.VoiceRecorder
+import com.trevisolli.agendawidget.smart.WakeAudio
 import com.trevisolli.agendawidget.smart.SpokenReply
 import com.trevisolli.agendawidget.smart.GeminiVoice
 import kotlinx.coroutines.Job
@@ -201,8 +202,8 @@ class VoiceActivity : ComponentActivity() {
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
-            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, WakeAudio.END_SILENCE_MS)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, WakeAudio.END_SILENCE_MS)
         return try {
             speech = sr
             phase = "live"
@@ -326,12 +327,22 @@ class VoiceActivity : ComponentActivity() {
     private fun Screen() {
         val scope = rememberCoroutineScope()
 
-        // Cronômetro; para sozinho em 60 s.
         LaunchedEffect(phase) {
-            while (phase == "rec") {
-                delay(1000)
-                if (recorder != null) seconds++
-                if (seconds >= 60) sendAudio()
+            if (phase != "rec") return@LaunchedEffect
+            val audio = recorder ?: return@LaunchedEffect
+            val startedAt = android.os.SystemClock.elapsedRealtime()
+            var lastVoiceAt: Long? = null
+            while (recorder === audio) {
+                delay(100)
+                val now = android.os.SystemClock.elapsedRealtime()
+                val elapsed = now - startedAt
+                seconds = (elapsed / 1000).toInt()
+                if (conversation && audio.maxAmplitude() >= 700) lastVoiceAt = now
+                val finishedSpeaking = lastVoiceAt?.let { now - it >= WakeAudio.END_SILENCE_MS } == true
+                if (elapsed >= 60_000 || (elapsed >= 700 && finishedSpeaking)) {
+                    sendAudio()
+                    break
+                }
             }
         }
         // Resultado some sozinho depois de um tempo.

@@ -35,19 +35,21 @@ internal object GeminiVoice {
 
     fun voiceId(context: Context, key: String): String =
         settings(context).getString(voicePreference(key), "").orEmpty()
-    suspend fun create(context: Context, key: String): Design = withContext(Dispatchers.IO) {
-        val name = "Consigliere — Voz personalizada"
+    const val MAX_DESCRIPTION = 800
+
+    fun select(context: Context, key: String, id: String) {
+        settings(context).edit().putString(voicePreference(key), id).apply()
+    }
+
+    suspend fun create(key: String, description: String): Design = withContext(Dispatchers.IO) {
+        val prompt = description.trim()
+        require(prompt.isNotEmpty() && prompt.length <= MAX_DESCRIPTION)
         val voice = JSONObject().put("model", MODEL).put("type", "prompted")
-            .put("display_name", name).put("gender", "female").put("language_code", "pt-BR")
-            .put("prompted", JSONObject().put(
-                "input",
-                "Voz de uma mulher adulta do Rio de Janeiro, em português brasileiro nativo, com sotaque carioca natural. " +
-                    "Fala descontraída, clara, brincalhona e ligeiramente atrevida. Ritmo de conversa, sem exagerar o sotaque.",
-            ))
+            .put("display_name", "Consigliere — Voz personalizada").put("language_code", "pt-BR")
+            .put("prompted", JSONObject().put("input", prompt))
         val result = post("voices", key, JSONObject().put("store", true).put("voice", voice), 45_000)
         val id = result.optString("id").takeIf { it.startsWith("voice_") }
             ?: throw IOException("O Gemini não devolveu o identificador da voz")
-        settings(context).edit().putString(voicePreference(key), id).apply()
         val sample = result.optJSONObject("sample_audio")?.optString("data")?.let { runCatching { decode(it) }.getOrNull() }
         Design(id, sample)
     }

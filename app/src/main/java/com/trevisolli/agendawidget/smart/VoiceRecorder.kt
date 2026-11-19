@@ -30,6 +30,8 @@ class VoiceRecorder(private val context: Context, private val forOpenAi: Boolean
         r.start()
     }
 
+    fun maxAmplitude(): Int = runCatching { recorder?.maxAmplitude ?: 0 }.getOrDefault(0)
+
     /** Para e devolve o áudio; null se ficou curto demais. */
     fun stop(): ByteArray? {
         val r = recorder ?: return null

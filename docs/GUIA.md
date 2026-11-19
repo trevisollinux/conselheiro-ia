@@ -129,8 +129,8 @@ Para desligar: **Desconectar** no app e apague a senha em **myaccount.google.com
   o celular responde a perguntas gerais. Desbloqueie para consultar dados pessoais ou criar algo. Use
   **Desativar** na notificação para parar a escuta. Depois de reiniciar o celular, ative de novo pelo app.
   O reconhecimento da palavra usa [Vosk](https://alphacephei.com/vosk/models) (modelo pequeno de italiano, Apache 2.0).
-- **Voz personalizada do Gemini** em **Configurações → Personalizar**. **Criar e ouvir prévia** gera a voz diretamente
-  na sua conta Gemini para usá-la nas respostas. A síntese usa a sua chave e pode ter custo.
+- **Voz personalizada do Gemini** em **Configurações → Personalizar**. Descreva a voz, toque em **Criar e ouvir prévia**
+  e depois em **Usar esta voz** se gostar do resultado. A síntese usa a sua chave e pode ter custo.
 - **Foto**: ➕ na conversa → **Tirar foto** ou **Escolher da galeria** (lista escrita à mão, convite, boleto…).
   Compartilhar uma imagem com o app também funciona (**Pedir ao Consigliere**).
 - Exemplos: "dentista quinta 15h", "lista de compras: leite, pão e ovos", "dar remédio todo dia às 8h",

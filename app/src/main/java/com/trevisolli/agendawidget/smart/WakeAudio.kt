@@ -7,6 +7,7 @@ import kotlin.math.sqrt
 /** PCM no formato aceito pelo Gemini depois de detectar a palavra localmente. */
 internal object WakeAudio {
     const val RATE = 16_000
+    const val END_SILENCE_MS = 700L
     const val FRAME = 1_600
 
     fun isSpeech(pcm: ShortArray, count: Int, noise: Double): Boolean {

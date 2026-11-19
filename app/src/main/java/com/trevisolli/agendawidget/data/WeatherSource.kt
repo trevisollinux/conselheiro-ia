@@ -176,6 +176,16 @@ object WeatherSource {
             (if (rainy.isNotEmpty()) "Chance de chuva: $rainy." else "Sem chuva prevista nas próximas horas.")
     }
 
+    fun dailyForecastLine(w: Weather): String {
+        if (System.currentTimeMillis() - w.fetchedAt !in 0..6 * 3_600_000L) return ""
+        val today = LocalDate.now()
+        return listOf(today, today.plusDays(1)).mapNotNull { date ->
+            val hours = w.hours.filter { it.time.toLocalDate() == date && it.temp.isFinite() }
+            if (hours.isEmpty()) null
+            else "Previsão disponível para $date: de ${hours.minOf { it.temp }.toInt()} °C a ${hours.maxOf { it.temp }.toInt()} °C."
+        }.joinToString(" ")
+    }
+
     /** Conselho prático: guarda-chuva para um compromisso, calor, etc. Null se nada a dizer. */
     fun advice(w: Weather, items: List<AgendaItem>): String? {
         val zone = ZoneId.systemDefault()

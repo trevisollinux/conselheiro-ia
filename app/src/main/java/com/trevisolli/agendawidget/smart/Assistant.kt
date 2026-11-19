@@ -96,15 +96,16 @@ object Assistant {
 
     /** Sem rede de segurança: o erro sobe (usado também pela fila de áudios). */
     suspend fun hear(
-        context: Context, audio: ByteArray, mime: String, allowPersonalActions: () -> Boolean = { true },
+        context: Context, audio: ByteArray, mime: String, onFarewell: (() -> Unit)? = null,
+        allowPersonalActions: () -> Boolean = { true },
     ): ChatMessage = withContext(Dispatchers.IO) {
         val s = Settings(context)
         if (s.aiProvider == AiProvider.OPENAI) {
             val text = AiClient.transcribeOpenAi(s.keyFor(AiProvider.OPENAI), audio, "voz.m4a", mime)
             if (text.isBlank()) throw IllegalStateException("não ouvi nada")
-            process(context, "🎤 $text", text, null, allowPersonalActions = allowPersonalActions)
+            process(context, "🎤 $text", text, null, onFarewell = onFarewell, allowPersonalActions = allowPersonalActions)
         } else {
-            process(context, null, null, audio to mime, allowPersonalActions = allowPersonalActions)
+            process(context, null, null, audio to mime, onFarewell = onFarewell, allowPersonalActions = allowPersonalActions)
         }
     }
 
@@ -174,9 +175,13 @@ object Assistant {
     /** [shown]: o que aparece no balão do usuário; com áudio, vem da transcrição. */
     private suspend fun process(
         context: Context, shown: String?, text: String?, audio: Pair<ByteArray, String>?, image: ByteArray? = null,
-        meeting: Boolean = false, allowPersonalActions: () -> Boolean = { true },
+        meeting: Boolean = false, onFarewell: (() -> Unit)? = null, allowPersonalActions: () -> Boolean = { true },
     ): ChatMessage {
         if (!allowPersonalActions()) return ChatMessage(fromUser = false, text = "Desbloqueie o celular e pergunte de novo.")
+        if (onFarewell != null && text?.let(VoiceConversation::isFarewell) == true) {
+            onFarewell()
+            return ChatMessage(fromUser = false, text = VoiceConversation.GOODBYE)
+        }
         val history = ChatStore.contextHistory(context, 20)
         if (shown != null) ChatStore.add(context, ChatMessage(fromUser = true, text = shown))
         val settings = Settings(context)
@@ -214,6 +219,10 @@ object Assistant {
             rulesPlanCtx(context, text, items)
         }
 
+        if (onFarewell != null && plan.heard?.let(VoiceConversation::isFarewell) == true) {
+            onFarewell()
+            return ChatMessage(fromUser = false, text = VoiceConversation.GOODBYE)
+        }
         val done = mutableListOf<String>()
         val problems = mutableListOf<String>()
         val undo = mutableListOf<Undo>()
@@ -685,7 +694,10 @@ object Assistant {
             append("Agenda e tarefas (atrasadas e próximos dias):\n")
             items.take(40).forEach { append("- ${it.title} (${Format.subtitle(it)})\n") }
             if (items.isEmpty()) append("(vazia)\n")
-            WeatherSource.load(context)?.let { append(WeatherSource.forecastLine(it)).append("\n") }
+            WeatherSource.load(context)?.let {
+                appendLine(WeatherSource.forecastLine(it))
+                appendLine(WeatherSource.dailyForecastLine(it))
+            }
             append(InboxStore.promptBlock(InboxStore.recent(context, hours = 24)))
             if (MailSource.configured(context)) append("E-mail (IMAP): ${MailSource.statusLine(context)}\n")
             append(Memory.promptBlock(context))

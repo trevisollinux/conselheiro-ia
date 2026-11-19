@@ -60,6 +60,7 @@ import com.trevisolli.agendawidget.smart.Assistant
 import com.trevisolli.agendawidget.smart.ChatMessage
 import com.trevisolli.agendawidget.smart.VoiceRecorder
 import com.trevisolli.agendawidget.smart.WakeAudio
+import com.trevisolli.agendawidget.smart.VoiceConversation
 import com.trevisolli.agendawidget.smart.SpokenReply
 import com.trevisolli.agendawidget.smart.GeminiVoice
 import kotlinx.coroutines.Job
@@ -225,15 +226,19 @@ class VoiceActivity : ComponentActivity() {
     private fun sendText(text: String) {
         if (phase != "live") return
         stopLive()
-        val request = text.replace(Regex("^consigliere(?:[,.:!? ]+|$)", RegexOption.IGNORE_CASE), "").trim()
+        val request = VoiceConversation.withoutActivation(text)
         if (request.isBlank() && conversation && text.isNotBlank()) {
             phase = "done"
             speak("Estou ouvindo.", customVoice = false) { if (it && !isFinishing) start() else finish() }
             return
         }
-        val stopWords = setOf("pode parar", "parar", "encerrar", "encerrar conversa", "tchau")
-        if (request.isBlank() || (conversation && request.lowercase().trimEnd('.', '!', '?') in stopWords)) {
+        if (request.isBlank()) {
             finish()
+            return
+        }
+        if (conversation && VoiceConversation.isFarewell(request)) {
+            phase = "done"
+            speak(VoiceConversation.GOODBYE) { finish() }
             return
         }
         think { Assistant.handleSpoken(it, request) }
@@ -248,13 +253,20 @@ class VoiceActivity : ComponentActivity() {
             finish()
             return
         }
-        think { Assistant.handleAudio(it, audio, r.mime) }
+        if (!conversation) {
+            think { Assistant.handleAudio(it, audio, r.mime) }
+            return
+        }
+        val farewell = java.util.concurrent.atomic.AtomicBoolean()
+        think(shouldClose = { farewell.get() }) {
+            Assistant.hear(it, audio, r.mime, onFarewell = { farewell.set(true) })
+        }
     }
 
     private var work: kotlinx.coroutines.Deferred<ChatMessage>? = null
 
     /** Roda fora da tela: se a pessoa fechar antes, o pedido continua e o resultado chega por notificação. */
-    private fun think(block: suspend (android.content.Context) -> ChatMessage) {
+    private fun think(shouldClose: () -> Boolean = { false }, block: suspend (android.content.Context) -> ChatMessage) {
         phase = "think"
         val app = applicationContext
         val job = com.trevisolli.agendawidget.smart.Background.scope.async { block(app) }
@@ -268,9 +280,8 @@ class VoiceActivity : ComponentActivity() {
                 lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) && !isFinishing
             ) {
                 speak(result.text) { delivered ->
-                    if (delivered && conversation && result.actions.isEmpty() &&
-                        SpeechRecognizer.isRecognitionAvailable(this@VoiceActivity) && !isFinishing
-                    ) start()
+                    if (shouldClose()) finish()
+                    else if (delivered && conversation && result.actions.isEmpty() && !isFinishing) start()
                 }
             }
         }

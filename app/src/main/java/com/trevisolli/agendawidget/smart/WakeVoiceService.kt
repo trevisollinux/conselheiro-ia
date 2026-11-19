@@ -24,6 +24,8 @@ import androidx.core.content.ContextCompat
 import com.trevisolli.agendawidget.MainActivity
 import com.trevisolli.agendawidget.R
 import com.trevisolli.agendawidget.data.Settings
+import com.trevisolli.agendawidget.data.WeatherSource
+import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -105,7 +107,7 @@ class WakeVoiceService : Service() {
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_monochrome)
             .setContentTitle("Ativação por voz ligada")
-            .setContentText("Diga “Consigliere” e espere o bip antes de perguntar.")
+            .setContentText("Diga “Consigliere” para conversar por voz.")
             .setContentIntent(open)
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -129,16 +131,24 @@ class WakeVoiceService : Service() {
                     recognition.setWords(true)
                     val frame = ShortArray(WakeAudio.FRAME)
                     val context = currentCoroutineContext()
+                    val recent = WakeBuffer()
                     audio.startRecording()
                     state.value = LISTENING
                     while (true) {
                         context.ensureActive()
                         val count = read(audio, frame)
-                        if (count == 0 || !recognition.acceptWaveForm(frame, count)) continue
-                        if (!WakePhrase.matches(recognition.result)) continue
+                        if (count == 0) continue
+                        recent.add(frame, count)
+                        if (!recognition.acceptWaveForm(frame, count)) continue
+                        val activation = WakePhrase.activation(recognition.result)
+                        val firstQuestion = if (activation == WakePhrase.Activation.QUESTION) {
+                            recent.pcm()
+                        } else null
+                        recent.clear()
+                        if (activation == null) continue
                         audio.stop()
                         try {
-                            handleTurn(audio, frame)
+                            converse(audio, frame, firstQuestion)
                         } finally {
                             context.ensureActive()
                             recognition.reset()
@@ -155,35 +165,59 @@ class WakeVoiceService : Service() {
         }
     }
 
-    private suspend fun handleTurn(audio: AudioRecord, frame: ShortArray) {
-        state.value = WORKING
+    private suspend fun converse(audio: AudioRecord, frame: ShortArray, firstQuestion: ByteArray?) {
         val settings = Settings(this)
-        val key = settings.keyFor(AiProvider.GEMINI)
-        if (!settings.useAi || settings.aiProvider != AiProvider.GEMINI || key.isBlank()) {
-            say("Ative o Gemini nas configurações para conversar.")
-            return
-        }
-        cue()
-        val pcm = capture(audio, frame) ?: return
-        val protected = deviceLocked()
-        val result = try {
-            if (protected) ChatMessage(fromUser = false, text = lockedAnswer(settings, key, pcm))
-            else Assistant.hear(this, WakeAudio.wav(pcm), "audio/wav") { !deviceLocked() }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            FailLog.add(this, "Conversa por ativação", AiClient.friendly(e))
-            ChatMessage(fromUser = false, text = "Não consegui responder agora. Tente de novo.")
-        }
-        val text = when {
-            !protected && deviceLocked() -> "Desbloqueie o celular para conferir a resposta."
-            result.actions.isNotEmpty() -> "Abra o Consigliere para conferir e confirmar a ação."
-            else -> result.text
-        }
-        if (GeminiVoice.isConfigured(this)) {
-            GeminiVoice.speak(this, text) { protected || !deviceLocked() }
-        } else {
-            say(if (!protected && deviceLocked()) "Desbloqueie o celular para conferir a resposta." else text)
+        val lockedHistory = ArrayDeque<LockedReply>()
+        var pending = firstQuestion
+        repeat(8) {
+            currentCoroutineContext().ensureActive()
+            val key = settings.keyFor(AiProvider.GEMINI)
+            if (!settings.useAi || settings.aiProvider != AiProvider.GEMINI || key.isBlank()) {
+                say("Ative o Gemini nas configurações para conversar.")
+                return
+            }
+
+            val pcm = pending ?: run {
+                state.value = FOLLOW_UP
+                cue()
+                capture(audio, frame) ?: return
+            }
+            pending = null
+            state.value = WORKING
+            val locked = deviceLocked()
+            var farewell = false
+            val result = try {
+                if (locked) {
+                    val reply = lockedAnswer(settings, key, pcm, lockedHistory)
+                    farewell = VoiceConversation.isFarewell(reply.heard)
+                    if (!farewell && reply.heard.isNotBlank()) {
+                        lockedHistory.addLast(reply)
+                        if (lockedHistory.size > 4) lockedHistory.removeFirst()
+                    }
+                    ChatMessage(fromUser = false, text = reply.text)
+                } else {
+                    lockedHistory.clear()
+                    Assistant.hear(this, WakeAudio.wav(pcm), "audio/wav", onFarewell = { farewell = true }) { !deviceLocked() }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                FailLog.add(this, "Conversa por ativação", AiClient.friendly(e))
+                ChatMessage(fromUser = false, text = "Não consegui responder agora. Tente de novo.")
+            }
+            val canSpeak = locked || !deviceLocked()
+            val text = when {
+                farewell -> VoiceConversation.GOODBYE
+                !canSpeak -> "Desbloqueie o celular para conferir a resposta."
+                result.actions.isNotEmpty() -> "Abra o Consigliere para conferir e confirmar a ação."
+                else -> result.text
+            }
+            val delivered = if (GeminiVoice.isConfigured(this)) {
+                GeminiVoice.speak(this, text) { locked || !canSpeak || !deviceLocked() }
+            } else {
+                say(if (!locked && deviceLocked() && canSpeak) "Desbloqueie o celular para conferir a resposta." else text)
+            }
+            if (farewell || !delivered || result.actions.isNotEmpty()) return
         }
     }
 
@@ -196,20 +230,39 @@ class WakeVoiceService : Service() {
         }
     }
 
-    private fun lockedAnswer(settings: Settings, key: String, pcm: ByteArray): String = AiClient.complete(
-        AiProvider.GEMINI, key, settings.effectiveModelFor(AiProvider.GEMINI),
-        "Você é o Consigliere. Responda em português do Brasil em até três frases curtas para serem faladas. " +
-            "Você só tem acesso à pergunta em áudio. Responda perguntas gerais. Para solicitar agenda, e-mail, mensagens, " +
-            "contas, dados pessoais ou executar ações, diga que é preciso desbloquear o celular e perguntar novamente. " +
-            "Não afirme ter acessado esses dados ou executado ações. Não use Markdown.",
-        "Responda à pergunta do áudio. Se estiver inaudível, peça que a pessoa repita.",
-        audio = WakeAudio.wav(pcm) to "audio/wav", fastTimeoutMs = 45_000,
-        thinking = AiThinking.LOW,
-    ).ifBlank { "Não entendi a pergunta. Tente de novo." }
+    private data class LockedReply(val heard: String, val text: String)
+
+    private fun lockedAnswer(settings: Settings, key: String, pcm: ByteArray, history: List<LockedReply>): LockedReply {
+        val raw = AiClient.complete(
+            AiProvider.GEMINI, key, settings.effectiveLightModelFor(AiProvider.GEMINI),
+            "Você é o Consigliere. Responda em português do Brasil, com até duas frases curtas. " +
+                "Devolva apenas JSON com as strings heard (transcrição do áudio atual) e reply (resposta). " +
+                "Ignore a palavra Consigliere no começo da pergunta. Responda perguntas gerais e use o histórico recente para entender continuações. " +
+                "Para agenda, e-mail, mensagens, contas, dados pessoais ou para executar ações, peça que desbloqueie o celular e pergunte de novo. " +
+                "Para o tempo, use somente os dados fornecidos. Se não houver previsão para o dia pedido, diga que não tem a previsão. " +
+                "Não afirme ter acessado dados pessoais nem executado ações.",
+            buildString {
+                appendLine("Hoje é ${LocalDate.now()}.")
+                WeatherSource.load(this@WakeVoiceService)?.let { appendLine(WeatherSource.dailyForecastLine(it)) }
+                history.forEach { turn ->
+                    appendLine("Usuário: ${turn.heard.take(350)}")
+                    appendLine("Consigliere: ${turn.text.take(350)}")
+                }
+                append("Responda à pergunta atual no áudio. Se estiver inaudível, peça para repetir.")
+            },
+            audio = WakeAudio.wav(pcm) to "audio/wav", fastTimeoutMs = 30_000,
+            thinking = AiThinking.LOW,
+        )
+        val json = AiClient.extractJson(raw)
+        return LockedReply(
+            json?.optString("heard").orEmpty(),
+            json?.optString("reply").orEmpty().ifBlank { "Não entendi a pergunta. Pode repetir?" },
+        )
+    }
 
     private fun deviceLocked() = getSystemService(KeyguardManager::class.java).isDeviceLocked
 
-    /** Espera até quatro segundos pela fala. Encerra após silêncio ou quinze segundos. */
+    /** Espera até seis segundos pela fala. Encerra após silêncio ou quinze segundos. */
     private suspend fun capture(audio: AudioRecord, frame: ShortArray): ByteArray? {
         val output = ByteArrayOutputStream()
         val tail = ArrayDeque<ByteArray>()
@@ -227,12 +280,7 @@ class WakeVoiceService : Service() {
                 samples += count
                 val talking = WakeAudio.isSpeech(frame, count, noise)
                 if (!talking && !speech) noise = noise * 0.85 + WakeAudio.rms(frame, count) * 0.15
-                val bytes = ByteArray(count * 2)
-                for (i in 0 until count) {
-                    val sample = frame[i].toInt()
-                    bytes[i * 2] = sample.toByte()
-                    bytes[i * 2 + 1] = (sample shr 8).toByte()
-                }
+                val bytes = WakeAudio.pcm(frame, count)
                 if (!speech && talking) {
                     speech = true
                     tail.forEach { output.write(it) }
@@ -245,7 +293,7 @@ class WakeVoiceService : Service() {
                 } else {
                     tail.addLast(bytes)
                     if (tail.size > 2) tail.removeFirst()
-                    if (samples >= WakeAudio.RATE * 4) break
+                    if (samples >= WakeAudio.RATE * 6) break
                 }
             }
         } finally {
@@ -286,8 +334,9 @@ class WakeVoiceService : Service() {
         const val IDLE = "Escuta desativada"
         const val STARTING = "Iniciando a escuta…"
         const val LISTENING = "Escutando “Consigliere”"
+        const val FOLLOW_UP = "Ouvindo a pergunta"
         const val WORKING = "Conversa por voz em andamento"
-        private val activeStates = setOf(STARTING, LISTENING, WORKING)
+        private val activeStates = setOf(STARTING, LISTENING, FOLLOW_UP, WORKING)
         private const val NOTICE_ID = 163
         private const val CHANNEL = "wake_voice"
         private const val STOP = "com.trevisolli.agendawidget.STOP_WAKE_VOICE"
@@ -311,14 +360,22 @@ class WakeVoiceService : Service() {
 
 internal object WakePhrase {
     // O vocabulário concorrente evita que frases parecidas sejam forçadas para a palavra de ativação.
-    val grammar = """["consigliere","consiglieri","considera","considerare","consiglia","consigliare","consiglio","consigli","conseguire","segue","conseguenze","tom sedie","tony blair","[unk]"]"""
+    val grammar = """["consigliere","consiglieri","consigliere [unk]","consiglieri [unk]","considera","considerare","consiglia","consigliare","consiglio","consigli","conseguire","segue","conseguenze","tom sedie","tony blair","[unk]"]"""
 
-    fun matches(result: String): Boolean = runCatching {
-        val json = JSONObject(result)
-        val words = json.optJSONArray("result") ?: return false
-        val word = words.optJSONObject(0) ?: return false
-        words.length() == 1 && isActivation(word.optString("word"), word.optDouble("conf", 0.0))
-    }.getOrDefault(false)
+    enum class Activation { WORD, QUESTION }
+
+    fun activation(result: String): Activation? = runCatching {
+        val words = JSONObject(result).optJSONArray("result") ?: return null
+        val first = words.optJSONObject(0) ?: return null
+        if (!isActivation(first.optString("word"), first.optDouble("conf", 0.0))) return null
+        val question = (1 until words.length()).any { i ->
+            val part = words.optJSONObject(i) ?: return@any false
+            val word = part.optString("word")
+            val duration = part.optDouble("end", 0.0) - part.optDouble("start", 0.0)
+            duration >= 0.15 && word.isNotBlank() && word != "consigliere" && word != "consiglieri"
+        }
+        if (question) Activation.QUESTION else Activation.WORD
+    }.getOrNull()
 
     fun isActivation(word: String, confidence: Double): Boolean =
         (word == "consigliere" || word == "consiglieri") && confidence >= 0.50

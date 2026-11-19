@@ -125,8 +125,9 @@ Para desligar: **Desconectar** no app e apague a senha em **myaccount.google.com
   estiver aberta. Diga “pode parar” ou toque em **OK** para encerrar. Em **Configurações → Personalizar → Voz**,
   você também pode ativar a resposta falada para o microfone do widget.
 - **Ativação por voz** em **Configurações → Personalizar**. Baixe o modelo local uma vez (48 MB) e ative
-  com o app aberto. Com a tela apagada, diga “Consigliere”, espere o bip e faça a pergunta. Bloqueado,
-  o celular responde a perguntas gerais. Desbloqueie para consultar dados pessoais ou criar algo. Use
+  com o app aberto. Com a tela apagada, diga “Consigliere” seguido da pergunta. Você também pode
+  dizer só “Consigliere” e esperar o bip. Depois da resposta, espere o bip para continuar sem repetir o nome.
+  Diga “tchau” para voltar à escuta da palavra de ativação. Bloqueado, o celular responde a perguntas gerais. Desbloqueie para consultar dados pessoais ou criar algo. Use
   **Desativar** na notificação para parar a escuta. Depois de reiniciar o celular, ative de novo pelo app.
   O reconhecimento da palavra usa [Vosk](https://alphacephei.com/vosk/models) (modelo pequeno de italiano, Apache 2.0).
 - **Voz personalizada do Gemini** em **Configurações → Personalizar**. Descreva a voz, toque em **Criar e ouvir prévia**

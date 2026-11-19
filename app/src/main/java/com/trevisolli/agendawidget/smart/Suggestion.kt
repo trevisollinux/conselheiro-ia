@@ -88,7 +88,7 @@ object SuggestionStore {
     @Synchronized
     fun add(context: Context, s: Suggestion): Boolean {
         val current = all(context)
-        if (current.any { it.text == s.text }) return false
+        if (current.any { it.text == s.text && it.origin == s.origin && it.date == s.date && it.time == s.time }) return false
         save(context, (listOf(s) + current).take(MAX))
         return true
     }

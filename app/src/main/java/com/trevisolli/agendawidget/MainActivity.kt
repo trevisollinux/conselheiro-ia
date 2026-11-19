@@ -126,11 +126,14 @@ import com.trevisolli.agendawidget.data.Settings
 import com.trevisolli.agendawidget.data.Snapshot
 import com.trevisolli.agendawidget.smart.AiClient
 import com.trevisolli.agendawidget.smart.AiProvider
+import com.trevisolli.agendawidget.smart.AiThinking
+import com.trevisolli.agendawidget.ui.settings.AiModelPicker
 import com.trevisolli.agendawidget.smart.NotificationWatcher
 import com.trevisolli.agendawidget.smart.SuggestionStore
 import com.trevisolli.agendawidget.widget.AgendaWidget
 import com.trevisolli.agendawidget.widget.RefreshWorker
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -190,6 +193,12 @@ class MainActivity : ComponentActivity() {
         var aiKey by remember { mutableStateOf(settings.aiKey) }
         var aiModel by remember { mutableStateOf(settings.aiModel) }
         var aiLight by remember { mutableStateOf(settings.aiLightModel) }
+        var aiThinking by remember { mutableStateOf(settings.aiThinking) }
+        var aiModels by remember(provider, aiKey) { mutableStateOf(emptyList<String>()) }
+        var aiModelStatus by remember(provider, aiKey) { mutableStateOf<String?>(null) }
+        var aiTesting by remember { mutableStateOf(false) }
+        var speakWidgetReplies by remember { mutableStateOf(settings.speakWidgetReplies) }
+
         var notifDisclosure by remember { mutableStateOf(false) }
         var showNotifLog by remember { mutableStateOf(false) }
         var aiTest by remember { mutableStateOf<String?>(null) }
@@ -271,6 +280,7 @@ class MainActivity : ComponentActivity() {
             aiKey = settings.aiKey
             aiModel = settings.aiModel
             aiLight = settings.aiLightModel
+            aiThinking = settings.aiThinking
             detect = settings.detectNotifications
             notionToken = settings.notionToken
             userName = settings.userName
@@ -298,47 +308,56 @@ class MainActivity : ComponentActivity() {
 
 
         fun saveAiAndTest() {
-            // Testar de novo (ex.: trocou para flash-lite) tira a pausa do 429.
-            AiClient.clearPause()
-            settings.useAi = useAi
-            settings.aiProvider = provider
-            settings.aiKey = aiKey
-            settings.aiModel = aiModel
-            settings.aiLightModel = aiLight
-            settings.summaryCacheKey = ""
             if (!useAi) {
+                settings.useAi = false
+                settings.summaryCacheKey = ""
                 aiTest = null
                 refresh()
                 return
             }
-            if (aiKey.isBlank()) {
+            val selectedProvider = provider
+            val key = aiKey.trim()
+            if (key.isBlank()) {
                 aiTest = "Cole a chave da API primeiro."
                 return
             }
-            aiTest = "Testando ${provider.label}…"
+            val main = aiModel.trim()
+            val light = aiLight.trim()
+            val thinking = aiThinking
+            aiTesting = true
+            aiTest = "Testando ${selectedProvider.label}…"
             scope.launch {
-                aiTest = try {
-                    val answer = withContext(Dispatchers.IO) {
-                        AiClient.complete(provider, aiKey.trim(), settings.effectiveModel, "Responda em português.", "Diga apenas: funcionando")
+                try {
+                    val (effective, selectedLight) = withContext(Dispatchers.IO) {
+                        val models = aiModels.ifEmpty {
+                            runCatching { AiClient.availableModels(selectedProvider, key) }.getOrDefault(emptyList())
+                        }
+                        val request = main.ifBlank {
+                            AiClient.recommendMain(selectedProvider, models) ?: selectedProvider.defaultModel
+                        }
+                        AiClient.clearPause()
+                        AiClient.complete(
+                            selectedProvider, key, request, "Responda em português.", "Diga apenas: funcionando",
+                            fastTimeoutMs = 45_000, thinking = thinking,
+                        )
+                        (AiClient.redirects[selectedProvider to request] ?: request) to light.ifBlank {
+                            AiClient.recommendLight(selectedProvider, models).orEmpty()
+                        }
                     }
-                    val switched = AiClient.redirects[provider]
-                    // Descobre o modelo leve (Gemini) já no teste, para mostrar qual ficou.
-                    withContext(Dispatchers.IO) {
-                        settings.geminiLiteCheckedAt = 0
-                        com.trevisolli.agendawidget.smart.LightModel.refresh(settings)
-                    }
-                    if (switched != null && switched != settings.effectiveModel) {
-                        // Guarda o modelo novo para não errar de novo.
-                        settings.aiModel = switched
-                        aiModel = switched
-                        "✅ ${provider.label} respondeu: ${answer.take(60)}\n(o modelo antigo saiu de linha; troquei para $switched)"
-                    } else {
-                        "✅ ${provider.label} respondeu: ${answer.take(60)}"
-                    } + "\nPrincipal: ${settings.effectiveModel} · Leve: ${settings.lightModel}"
+                    settings.aiProvider = selectedProvider
+                    settings.aiKey = key
+                    settings.aiModel = effective
+                    settings.aiLightModel = selectedLight
+                    settings.aiThinking = thinking
+                    settings.useAi = true
+                    settings.summaryCacheKey = ""
+                    aiTest = "✅ ${selectedProvider.label} respondeu. Principal: $effective · Leve: ${settings.lightModel}"
+                    refresh()
                 } catch (e: Exception) {
-                    "❌ ${e.message?.take(200)}"
+                    aiTest = "❌ ${AiClient.friendly(e).take(200)}"
+                } finally {
+                    aiTesting = false
                 }
-                refresh()
             }
         }
 
@@ -578,38 +597,62 @@ class MainActivity : ComponentActivity() {
                 } else {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         AiProvider.entries.forEach { p ->
-                            FilterChip(selected = provider == p, onClick = { provider = p }, label = { Text(p.label) })
+                            FilterChip(selected = provider == p, enabled = !aiTesting, onClick = {
+                                if (provider != p) {
+                                    provider = p
+                                    aiKey = settings.keyFor(p)
+                                    aiModel = settings.modelFor(p)
+                                    aiLight = settings.lightModelFor(p)
+                                    aiThinking = settings.thinkingFor(p)
+                                    aiTest = null
+                                }
+                            }, label = { Text(p.label) })
                         }
                     }
                     OutlinedTextField(
                         value = aiKey,
-                        onValueChange = { aiKey = it },
+                        onValueChange = {
+                            aiKey = it
+                            aiTest = null
+                        },
+                        enabled = !aiTesting,
                         label = { Text("Chave da API (${provider.label})") },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text("Onde pegar: ${provider.keyHint}", style = MaterialTheme.typography.bodySmall)
-                    OutlinedTextField(
-                        value = aiModel,
-                        onValueChange = { aiModel = it },
-                        label = { Text("Modelo principal (áudio e prints)") },
-                        placeholder = { Text(provider.defaultModel) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = aiLight,
-                        onValueChange = { aiLight = it },
-                        label = { Text("Modelo leve (conversa, resumo, notificações)") },
-                        placeholder = { Text(if (provider == settings.aiProvider) settings.lightModel else "automático") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text(
-                        "Vazio = automático: no Gemini, o Flash-Lite mais novo da sua conta (cota bem maior); no Claude, o Haiku.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    LaunchedEffect(provider, aiKey) {
+                        val key = aiKey.trim()
+                        val selectedProvider = provider
+                        if (key.length >= 20) {
+                            delay(500)
+                            aiModelStatus = "Buscando modelos em ${selectedProvider.label}…"
+                            try {
+                                aiModels = withContext(Dispatchers.IO) { AiClient.availableModels(selectedProvider, key) }
+                                aiModelStatus = if (aiModels.isEmpty()) "Nenhum modelo compatível na lista da chave." else null
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                aiModelStatus = "Não consegui listar os modelos. ${AiClient.friendly(e).take(100)}"
+                            }
+                        }
+                    }
+                    aiModelStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    val suggestedMain = AiClient.recommendMain(provider, aiModels)
+                    val suggestedLight = AiClient.recommendLight(provider, aiModels)
+                    AiModelPicker("Modelo principal (conversa, áudio e fotos)", aiModel, suggestedMain, aiModels) { aiModel = it }
+                    AiModelPicker("Modelo leve (comandos, resumo e notificações)", aiLight, suggestedLight, aiModels) { aiLight = it }
+                    val selectedModel = aiModel.ifBlank { suggestedMain ?: provider.defaultModel }
+                    if (AiClient.supportsThinking(provider, selectedModel)) {
+                        Text("Raciocínio do modelo principal", style = MaterialTheme.typography.labelLarge)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AiThinking.entries.forEach { level ->
+                                FilterChip(selected = aiThinking == level, onClick = { aiThinking = level },
+                                    label = { Text(level.label) })
+                            }
+                        }
+                    }
                     Text(
                         "Usa a sua chave; o uso é cobrado na sua conta da ${provider.label}.",
                         style = MaterialTheme.typography.bodySmall,
@@ -627,10 +670,19 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                Button(onClick = { saveAiAndTest() }) { Text(if (useAi) "Salvar e testar" else "Salvar") }
+                Button(onClick = { saveAiAndTest() }, enabled = !aiTesting) { Text(if (useAi) "Salvar e testar" else "Salvar") }
                 aiTest?.let { Text(it) }
             }
             GroupTitle("Personalizar")
+            Section("Voz") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Falar as respostas do microfone do widget", modifier = Modifier.weight(1f))
+                    Switch(checked = speakWidgetReplies, onCheckedChange = {
+                        settings.speakWidgetReplies = it
+                        speakWidgetReplies = it
+                    })
+                }
+            }
             Section("Tema do app") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AppTheme.entries.forEach { t ->
@@ -916,7 +968,7 @@ class MainActivity : ComponentActivity() {
                             Text(
                                 "Para sugerir compromissos, o Consigliere lê o texto das notificações que chegam " +
                                     "(WhatsApp, Gmail, SMS…). A leitura acontece no celular. Se \"Minha IA\" estiver ligada, " +
-                                    "só as mensagens que parecem ter data e hora são enviadas ao provedor de IA que você " +
+                                    "trechos que parecem um compromisso ou pedido podem ser enviados ao provedor de IA que você " +
                                     "escolheu, com a sua chave. Nada é guardado em servidores nossos. Você pode desligar quando quiser.",
                             )
                         },
@@ -957,11 +1009,19 @@ class MainActivity : ComponentActivity() {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+                if (detect || com.trevisolli.agendawidget.smart.MailSource.configured(this@MainActivity)) {
                     TextButton(onClick = { showNotifLog = !showNotifLog }) {
                         Text(if (showNotifLog) "Ocultar últimas leituras" else "Ver últimas leituras")
                     }
                     if (showNotifLog) {
-                        val log = remember(resumeCount) { com.trevisolli.agendawidget.smart.NotifLog.all(this@MainActivity) }
+                        var log by remember { mutableStateOf(emptyList<com.trevisolli.agendawidget.smart.NotifLog.Entry>()) }
+                        LaunchedEffect(Unit) {
+                            while (true) {
+                                log = withContext(Dispatchers.IO) { com.trevisolli.agendawidget.smart.NotifLog.all(this@MainActivity) }
+                                delay(2000)
+                            }
+                        }
                         if (log.isEmpty()) Text("Nenhuma mensagem lida ainda.", style = MaterialTheme.typography.bodySmall)
                         val fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm")
                         log.forEach { e ->
@@ -1169,6 +1229,11 @@ class MainActivity : ComponentActivity() {
                 onOpen = { detail = it },
             )
 
+            OutlinedButton(
+                onClick = { startActivity(VoiceActivity.conversationIntent(this@MainActivity)) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("🎤 Conversar por voz") }
+
             androidx.compose.material3.OutlinedButton(
                 onClick = { startActivity(Intent(this@MainActivity, MeetingActivity::class.java)) },
                 modifier = Modifier.fillMaxWidth(),
@@ -1190,8 +1255,12 @@ class MainActivity : ComponentActivity() {
                                         this@MainActivity,
                                         com.trevisolli.agendawidget.smart.QuickAction(com.trevisolli.agendawidget.smart.QuickAction.COPY, "", b.code),
                                     )
-                                }) { Text(if (b.kind == "pix") "Copiar PIX" else "Copiar") }
+                                }) { Text(if (com.trevisolli.agendawidget.smart.Bills.isPix(b)) "Copiar Pix" else "Copiar") }
                             }
+                            TextButton(onClick = {
+                                startActivity(Intent(this@MainActivity, ConfirmActivity::class.java)
+                                    .putExtra(ConfirmActivity.EXTRA_BILL_ID, b.id))
+                            }) { Text("Lembrar") }
                             IconButton(onClick = {
                                 com.trevisolli.agendawidget.smart.Bills.remove(this@MainActivity, b.id)
                                 suggestionsVersion++

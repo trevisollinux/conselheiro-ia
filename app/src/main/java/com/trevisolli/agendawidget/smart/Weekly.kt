@@ -37,9 +37,10 @@ object Weekly {
         }.trim()
         val s = Settings(context)
         if (!s.aiLightReady) return rules
+        val provider = s.aiProvider
         return runCatching {
             AiClient.complete(
-                s.aiProvider, s.aiKey, s.lightModel,
+                provider, s.keyFor(provider), s.effectiveLightModelFor(provider),
                 "Você é o Consigliere, conselheiro pessoal. Escreva em português do Brasil uma revisão da semana que vem: " +
                     "até 6 linhas curtas, começando pelo que pede preparo (prazos, contas, aniversários). Sem markdown.",
                 rules,

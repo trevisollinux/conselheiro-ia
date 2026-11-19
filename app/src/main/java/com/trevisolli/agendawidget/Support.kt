@@ -28,6 +28,6 @@ object Support {
     fun report(context: Context, answer: String) = contact(
         context,
         "Consigliere: denúncia de resposta da IA",
-        "Conte o que houve de errado (opcional):\n\n\n--- Resposta denunciada ---\n$answer\n\nVersão ${BuildConfig.VERSION_NAME}",
+        "Conte o que houve de errado (opcional):\n\n\n--- Resposta denunciada ---\n$answer\n\nVersão ${BuildConfig.VERSION_NAME} (build ${BuildConfig.BUILD_NUMBER})",
     )
 }

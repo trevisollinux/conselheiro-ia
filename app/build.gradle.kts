@@ -73,6 +73,7 @@ android {
 }
 
 dependencies {
+    implementation("com.alphacephei:vosk-android:0.3.75")
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
     implementation("androidx.compose.material3:material3")

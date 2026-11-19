@@ -122,6 +122,14 @@ Para desligar: **Desconectar** no app e apague a senha em **myaccount.google.com
 - **Conversar por voz** na tela **Hoje** fala a resposta em português e volta a ouvir enquanto a tela da conversa
   estiver aberta. Diga “pode parar” ou toque em **OK** para encerrar. Em **Configurações → Personalizar → Voz**,
   você também pode ativar a resposta falada para o microfone do widget.
+- **Ativação por voz** em **Configurações → Personalizar**. Baixe o modelo local uma vez (48 MB) e ative
+  com o app aberto. Com a tela apagada, diga “Consigliere”, espere o bip e faça a pergunta. Bloqueado,
+  o celular responde a perguntas gerais. Desbloqueie para consultar dados pessoais ou criar algo. Use
+  **Desativar** na notificação para parar a escuta. Depois de reiniciar o celular, ative de novo pelo app.
+  O reconhecimento da palavra usa [Vosk](https://alphacephei.com/vosk/models) (modelo pequeno de italiano, Apache 2.0).
+- **Voz feminina do Gemini** em **Configurações → Personalizar**. **Criar e ouvir prévia** gera uma voz
+  personalizada em pt-BR na sua conta Gemini. A síntese de cada resposta usa a sua chave e pode ter custo.
+  Você pode voltar à voz do Android desligando **Usar voz feminina do Gemini**.
 - **Foto**: ➕ na conversa → **Tirar foto** ou **Escolher da galeria** (lista escrita à mão, convite, boleto…).
   Compartilhar uma imagem com o app também funciona (**Pedir ao Consigliere**).
 - Exemplos: "dentista quinta 15h", "lista de compras: leite, pão e ovos", "dar remédio todo dia às 8h",

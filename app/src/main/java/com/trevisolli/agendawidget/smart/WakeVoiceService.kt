@@ -180,8 +180,11 @@ class WakeVoiceService : Service() {
             result.actions.isNotEmpty() -> "Abra o Consigliere para conferir e confirmar a ação."
             else -> result.text
         }
-        val delivered = GeminiVoice.speakIfEnabled(this, text) { protected || !deviceLocked() }
-        if (!delivered) say(if (!protected && deviceLocked()) "Desbloqueie o celular para conferir a resposta." else text)
+        if (GeminiVoice.isConfigured(this)) {
+            GeminiVoice.speak(this, text) { protected || !deviceLocked() }
+        } else {
+            say(if (!protected && deviceLocked()) "Desbloqueie o celular para conferir a resposta." else text)
+        }
     }
 
     private suspend fun cue() {

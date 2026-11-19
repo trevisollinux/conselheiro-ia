@@ -280,9 +280,11 @@ class VoiceActivity : ComponentActivity() {
         speechFailed = false
         replyJob?.cancel()
         replyJob = lifecycleScope.launch {
-            if (customVoice && GeminiVoice.speakIfEnabled(this@VoiceActivity, text) { !isFinishing }) {
+            if (customVoice && GeminiVoice.isConfigured(this@VoiceActivity)) {
+                val delivered = GeminiVoice.speak(this@VoiceActivity, text) { !isFinishing }
                 speaking = false
-                done(true)
+                speechFailed = !delivered
+                done(delivered)
                 return@launch
             }
             val voice = spoken ?: SpokenReply(this@VoiceActivity).also { spoken = it }
@@ -416,8 +418,11 @@ class VoiceActivity : ComponentActivity() {
                             Text(a?.text ?: "", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.fillMaxWidth())
                             if (speaking) Text("Falando…", style = MaterialTheme.typography.bodySmall)
                             if (speechFailed) {
-                                Text("Voz em português indisponível. Ative português (Brasil) em Texto para fala no Android.",
-                                    style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    if (GeminiVoice.isConfigured(this@VoiceActivity)) "Não consegui gerar a voz carioca. Toque em Ouvir novamente."
+                                    else "Voz em português indisponível. Ative português (Brasil) em Texto para fala no Android.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
                             }
                             if (a != null && !speaking && (conversation || Settings(this@VoiceActivity).speakWidgetReplies)) {
                                 TextButton(onClick = { speak(a.text) {} }) { Text("Ouvir novamente") }

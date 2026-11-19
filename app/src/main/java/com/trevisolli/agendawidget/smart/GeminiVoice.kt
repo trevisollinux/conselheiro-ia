@@ -30,28 +30,24 @@ internal object GeminiVoice {
     private fun voicePreference(key: String): String {
         val fingerprint = MessageDigest.getInstance("SHA-256").digest(key.toByteArray())
             .take(12).joinToString("") { "%02x".format(it) }
-        return "female_gemini_voice_$fingerprint"
+        return "carioca_voice_$fingerprint"
     }
 
     fun voiceId(context: Context, key: String): String =
         settings(context).getString(voicePreference(key), "").orEmpty()
-    fun enabled(context: Context) = settings(context).getBoolean("female_gemini_voice_enabled", false)
-    fun setEnabled(context: Context, enabled: Boolean) =
-        settings(context).edit().putBoolean("female_gemini_voice_enabled", enabled).apply()
-
     suspend fun create(context: Context, key: String): Design = withContext(Dispatchers.IO) {
-        val name = "Consigliere — Voz feminina"
+        val name = "Consigliere — Carioca e atrevida"
         val voice = JSONObject().put("model", MODEL).put("type", "prompted")
             .put("display_name", name).put("gender", "female").put("language_code", "pt-BR")
             .put("prompted", JSONObject().put(
                 "input",
-                "Voz de uma mulher adulta que fala português brasileiro. Clara, natural e conversacional, com ritmo tranquilo. " +
-                    "Sem caracterização regional marcada.",
+                "Voz de uma mulher adulta do Rio de Janeiro, em português brasileiro nativo, com sotaque carioca natural. " +
+                    "Fala descontraída, clara, brincalhona e ligeiramente atrevida. Ritmo de conversa, sem exagerar o sotaque.",
             ))
         val result = post("voices", key, JSONObject().put("store", true).put("voice", voice), 45_000)
         val id = result.optString("id").takeIf { it.startsWith("voice_") }
             ?: throw IOException("O Gemini não devolveu o identificador da voz")
-        settings(context).edit().putString(voicePreference(key), id).putBoolean("female_gemini_voice_enabled", true).apply()
+        settings(context).edit().putString(voicePreference(key), id).apply()
         val sample = result.optJSONObject("sample_audio")?.optString("data")?.let { runCatching { decode(it) }.getOrNull() }
         Design(id, sample)
     }
@@ -77,8 +73,14 @@ internal object GeminiVoice {
         throw IOException("O Gemini não devolveu áudio")
     }
 
-    suspend fun speakIfEnabled(context: Context, text: String, allowPlayback: () -> Boolean = { true }): Boolean {
-        if (!enabled(context)) return false
+    fun isConfigured(context: Context): Boolean {
+        val settings = Settings(context)
+        val key = settings.keyFor(AiProvider.GEMINI)
+        return settings.useAi && settings.aiProvider == AiProvider.GEMINI &&
+            key.isNotBlank() && voiceId(context, key).isNotBlank()
+    }
+
+    suspend fun speak(context: Context, text: String, allowPlayback: () -> Boolean = { true }): Boolean {
         val settings = Settings(context)
         if (!settings.useAi || settings.aiProvider != AiProvider.GEMINI) return false
         val key = settings.keyFor(AiProvider.GEMINI)
@@ -89,7 +91,7 @@ internal object GeminiVoice {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            FailLog.add(context, "Voz feminina do Gemini", AiClient.friendly(e))
+            FailLog.add(context, "Voz carioca", AiClient.friendly(e))
             false
         }
     }

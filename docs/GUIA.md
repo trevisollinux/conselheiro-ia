@@ -119,6 +119,8 @@ Para desligar: **Desconectar** no app e apague a senha em **myaccount.google.com
 - **Texto**: aba Conversa ou barra do widget.
 - **Voz**: 🎤 no widget, na barra ou na conversa. Usa o reconhecimento de voz do celular; se não houver, grava o
   áudio para a IA.
+- **Áudio no chat**: segure o microfone enquanto fala e solte para transcrever a gravação e responder no chat.
+  Arraste para cima para começar uma conversa falada ou para a esquerda para cancelar.
 - **Conversar por voz** na tela **Hoje** fala a resposta em português e volta a ouvir enquanto a tela da conversa
   estiver aberta. Diga “pode parar” ou toque em **OK** para encerrar. Em **Configurações → Personalizar → Voz**,
   você também pode ativar a resposta falada para o microfone do widget.
@@ -127,9 +129,8 @@ Para desligar: **Desconectar** no app e apague a senha em **myaccount.google.com
   o celular responde a perguntas gerais. Desbloqueie para consultar dados pessoais ou criar algo. Use
   **Desativar** na notificação para parar a escuta. Depois de reiniciar o celular, ative de novo pelo app.
   O reconhecimento da palavra usa [Vosk](https://alphacephei.com/vosk/models) (modelo pequeno de italiano, Apache 2.0).
-- **Voz feminina do Gemini** em **Configurações → Personalizar**. **Criar e ouvir prévia** gera uma voz
-  personalizada em pt-BR na sua conta Gemini. A síntese de cada resposta usa a sua chave e pode ter custo.
-  Você pode voltar à voz do Android desligando **Usar voz feminina do Gemini**.
+- **Carioca e atrevida** em **Configurações → Personalizar**. **Criar e ouvir prévia** gera a voz diretamente
+  na sua conta Gemini para usá-la nas respostas. A síntese usa a sua chave e pode ter custo.
 - **Foto**: ➕ na conversa → **Tirar foto** ou **Escolher da galeria** (lista escrita à mão, convite, boleto…).
   Compartilhar uma imagem com o app também funciona (**Pedir ao Consigliere**).
 - Exemplos: "dentista quinta 15h", "lista de compras: leite, pão e ovos", "dar remédio todo dia às 8h",

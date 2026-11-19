@@ -52,6 +52,51 @@ class ParsersTest {
         assertTrue(Bills.find("Oi, tudo bem? Te ligo amanhã às 10h", "João").isEmpty())
     }
 
+    @Test fun pixDaCrecheSemVencimento() {
+        val bill = Bills.find("Mensagem da escola\nPagar creche\nFicou R\$ 350,00. Pix: financeiro@example.test", "Tesouraria", today).single()
+        assertEquals("Pagar creche", bill.title)
+        assertEquals("R$ 350,00", bill.value)
+        assertEquals("financeiro@example.test", bill.code)
+        assertEquals("pix_key", bill.kind)
+        assertNull(bill.due)
+    }
+
+    @Test fun cobrançaSemCodigoComPrazoRelativo() {
+        val bill = Bills.find("Pagar creche\nValor R\$ 350. Pagar até amanhã.", "Tesouraria", today).single()
+        assertEquals("payment", bill.kind)
+        assertTrue(bill.code.isBlank())
+        assertEquals(today.plusDays(1), bill.due)
+    }
+
+    @Test fun comprovanteEChaveSemPedidoNaoCriamConta() {
+        assertTrue(Bills.find("Comprovante: pagamento já realizado de R\$ 350,00. Pix: e@example.test", "Creche").isEmpty())
+        assertTrue(Bills.find("Minha chave Pix: e@example.test", "Amigo").isEmpty())
+        assertTrue(Bills.find("Certo, já paguei.\n> Pagar creche R\$ 350,00", "Amigo").isEmpty())
+        assertTrue(Bills.find("Cobrança cancelada. Valor R\$ 350", "Creche").isEmpty())
+    }
+
+    @Test fun pixCopiaEColaPreservaEspacos() {
+        val payload = "00020126580014br.gov.bcb.pix0136TESTEDEFORMATO12345678901234567890520400005912ESCOLA TESTE6304ABCD"
+        assertEquals(payload, Bills.find("Pix copia e cola: $payload", "Creche").single().code)
+    }
+
+    @Test fun whatsappJuntaAcaoComHorarioSemJuntarConversasSoltas() {
+        val combined = WhatsAppContext.combine("Consegue buscar a Ana?", "Amanhã às 17h", today)!!
+        val parsed = RuleParser.parse(combined, today)
+        assertTrue(RuleParser.isStrong(parsed))
+        assertTrue(parsed.title.contains("Ana"))
+        assertEquals(today.plusDays(1), parsed.date)
+        assertEquals(LocalTime.of(17, 0), parsed.time)
+        assertNull(WhatsAppContext.combine("Consegue buscar a Ana?", "Muito obrigado", today))
+        assertNull(WhatsAppContext.combine("Consulta amanhã às 15h", "Amanhã às 17h", today))
+    }
+
+    @Test fun whatsappCapturaAPendenciaEPixEmMensagensSeparadas() {
+        val combined = WhatsAppContext.combinePayment("Pagar creche", "R\$ 350,00. Pix: escola@example.test")!!
+        assertEquals("escola@example.test", Bills.find(combined, "Creche").single().code)
+        assertNull(WhatsAppContext.combinePayment("Pagar creche R\$ 350,00", "Comprovante R\$ 350,00"))
+    }
+
     @Test fun codigoDeRastreio() {
         assertEquals(listOf("AB123456789BR"), Parcels.find("Seu pedido foi postado: ab 123 456 789 br"))
         assertTrue(Parcels.find("pedido 123456").isEmpty())
@@ -81,8 +126,28 @@ class AudioImportTest {
 
 class AiUsageTest {
     @Test fun precoPorFamilia() {
-        assertEquals(0.10 to 0.40, AiUsage.price("gemini-3.5-flash-lite"))
-        assertEquals(0.30 to 2.50, AiUsage.price("gemini-3.8-flash"))
+        assertEquals(0.30 to 2.50, AiUsage.price("gemini-3.5-flash-lite"))
+        assertEquals(0.75 to 3.75, AiUsage.price("gemini-3.8-flash", LocalDate.of(2026, 12, 31)))
+        assertEquals(1.50 to 7.50, AiUsage.price("gemini-3.8-flash", LocalDate.of(2027, 1, 1)))
+        assertEquals(2.0 to 10.0, AiUsage.price("gemini-4-carbon", LocalDate.of(2026, 11, 30)))
+        assertEquals(4.0 to 20.0, AiUsage.price("gemini-4-carbon", LocalDate.of(2026, 12, 1)))
         assertEquals(1.0 to 5.0, AiUsage.price("claude-haiku-5-5"))
+    }
+}
+
+
+class ModelSelectionTest {
+    @Test fun usaModelosQueAChaveListou() {
+        val gemini = listOf("gemini-4-carbon", "gemini-4-hydrogen", "gemini-3.5-flash-lite")
+        assertEquals("gemini-4-hydrogen", AiClient.recommendMain(AiProvider.GEMINI, gemini))
+        assertEquals("gemini-3.5-flash-lite", AiClient.recommendLight(AiProvider.GEMINI, gemini))
+        assertEquals("gpt-5-mini", AiClient.recommendLight(AiProvider.OPENAI, listOf("gpt-5", "gpt-5-mini")))
+        assertEquals("claude-haiku-5-5", AiClient.recommendLight(AiProvider.CLAUDE, listOf("claude-opus-5-5", "claude-haiku-5-5")))
+    }
+
+    @Test fun versoesDoLiteSaoComparadasPorComponente() {
+        assertEquals("gemini-3.10-flash-lite", AiClient.recommendGeminiLite(listOf(
+            "gemini-3.8-flash-lite", "gemini-3.10-flash-lite", "gemini-4.0-flash-lite-preview",
+        )))
     }
 }

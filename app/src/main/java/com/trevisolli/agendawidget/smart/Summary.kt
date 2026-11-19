@@ -65,7 +65,8 @@ object Summary {
         val today = LocalDate.now(zone)
         val relevant = items.filter { it.overdue || !dateOf(it, zone).isAfter(today.plusDays(1)) }.take(25)
         // A IA só refaz o resumo quando a lista muda; tempo/conselho novo, no máximo 1x por hora.
-        val itemsKey = "v2" + settings.aiProvider.name + today + relevant.joinToString("|") { it.title + it.startMillis + it.overdue }.hashCode()
+        val provider = settings.aiProvider
+        val itemsKey = "v2" + provider.name + today + relevant.joinToString("|") { it.title + it.startMillis + it.overdue }.hashCode()
         val key = itemsKey + "#" + (advice ?: "") + weather?.mood
         val cached = settings.summaryCacheText.isNotBlank()
         val sameItems = settings.summaryCacheKey.substringBefore("#") == itemsKey
@@ -80,7 +81,7 @@ object Summary {
             (weather?.let { "\n" + WeatherSource.forecastLine(it) } ?: "") +
             (advice?.let { "\nConselho de tempo já calculado: $it" } ?: "")
         return try {
-            val text = AiClient.complete(settings.aiProvider, settings.aiKey, settings.lightModel, SUMMARY_SYSTEM, prompt)
+            val text = AiClient.complete(provider, settings.keyFor(provider), settings.effectiveLightModelFor(provider), SUMMARY_SYSTEM, prompt)
                 .lines().firstOrNull { it.isNotBlank() }?.trim()?.take(200)
             if (text.isNullOrBlank()) return ruleText
             settings.summaryCacheKey = key

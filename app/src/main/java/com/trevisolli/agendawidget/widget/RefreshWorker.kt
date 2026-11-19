@@ -25,8 +25,6 @@ class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             .onFailure { com.trevisolli.agendawidget.smart.FailLog.add(applicationContext, "Aniversários", it) }
         runCatching { com.trevisolli.agendawidget.smart.Weekly.maybeNotify(applicationContext) }
             .onFailure { com.trevisolli.agendawidget.smart.FailLog.add(applicationContext, "Revisão da semana", it) }
-        // E-mail pelo IMAP (se configurado): lê a caixa de entrada inteira, não só as notificações.
-        runCatching { com.trevisolli.agendawidget.smart.MailSource.poll(applicationContext) }
         // Áudio esperando a IA: garante uma nova tentativa a cada atualização.
         if (com.trevisolli.agendawidget.smart.VoiceQueue.pending(applicationContext).isNotEmpty()) {
             com.trevisolli.agendawidget.smart.VoiceQueue.schedule(applicationContext)
@@ -40,6 +38,7 @@ class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             WorkManager.getInstance(context)
                 .enqueueUniquePeriodicWork("agenda-periodic", ExistingPeriodicWorkPolicy.UPDATE, request)
             watchCalendar(context)
+            com.trevisolli.agendawidget.smart.MailWorker.schedule(context)
         }
 
         fun runNow(context: Context) {

@@ -72,9 +72,10 @@ object Briefing {
         } + (weather?.let { "\n🌤 ${it.label}" } ?: "") + (advice?.let { "\n$it" } ?: "") +
             InboxStore.countsLine(inbox)?.let { "\n$it" }.orEmpty()
         if (!settings.aiLightReady) return ruleText
+        val provider = settings.aiProvider
         return try {
             val text = AiClient.complete(
-                settings.aiProvider, settings.aiKey, settings.lightModel,
+                provider, settings.keyFor(provider), settings.effectiveLightModelFor(provider),
                 SYSTEM,
                 aiPrompt(slot, snapshot.items, completed, today, zone) +
                     (weather?.let { WeatherSource.forecastLine(it) + "\n" } ?: "") +

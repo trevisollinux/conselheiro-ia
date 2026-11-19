@@ -15,9 +15,18 @@ object AiUsage {
     @Volatile internal var prefs: SharedPreferences? = null
 
     /** US$ por 1 milhão de tokens (entrada, saída). Aproximado; atualize se o provedor mudar a tabela. */
-    internal fun price(model: String): Pair<Double, Double> {
+    internal fun price(model: String, day: LocalDate = LocalDate.now(java.time.ZoneOffset.UTC)): Pair<Double, Double> {
         val m = model.lowercase()
         return when {
+            m == "gemini-4-carbon" || m == "gemini-4-argon" -> if (day.isBefore(LocalDate.of(2026, 12, 1))) {
+                2.0 to 10.0
+            } else 4.0 to 20.0
+            m == "gemini-4-neon" -> 3.0 to 15.0
+            m == "gemini-4-hydrogen" -> 1.50 to 7.50
+            m == "gemini-3.5-flash-lite" -> 0.30 to 2.50
+            m == "gemini-3.8-flash" -> if (day.isBefore(LocalDate.of(2027, 1, 1))) {
+                0.75 to 3.75
+            } else 1.50 to 7.50
             "flash-lite" in m || "flash-8b" in m -> 0.10 to 0.40
             "flash" in m -> 0.30 to 2.50
             "gemini" in m && "pro" in m -> 1.25 to 10.0

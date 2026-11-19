@@ -48,7 +48,9 @@ internal fun MailSettings(onChanged: () -> Unit) {
                     status = "Verificando…"
                     scope.launch {
                         status = withContext(Dispatchers.IO) {
-                            runCatching { MailSource.poll(context, force = true); "✅ Caixa verificada" }
+                            runCatching {
+                                MailSource.poll(context)?.let { "✅ $it e-mails novos analisados" } ?: "Leitura em andamento"
+                            }
                                 .getOrElse { "❌ ${it.message?.take(100)}" }
                         }
                         onChanged()
@@ -80,8 +82,8 @@ internal fun MailSettings(onChanged: () -> Unit) {
                     if (err == null) {
                         MailSource.save(context, address, password)
                         password = ""
-                        status = "✅ Conectado. Vou olhar os e-mails a cada atualização."
-                        withContext(Dispatchers.IO) { runCatching { MailSource.poll(context, force = true) } }
+                        status = "✅ Conectado. Vou verificar em segundo plano."
+                        withContext(Dispatchers.IO) { runCatching { MailSource.poll(context) } }
                         onChanged()
                     } else {
                         status = "❌ $err"

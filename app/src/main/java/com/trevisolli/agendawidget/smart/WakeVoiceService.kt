@@ -124,11 +124,13 @@ class WakeVoiceService : Service() {
             var retries = 0
             while (hasMicrophone(this)) {
                 try {
-                    listenWithMicrophone(model) { retries = 0 }
-                } catch (e: MicrophoneInterrupted) {
+                    val source = if (retries >= 2) MediaRecorder.AudioSource.MIC else MediaRecorder.AudioSource.VOICE_RECOGNITION
+                    listenWithMicrophone(model, source) { retries = 0 }
+                } catch (_: MicrophoneInterrupted) {
                     currentCoroutineContext().ensureActive()
-                    if (++retries > 5) throw e
+                    retries = (retries + 1).coerceAtMost(5)
                     state.value = WAITING_FOR_MIC
+                    inputStatus.value = "Reconectando ao microfone…"
                     delay(350L * retries)
                 }
             }
@@ -137,16 +139,16 @@ class WakeVoiceService : Service() {
     }
 
     @SuppressLint("MissingPermission")
-    private suspend fun listenWithMicrophone(model: Model, onAudio: () -> Unit) {
+    private suspend fun listenWithMicrophone(model: Model, source: Int, onSignal: () -> Unit) {
         val minimum = AudioRecord.getMinBufferSize(WakeAudio.RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         check(minimum > 0) { "Microfone sem suporte ao formato de voz" }
         val audio = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_RECOGNITION, WakeAudio.RATE, AudioFormat.CHANNEL_IN_MONO,
+            source, WakeAudio.RATE, AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT, maxOf(minimum, WakeAudio.FRAME * 4),
         )
         recorder = audio
         try {
-            check(audio.state == AudioRecord.STATE_INITIALIZED) { "Microfone indisponível" }
+            if (audio.state != AudioRecord.STATE_INITIALIZED) throw MicrophoneInterrupted()
             Recognizer(model, WakeAudio.RATE.toFloat(), WakePhrase.grammar).use { recognition ->
                 recognition.setWords(true)
                 recognition.setEndpointerDelays(5.0f, 0.45f, 15.0f)
@@ -155,28 +157,40 @@ class WakeVoiceService : Service() {
                 val recent = WakeBuffer()
                 startRecording(audio)
                 state.value = LISTENING
+                var health = WakeInputHealth(SystemClock.elapsedRealtime())
                 var nextCheck = 0L
                 var silenced = false
+                var signal = false
                 while (true) {
                     context.ensureActive()
                     val count = read(audio, frame)
                     val now = SystemClock.elapsedRealtime()
+                    if (!signal && (0 until count).any { frame[it] != 0.toShort() }) signal = true
                     if (now >= nextCheck) {
                         nextCheck = now + 250
-                        val muted = micSilenced(audio)
+                        val inputDevice = audio.routedDevice
+                        val capture = health.update(now, inputDevice?.id, micSilenced(audio), signal)
+                        if (capture == WakeInputHealth.Result.REOPEN) throw MicrophoneInterrupted()
+                        val muted = capture == WakeInputHealth.Result.WAITING
                         if (muted != silenced) {
                             silenced = muted
                             recent.clear()
                             recognition.reset()
                             state.value = if (muted) WAITING_FOR_MIC else LISTENING
                         }
+                        inputStatus.value = when {
+                            silenced -> "O Android silenciou este microfone. Aguardando liberação."
+                            signal -> "Recebendo áudio" + (inputDevice?.productName?.toString()?.let { " · $it" } ?: "")
+                            else -> "Aguardando sinal do microfone"
+                        }
+                        if (!silenced && signal) onSignal()
+                        signal = false
                     }
                     if (count == 0) {
                         delay(20)
                         continue
                     }
                     if (silenced) continue
-                    onAudio()
                     recent.add(frame, count)
                     if (!recognition.acceptWaveForm(frame, count)) continue
                     val activation = WakePhrase.activation(recognition.result)
@@ -191,6 +205,9 @@ class WakeVoiceService : Service() {
                     context.ensureActive()
                     recognition.reset()
                     startRecording(audio)
+                    health = WakeInputHealth(SystemClock.elapsedRealtime())
+                    nextCheck = 0L
+                    signal = false
                     state.value = LISTENING
                 }
             }
@@ -215,7 +232,9 @@ class WakeVoiceService : Service() {
                 val outcome = GeminiLiveConversation.run(
                     context = this, key = liveKey, audio = audio, initialPcm = firstQuestion,
                     personal = !locked, allowed = allowed, allowPersonal = { !locked && !deviceLocked() },
-                    beginRecording = ::startRecording, read = ::read,
+                    beginRecording = ::startRecording, read = { device, buffer ->
+                        read(device, buffer, AudioRecord.READ_BLOCKING)
+                    },
                     onReady = {
                         state.value = LIVE_LISTENING
                         lastTiming.value = null
@@ -354,11 +373,16 @@ class WakeVoiceService : Service() {
         var noise = 35.0
         val context = currentCoroutineContext()
         startRecording(audio)
+        val listeningSince = SystemClock.elapsedRealtime()
         try {
             while (samples < WakeAudio.RATE * 15) {
                 context.ensureActive()
                 val count = read(audio, frame)
-                if (count == 0) continue
+                if (count == 0) {
+                    delay(20)
+                    if (SystemClock.elapsedRealtime() - listeningSince >= 15_500L) break
+                    continue
+                }
                 if (samples % WakeAudio.RATE < count && micSilenced(audio)) return null
                 samples += count
                 val talking = WakeAudio.isSpeech(frame, count, noise)
@@ -394,8 +418,8 @@ class WakeVoiceService : Service() {
         if (audio.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw MicrophoneInterrupted()
     }
 
-    private fun read(audio: AudioRecord, frame: ShortArray): Int {
-        val count = audio.read(frame, 0, frame.size)
+    private fun read(audio: AudioRecord, frame: ShortArray, mode: Int = AudioRecord.READ_NON_BLOCKING): Int {
+        val count = audio.read(frame, 0, frame.size, mode)
         if (count == AudioRecord.ERROR_DEAD_OBJECT || count == AudioRecord.ERROR_INVALID_OPERATION) throw MicrophoneInterrupted()
         if (count < 0) throw IOException("Falha na leitura do microfone ($count)")
         return count
@@ -422,6 +446,7 @@ class WakeVoiceService : Service() {
         if (::voice.isInitialized) voice.close()
         wakeLock?.takeIf { it.isHeld }?.release()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        inputStatus.value = null
         if (state.value in activeStates) state.value = IDLE
         super.onDestroy()
     }
@@ -433,6 +458,8 @@ class WakeVoiceService : Service() {
         val timing = lastTiming.asStateFlow()
         private val lastActivation = MutableStateFlow<Long?>(null)
         val activationTime = lastActivation.asStateFlow()
+        private val inputStatus = MutableStateFlow<String?>(null)
+        val microphoneStatus = inputStatus.asStateFlow()
 
         const val IDLE = "Escuta desativada"
         const val STARTING = "Iniciando a escuta…"

@@ -54,13 +54,19 @@ internal object GeminiVoice {
         Design(id, sample)
     }
 
-    suspend fun synthesize(key: String, id: String, text: String): ByteArray = withContext(Dispatchers.IO) {
+    private fun speechRequest(id: String, text: String, stream: Boolean): JSONObject {
         val line = text.replace(Regex("https?://\\S+"), "link na tela").replace(Regex("[*_#`]+"), "").take(1600)
         val content = JSONObject().put("type", "text").put("text", line)
-        val body = JSONObject().put("model", MODEL).put("store", false)
+        return JSONObject().put("model", MODEL).put("store", false)
             .put("input", JSONArray().put(JSONObject().put("type", "user_input").put("content", JSONArray().put(content))))
-            .put("response_format", JSONObject().put("type", "audio").put("mime_type", "audio/wav"))
+            .put("stream", stream)
+            .put("response_format", JSONObject().put("type", "audio")
+                .put("mime_type", if (stream) "audio/l16" else "audio/wav"))
             .put("generation_config", JSONObject().put("speech_config", JSONArray().put(JSONObject().put("voice", id))))
+    }
+
+    suspend fun synthesize(key: String, id: String, text: String): ByteArray = withContext(Dispatchers.IO) {
+        val body = speechRequest(id, text, stream = false)
         val result = post("interactions", key, body, 15_000)
         val steps = result.optJSONArray("steps") ?: throw IOException("O Gemini não devolveu áudio")
         for (i in steps.length() - 1 downTo 0) {
@@ -82,14 +88,24 @@ internal object GeminiVoice {
             key.isNotBlank() && voiceId(context, key).isNotBlank()
     }
 
-    suspend fun speak(context: Context, text: String, allowPlayback: () -> Boolean = { true }): Boolean {
+    suspend fun speak(
+        context: Context, text: String, stream: Boolean = false, onStarted: () -> Unit = {},
+        allowPlayback: () -> Boolean = { true },
+    ): Boolean {
         val settings = Settings(context)
         if (!settings.useAi || settings.aiProvider != AiProvider.GEMINI) return false
         val key = settings.keyFor(AiProvider.GEMINI)
         val id = voiceId(context, key)
         if (key.isBlank() || id.isBlank() || text.isBlank()) return false
         return try {
-            play(synthesize(key, id, text), allowPlayback)
+            if (stream) {
+                try {
+                    return GeminiSpeechStream.play(API + "interactions", key, speechRequest(id, text, stream = true), allowPlayback, onStarted)
+                } catch (_: GeminiSpeechStream.Unsupported) {
+                    // Volta ao WAV apenas se o endpoint rejeitar o streaming antes de tocar.
+                }
+            }
+            play(synthesize(key, id, text), onStarted = onStarted, allowPlayback = allowPlayback)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -98,7 +114,7 @@ internal object GeminiVoice {
         }
     }
 
-    suspend fun play(wav: ByteArray, allowPlayback: () -> Boolean = { true }): Boolean = withContext(Dispatchers.Main.immediate) {
+    suspend fun play(wav: ByteArray, onStarted: () -> Unit = {}, allowPlayback: () -> Boolean = { true }): Boolean = withContext(Dispatchers.Main.immediate) {
         val player = MediaPlayer()
         try {
             player.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT)
@@ -118,7 +134,7 @@ internal object GeminiVoice {
                     fun complete(ok: Boolean) { if (result.isActive) result.resume(ok) }
                     player.setOnPreparedListener {
                         if (result.isActive && allowPlayback()) {
-                            runCatching { it.start() }.onFailure { complete(false) }
+                            runCatching { it.start(); onStarted() }.onFailure { complete(false) }
                         } else complete(false)
                     }
                     player.setOnCompletionListener { complete(true) }

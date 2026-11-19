@@ -149,6 +149,7 @@ class WakeVoiceService : Service() {
             check(audio.state == AudioRecord.STATE_INITIALIZED) { "Microfone indisponível" }
             Recognizer(model, WakeAudio.RATE.toFloat(), WakePhrase.grammar).use { recognition ->
                 recognition.setWords(true)
+                recognition.setEndpointerDelays(5.0f, 0.45f, 15.0f)
                 val frame = ShortArray(WakeAudio.FRAME)
                 val context = currentCoroutineContext()
                 val recent = WakeBuffer()
@@ -185,6 +186,7 @@ class WakeVoiceService : Service() {
                     recent.clear()
                     if (activation == null) continue
                     audio.stop()
+                    lastActivation.value = System.currentTimeMillis()
                     converse(audio, frame, firstQuestion)
                     context.ensureActive()
                     recognition.reset()
@@ -216,8 +218,11 @@ class WakeVoiceService : Service() {
                 cue()
                 capture(audio, frame) ?: return
             }
+            val inlineQuestion = pending != null
             pending = null
             state.value = WORKING
+            if (inlineQuestion) cue(75)
+            val processingStartedAt = SystemClock.elapsedRealtime()
             val locked = deviceLocked()
             var farewell = false
             val result = try {
@@ -239,6 +244,10 @@ class WakeVoiceService : Service() {
                 FailLog.add(this, "Conversa por ativação", AiClient.friendly(e))
                 ChatMessage(fromUser = false, text = "Não consegui responder agora. Tente de novo.")
             }
+            val responseReadyAt = SystemClock.elapsedRealtime()
+            val modelMs = responseReadyAt - processingStartedAt
+            lastTiming.value = VoiceTiming(modelMs)
+            val markPlayback = { lastTiming.value = VoiceTiming(modelMs, SystemClock.elapsedRealtime() - responseReadyAt) }
             val canSpeak = locked || !deviceLocked()
             val text = when {
                 farewell -> VoiceConversation.GOODBYE
@@ -247,9 +256,9 @@ class WakeVoiceService : Service() {
                 else -> result.text
             }
             val delivered = if (GeminiVoice.isConfigured(this)) {
-                GeminiVoice.speak(this, text) { locked || !canSpeak || !deviceLocked() }
+                GeminiVoice.speak(this, text, stream = true, onStarted = markPlayback) { locked || !canSpeak || !deviceLocked() }
             } else {
-                say(if (!locked && deviceLocked() && canSpeak) "Desbloqueie o celular para conferir a resposta." else text)
+                say(if (!locked && deviceLocked() && canSpeak) "Desbloqueie o celular para conferir a resposta." else text, markPlayback)
             }
             if (!delivered) {
                 Notify.post(this, CHANNEL, "Ativação por voz", RESPONSE_STATUS_ID, "Consigliere não conseguiu falar",
@@ -260,10 +269,10 @@ class WakeVoiceService : Service() {
         }
     }
 
-    private suspend fun cue() {
+    private suspend fun cue(lengthMs: Int = 180) {
         val tone = runCatching { ToneGenerator(AudioManager.STREAM_MUSIC, 70) }.getOrNull() ?: return
         try {
-            if (tone.startTone(ToneGenerator.TONE_PROP_BEEP, 180)) delay(230)
+            if (tone.startTone(ToneGenerator.TONE_PROP_BEEP, lengthMs)) delay(lengthMs + 50L)
         } finally {
             tone.release()
         }
@@ -361,11 +370,11 @@ class WakeVoiceService : Service() {
     private fun micSilenced(audio: AudioRecord): Boolean =
         Build.VERSION.SDK_INT >= 29 && audio.activeRecordingConfiguration?.isClientSilenced == true
 
-    private suspend fun say(text: String): Boolean = withContext(Dispatchers.Main.immediate) {
+    private suspend fun say(text: String, onStarted: () -> Unit = {}): Boolean = withContext(Dispatchers.Main.immediate) {
         try {
             withTimeoutOrNull(30_000L) {
                 suspendCancellableCoroutine { result ->
-                    voice.speak(text) { spoken -> if (result.isActive) result.resume(spoken) }
+                    voice.speak(text, onStarted = onStarted) { spoken -> if (result.isActive) result.resume(spoken) }
                 }
             } ?: false
         } finally {
@@ -383,7 +392,14 @@ class WakeVoiceService : Service() {
         super.onDestroy()
     }
 
+    data class VoiceTiming(val modelMs: Long, val audioMs: Long? = null)
+
     companion object {
+        private val lastTiming = MutableStateFlow<VoiceTiming?>(null)
+        val timing = lastTiming.asStateFlow()
+        private val lastActivation = MutableStateFlow<Long?>(null)
+        val activationTime = lastActivation.asStateFlow()
+
         const val IDLE = "Escuta desativada"
         const val STARTING = "Iniciando a escuta…"
         const val LISTENING = "Escutando “Consigliere”"

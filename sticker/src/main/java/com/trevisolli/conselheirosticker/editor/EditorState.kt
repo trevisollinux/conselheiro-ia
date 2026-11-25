@@ -243,9 +243,15 @@ class EditorState(
     /** Resultado do recorte automático: confiança 0..1 por pixel. */
     fun applyConfidence(conf: FloatArray) {
         pushUndo()
+        // O automático só tira: o que a pessoa já recortou (moldura, laço, borracha) continua de fora.
+        // Se ela apagou tudo ("Pintar do zero"), não há o que respeitar e o automático vale sozinho.
+        val old = IntArray(conf.size)
+        mask.getPixels(old, 0, mask.width, 0, 0, mask.width, mask.height)
+        val keepOld = old.any { (it ushr 24) != 0 }
         val px = IntArray(conf.size) { i ->
             // Um pouco generoso: é mais fácil apagar uma sobra com a borracha do que repintar o que sumiu.
-            val a = ((conf[i] - 0.25f) / 0.3f).coerceIn(0f, 1f)
+            var a = ((conf[i] - 0.25f) / 0.3f).coerceIn(0f, 1f)
+            if (keepOld) a = minOf(a, (old[i] ushr 24) / 255f)
             (a * 255).toInt() shl 24
         }
         mask.setPixels(px, 0, mask.width, 0, 0, mask.width, mask.height)

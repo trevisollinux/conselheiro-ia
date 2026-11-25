@@ -67,6 +67,7 @@ class ConfirmActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_SUGGESTION_ID = "suggestion_id"
+        const val EXTRA_BILL_ID = "bill_reminder_id"
         private val DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy")
         private val TIME = DateTimeFormatter.ofPattern("HH:mm")
     }
@@ -81,7 +82,17 @@ class ConfirmActivity : ComponentActivity() {
             else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
         )
         val storedId = intent.getStringExtra(EXTRA_SUGGESTION_ID)
-        val stored = storedId?.let { SuggestionStore.get(this, it) }
+        val bill = intent.getStringExtra(EXTRA_BILL_ID)?.let { id ->
+            com.trevisolli.agendawidget.smart.Bills.all(this).firstOrNull { it.id == id }
+        }
+        val stored = storedId?.let { SuggestionStore.get(this, it) } ?: bill?.let {
+            Suggestion(
+                title = it.title ?: "Pagar ${it.payee}",
+                date = it.due?.takeUnless { day -> day.isBefore(LocalDate.now()) },
+                time = null, kind = Kind.TASK, origin = "Contas a pagar",
+                text = com.trevisolli.agendawidget.smart.Bills.label(it),
+            )
+        }
         val isSend = intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_PROCESS_TEXT
         val image: Uri? = if (isSend && intent.type?.startsWith("image/") == true) {
             IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
@@ -146,7 +157,7 @@ class ConfirmActivity : ComponentActivity() {
         }
         setContent {
             ConsigliereTheme {
-                Surface(modifier = Modifier.fillMaxSize()) { Screen(stored, shared, image) }
+                Surface(modifier = Modifier.fillMaxSize()) { Screen(stored, shared, image, bill != null) }
             }
         }
     }
@@ -169,7 +180,7 @@ class ConfirmActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun Screen(stored: Suggestion?, shared: String, image: Uri?) {
+    private fun Screen(stored: Suggestion?, shared: String, image: Uri?, billReminder: Boolean) {
         val settings = remember { Settings(this) }
         val scope = rememberCoroutineScope()
         val origin = if (image != null) "Print" else "Compartilhado"
@@ -256,7 +267,12 @@ class ConfirmActivity : ComponentActivity() {
         }
 
         fun addToCalendar() {
-            val d = parsedDate() ?: LocalDate.now()
+            val specified = parsedDate()
+            if (billReminder && specified == null) {
+                status = "Escolha uma data para o lembrete na agenda."
+                return
+            }
+            val d = specified ?: LocalDate.now()
             val t = parsedTime()
             val zone = ZoneId.systemDefault()
             val intent = Intent(Intent.ACTION_INSERT).setData(CalendarContract.Events.CONTENT_URI)

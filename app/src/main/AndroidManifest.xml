@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
@@ -17,6 +18,10 @@
 
     <!-- Android 11+: enxergar o serviço de reconhecimento de voz (o mesmo do teclado) -->
     <queries>
+        <!-- Motores de voz (texto para fala), para preferir a voz do Google -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
         <package android:name="com.whatsapp" />
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
@@ -26,6 +31,9 @@
         <package android:name="br.gov.correios" />
         <intent>
             <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
     </queries>
     <application
@@ -61,6 +69,10 @@
             android:launchMode="singleTask" />
         <service
             android:name=".smart.MeetingService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+        <service
+            android:name=".smart.WakeVoiceService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
         <!-- Ponte invisível: botão de notificação → WhatsApp, ligar, rota, rastrear -->

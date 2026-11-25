@@ -25,53 +25,126 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import java.time.Instant
+import java.time.ZoneId
+import java.util.UUID
 import kotlinx.coroutines.launch
 
 /** Lê notificações de apps de mensagem e sugere compromissos encontrados nelas. */
 class NotificationWatcher : NotificationListenerService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val pending = Channel<Batch>(Channel.UNLIMITED)
+    private val threads = LinkedHashMap<String, List<Incoming>>()
 
-    override fun onNotificationPosted(sbn: StatusBarNotification) {
-        val origin = WATCHED[sbn.packageName] ?: return
-        val settings = Settings(this)
-        if (!settings.detectNotifications) return
-        val n = sbn.notification
-        if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
-        val extras = n.extras
-        val sender = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
-        val label = if (sender.isBlank()) origin else "$origin · $sender"
-        // Grupos (WhatsApp e afins) quase sempre são planos de outras pessoas: fora, a não ser que a pessoa ligue.
-        val isGroup = extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false) ||
-            extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE) != null ||
-            GROUP_TITLE.containsMatchIn(sender)
-        val isEmail = sbn.packageName in EMAIL_APPS
-        // Gmail lido pelo IMAP: a notificação seria repetida.
-        if (sbn.packageName == "com.google.android.gm" && MailSource.configured(this)) return
-        // Guarda o "Responder" desta conversa para o Consigliere responder sem abrir o WhatsApp.
-        if (!isEmail && !isGroup) ReplyHub.remember(sender, n)
+    private data class Incoming(val sender: String, val body: String, val time: Long)
+    private data class Batch(
+        val origin: String, val conversation: String, val title: String, val messages: List<Incoming>,
+        val isEmail: Boolean, val isGroup: Boolean, val whatsApp: Boolean,
+    )
 
-        // WhatsApp junta várias mensagens numa notificação ("3 novas mensagens"): lê cada uma pelo MessagingStyle.
-        val recent = System.currentTimeMillis() - 15 * 60_000L
-        val messages = runCatching {
-            NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(n)?.messages
-                ?.filter { it.person != null && it.timestamp >= recent }
-                ?.mapNotNull { it.text?.toString()?.trim() }
-                ?.takeLast(3)
-        }.getOrNull().orEmpty()
-        val bodies = messages.ifEmpty {
-            listOfNotNull(
-                (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString()?.trim(),
-            )
-        }.filter { it.length >= 6 && !SUMMARY_TEXT.matches(it) }
-
-        for (body in bodies) {
-            // A mesma mensagem volta a cada atualização da notificação: processa uma vez só.
-            if (!settings.markSeen("notif:" + (sbn.packageName + sender + body).hashCode())) continue
-            scope.launch {
-                Intake.process(applicationContext, origin, sender, body, isEmail = isEmail, isGroup = isGroup, replyable = !isEmail)
+    override fun onCreate() {
+        super.onCreate()
+        scope.launch {
+            for (batch in pending) {
+                if (!Settings(applicationContext).detectNotifications) continue
+                for (message in batch.messages) {
+                    runCatching { analyze(batch, message) }.onFailure {
+                        FailLog.add(applicationContext, "Leitura de ${batch.origin}", it)
+                    }
+                }
             }
         }
     }
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        runCatching { activeNotifications }.getOrNull()
+            ?.sortedBy { it.postTime }?.forEach(::onNotificationPosted)
+    }
+
+    override fun onNotificationPosted(sbn: StatusBarNotification) {
+        val origin = WATCHED[sbn.packageName] ?: return
+        if (!Settings(this).detectNotifications) return
+        val n = sbn.notification
+        val extras = n.extras
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
+        val isEmail = sbn.packageName in EMAIL_APPS
+        if (sbn.packageName == "com.google.android.gm" && MailSource.coversGmailNotification(
+                this, extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString(),
+            )) return
+
+        val style = runCatching { NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(n) }.getOrNull()
+        val summary = n.flags and Notification.FLAG_GROUP_SUMMARY != 0
+        val isGroup = when {
+            extras.containsKey(Notification.EXTRA_IS_GROUP_CONVERSATION) ->
+                extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION)
+            style != null -> style.isGroupConversation
+            else -> GROUP_TITLE.containsMatchIn(title)
+        }
+        val whatsApp = sbn.packageName in WHATSAPP
+        if (!summary && !isEmail && !isGroup) ReplyHub.remember(title, n)
+
+        val cutOff = System.currentTimeMillis() - 2 * 3_600_000L
+        val messageTime = n.`when`.takeIf { it > 0 } ?: sbn.postTime
+        val messages = style?.messages.orEmpty().mapNotNull { item ->
+            val person = item.person ?: return@mapNotNull null
+            val text = item.text?.toString()?.trim()?.take(4000) ?: return@mapNotNull null
+            Incoming(person.name?.toString().orEmpty().ifBlank { title }, text, item.timestamp.takeIf { it > 0 } ?: messageTime)
+        }.ifEmpty {
+            if (summary) emptyList()
+            else {
+                // Alguns fabricantes entregam InboxStyle (linhas) ou só o texto expandido.
+                val lines = if (whatsApp) extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+                    ?.map(CharSequence::toString).orEmpty() else emptyList()
+                val texts = lines.ifEmpty {
+                    listOfNotNull((extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
+                        ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString())
+                }
+                texts.map { Incoming(title, it.trim().take(4000), messageTime) }
+            }
+        }.filter { it.time >= cutOff && it.body.length >= 3 && !SUMMARY_TEXT.matches(it.body) }
+            .sortedBy { it.time }
+        if (messages.isEmpty()) return
+
+        val shortcut = if (Build.VERSION.SDK_INT >= 26) n.shortcutId else null
+        val conversation = sbn.packageName + ":" + (shortcut ?: sbn.key)
+        pending.trySend(Batch(origin, conversation, title, messages, isEmail, isGroup, whatsApp))
+    }
+
+    private fun analyze(batch: Batch, message: Incoming) {
+        val context = applicationContext
+        val settings = Settings(context)
+        val previous = if (batch.whatsApp) {
+            val cached = threads.remove(batch.conversation).orEmpty()
+            val combined = (cached + message).filter { kotlin.math.abs(it.time - message.time) <= CONTEXT_MS }
+                .distinctBy { Triple(it.sender, it.body, it.time) }.takeLast(12)
+            threads[batch.conversation] = combined
+            if (threads.size > 32) threads.keys.iterator().apply { next(); remove() }
+            cached.asReversed().filter { item ->
+                item != message && item.sender == message.sender && message.time - item.time in 0..CONTEXT_MS &&
+                    dateOf(item.time) == dateOf(message.time)
+            }
+        } else emptyList()
+        val id = UUID.nameUUIDFromBytes(
+            listOf(batch.conversation, message.sender, message.time.toString(), message.body).joinToString("\u0000").toByteArray(),
+        ).toString()
+        val seen = "notif:$id"
+        if (settings.hasSeen(seen)) return
+
+        val day = dateOf(message.time)
+        val combined = previous.firstNotNullOfOrNull { WhatsAppContext.combine(it.body, message.body, day) }
+        val payment = previous.firstNotNullOfOrNull { WhatsAppContext.combinePayment(it.body, message.body) }
+        Intake.process(
+            context, batch.origin, message.sender, message.body,
+            isEmail = batch.isEmail, isGroup = batch.isGroup,
+            replyTo = batch.title.takeIf { !batch.isEmail && !batch.isGroup && it.isNotBlank() },
+            sourceId = seen, receivedAt = message.time, conversationContext = combined, paymentContext = payment,
+        )
+        settings.markSeen(seen)
+    }
+
+    private fun dateOf(time: Long) = Instant.ofEpochMilli(time).atZone(ZoneId.systemDefault()).toLocalDate()
 
     /** O Android às vezes derruba o leitor (bateria, atualização): pede para religar. */
     override fun onListenerDisconnected() {
@@ -80,12 +153,15 @@ class NotificationWatcher : NotificationListenerService() {
     }
 
     override fun onDestroy() {
+        pending.close()
         scope.cancel()
         super.onDestroy()
     }
 
     companion object {
         private const val CHANNEL = "suggestions"
+        private const val CONTEXT_MS = 10 * 60_000L
+        private val WHATSAPP = setOf("com.whatsapp", "com.whatsapp.w4b")
 
         /** "3 novas mensagens", "2 mensagens de 2 conversas": resumo, não conteúdo. */
         private val SUMMARY_TEXT = Regex("^\\d+ (novas? )?(mensagens?|messages?)( de \\d+ conversas?)?$", RegexOption.IGNORE_CASE)
@@ -100,12 +176,12 @@ class NotificationWatcher : NotificationListenerService() {
         private val EMAIL_APPS = setOf("com.google.android.gm", "com.microsoft.office.outlook")
 
         internal val AUTOMATED = Regex(
-            "no-?reply|nao-?responda|não responda|noreply|notifica|newsletter|você está recebendo este e-mail|" +
+            "newsletter|você está recebendo este e-mail|" +
                 "voce esta recebendo|fazer login|login com o google|alerta de segurança|alerta de seguranca|" +
                 "código de verificação|codigo de verificacao|redefinir (a )?senha|cancelar inscrição|cancelar inscricao|" +
-                "unsubscribe|promoção|promocao|oferta|desconto|cupom|% off|sua fatura|seu pedido|rastreio|" +
+                "unsubscribe|promoção|promocao|cupom|% off|seu pedido|rastreio|" +
                 "compartilhou alguns dados|conta do google|novas condições|novas condicoes|termos de uso|política de privacidade|" +
-                "politica de privacidade|atualização dos termos|seu extrato|fatura|boleto disponível|webinar|inscreva-se",
+                "politica de privacidade|atualização dos termos|seu extrato|webinar|inscreva-se",
         )
 
         val WATCHED = mapOf(

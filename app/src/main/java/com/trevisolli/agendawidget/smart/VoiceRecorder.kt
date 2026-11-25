@@ -4,11 +4,12 @@ import android.content.Context
 import android.media.MediaRecorder
 import android.os.Build
 import java.io.File
+import java.util.UUID
 
 /** Grava um áudio curto no próprio app (não depende do reconhecimento de voz do aparelho). */
 class VoiceRecorder(private val context: Context, private val forOpenAi: Boolean) {
     private var recorder: MediaRecorder? = null
-    private val file = File(context.cacheDir, if (forOpenAi) "voz.m4a" else "voz.aac")
+    private val file = File(context.cacheDir, "voz-${UUID.randomUUID()}." + if (forOpenAi) "m4a" else "aac")
 
     /** Gemini aceita AAC puro; a OpenAI prefere m4a. */
     val mime: String get() = if (forOpenAi) "audio/mp4" else "audio/aac"
@@ -16,6 +17,7 @@ class VoiceRecorder(private val context: Context, private val forOpenAi: Boolean
     fun start() {
         file.delete()
         val r = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(context) else @Suppress("DEPRECATION") MediaRecorder()
+        recorder = r
         r.setAudioSource(MediaRecorder.AudioSource.MIC)
         r.setOutputFormat(if (forOpenAi) MediaRecorder.OutputFormat.MPEG_4 else MediaRecorder.OutputFormat.AAC_ADTS)
         r.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -26,8 +28,9 @@ class VoiceRecorder(private val context: Context, private val forOpenAi: Boolean
         r.setOutputFile(file.absolutePath)
         r.prepare()
         r.start()
-        recorder = r
     }
+
+    fun maxAmplitude(): Int = runCatching { recorder?.maxAmplitude ?: 0 }.getOrDefault(0)
 
     /** Para e devolve o áudio; null se ficou curto demais. */
     fun stop(): ByteArray? {
@@ -35,8 +38,11 @@ class VoiceRecorder(private val context: Context, private val forOpenAi: Boolean
         recorder = null
         val ok = runCatching { r.stop() }.isSuccess
         r.release()
-        if (!ok || !file.exists() || file.length() < 2_000) return null
-        return file.readBytes().also { file.delete() }
+        return try {
+            if (ok && file.isFile && file.length() >= 2_000) file.readBytes() else null
+        } finally {
+            file.delete()
+        }
     }
 
     fun cancel() {

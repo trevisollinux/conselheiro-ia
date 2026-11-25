@@ -13,13 +13,21 @@ enum class AiProvider(val label: String, val defaultModel: String, val keyHint: 
     GEMINI("Gemini", "gemini-3.8-flash", "aistudio.google.com → Get API key"),
 }
 
+enum class AiThinking(val label: String, val apiValue: String?) {
+    AUTO("Automático", null), LOW("Baixo", "low"), MEDIUM("Médio", "medium"), HIGH("Alto", "high");
+
+    companion object {
+        fun fromName(name: String?) = entries.firstOrNull { it.name == name } ?: AUTO
+    }
+}
+
 /** Chamada única de texto para a IA escolhida pelo usuário (chave dele, sem servidor no meio). */
 object AiClient {
     /**
      * Modelo indicado pelo provedor quando o configurado saiu de linha
      * (ex.: "no longer available… use models/gemini-3.8-flash"). Vale até o app fechar.
      */
-    val redirects = java.util.concurrent.ConcurrentHashMap<AiProvider, String>()
+    val redirects = java.util.concurrent.ConcurrentHashMap<Pair<AiProvider, String>, String>()
 
     /** Limite da cota atingido: a IA fica pausada até [until] e o app usa as regras. */
     class RateLimited(val until: Long) : IOException(
@@ -44,21 +52,80 @@ object AiClient {
         p.edit().apply { p.all.keys.filter { it.startsWith("ai_paused_until") }.forEach { remove(it) } }.apply()
     }
 
-    /** Flash-Lite mais novo disponível para a chave (o nome muda a cada geração). */
-    fun discoverGeminiLite(key: String): String? {
-        val res = Http.get("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", mapOf("x-goog-api-key" to key))
-        val models = res.optJSONArray("models") ?: return null
-        val version = Regex("gemini-(\\d+(?:\\.\\d+)?)")
-        val skip = Regex("preview|exp|tts|image|live|audio|thinking")
+    /** A lista vem da API com a chave escolhida pelo usuário. */
+    fun geminiModels(key: String): List<String> {
+        val response = Http.get(
+            "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",
+            mapOf("x-goog-api-key" to key),
+        )
+        val models = response.optJSONArray("models") ?: return emptyList()
+        val excluded = Regex("tts|image|live|audio|thinking|transcribe|deep-research|embedding|computer-use")
         return List(models.length()) { models.getJSONObject(it) }
-            .filter { m ->
-                val methods = m.optJSONArray("supportedGenerationMethods")
+            .filter { entry ->
+                val methods = entry.optJSONArray("supportedGenerationMethods")
                 methods != null && (0 until methods.length()).any { methods.optString(it) == "generateContent" }
             }
             .map { it.optString("name").removePrefix("models/") }
-            .filter { "flash-lite" in it && !skip.containsMatchIn(it) }
-            .maxByOrNull { version.find(it)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0 }
+            .filter { it.startsWith("gemini-") && !excluded.containsMatchIn(it) }
+            .distinct()
+            .sortedDescending()
     }
+
+    fun availableModels(provider: AiProvider, key: String): List<String> {
+        if (provider == AiProvider.GEMINI) return geminiModels(key)
+        val response = when (provider) {
+            AiProvider.CLAUDE -> Http.get("https://api.anthropic.com/v1/models?limit=100", mapOf(
+                "x-api-key" to key, "anthropic-version" to "2023-06-01",
+            ))
+            else -> Http.getJson("https://api.openai.com/v1/models", key)
+        }
+        val data = response.optJSONArray("data") ?: return emptyList()
+        val excluded = Regex("audio|realtime|tts|transcribe|image|search|instruct|codex|deep-research|pro")
+        return List(data.length()) { data.getJSONObject(it).optString("id") }
+            .filter { model ->
+                when (provider) {
+                    AiProvider.CLAUDE -> model.startsWith("claude-")
+                    else -> (model.startsWith("gpt-") || Regex("^o[0-9]").containsMatchIn(model)) && !excluded.containsMatchIn(model)
+                }
+            }
+            .distinct().sortedDescending()
+    }
+
+    fun recommendMain(provider: AiProvider, models: List<String>): String? =
+        if (provider == AiProvider.GEMINI) recommendGeminiMain(models)
+        else provider.defaultModel.takeIf { it in models }
+            ?: models.firstOrNull { !Regex("-[0-9]{4}(-[0-9]{2}-[0-9]{2}|[0-9]{4})$").containsMatchIn(it) }
+            ?: models.firstOrNull()
+
+    fun recommendLight(provider: AiProvider, models: List<String>): String? = when (provider) {
+        AiProvider.GEMINI -> recommendGeminiLite(models)
+        AiProvider.CLAUDE -> "claude-haiku-5-5".takeIf { it in models } ?: models.firstOrNull { "haiku" in it }
+        AiProvider.OPENAI -> "gpt-5-mini".takeIf { it in models } ?: models.firstOrNull { "mini" in it }
+    }
+
+    fun supportsThinking(provider: AiProvider, model: String): Boolean = when (provider) {
+        AiProvider.GEMINI -> Regex("^gemini-([3-9]|[0-9]{2,})").containsMatchIn(model)
+        AiProvider.CLAUDE -> Regex("^claude-(opus|sonnet|haiku|fable)-[5-9]").containsMatchIn(model)
+        AiProvider.OPENAI -> Regex("^(gpt-[5-9]|o[0-9]+)").containsMatchIn(model)
+    }
+
+    fun discoverGeminiLite(key: String): String? = recommendGeminiLite(geminiModels(key))
+
+    internal fun recommendGeminiLite(models: List<String>): String? {
+        val stable = models.filter { "flash-lite" in it && "preview" !in it && "-exp" !in it }
+        val versions = Regex("gemini-(\\d+)(?:\\.(\\d+))?")
+        return stable.maxWithOrNull(compareBy(
+            { versions.find(it)?.groupValues?.get(1)?.toIntOrNull() ?: 0 },
+            { versions.find(it)?.groupValues?.get(2)?.toIntOrNull() ?: 0 },
+        ))
+    }
+
+    fun recommendGeminiMain(models: List<String>): String? =
+        listOf(AiProvider.GEMINI.defaultModel, "gemini-4-hydrogen", "gemini-4-argon", "gemini-4-carbon")
+            .firstOrNull { it in models }
+            ?: models.firstOrNull { "flash" in it && "lite" !in it && "preview" !in it && "-exp" !in it }
+            ?: recommendGeminiLite(models)
+            ?: models.firstOrNull()
 
     private val RETRY = Regex("\"retryDelay\"\\s*:\\s*\"(\\d+)")
 
@@ -84,10 +151,11 @@ object AiClient {
         jpeg: ByteArray? = null, audio: Pair<ByteArray, String>? = null,
         /** Pedido com alguém esperando na tela: [fastTimeoutMs] de espera, sem segunda tentativa por demora. */
         fastTimeoutMs: Int? = null,
+        thinking: AiThinking = AiThinking.LOW,
     ): String {
         if (fastTimeoutMs != null) Http.readTimeoutOverride.set(fastTimeoutMs)
         try {
-            return completeGuarded(provider, key, model, system, user, jpeg, audio)
+            return completeGuarded(provider, key, model, system, user, jpeg, audio, thinking)
         } finally {
             Http.readTimeoutOverride.remove()
         }
@@ -95,11 +163,11 @@ object AiClient {
 
     private fun completeGuarded(
         provider: AiProvider, key: String, model: String, system: String, user: String,
-        jpeg: ByteArray?, audio: Pair<ByteArray, String>?,
+        jpeg: ByteArray?, audio: Pair<ByteArray, String>?, thinking: AiThinking,
     ): String {
         pausedUntil(model).takeIf { it > 0 }?.let { throw RateLimited(it) }
         return try {
-            completeOnce(provider, key, model, system, user, jpeg, audio)
+            completeOnce(provider, key, model, system, user, jpeg, audio, thinking)
         } catch (e: IOException) {
             if (e !is RateLimited && e.message.orEmpty().startsWith("HTTP 429")) throw RateLimited(pauseFor(model, e.message.orEmpty()))
             throw e
@@ -108,20 +176,21 @@ object AiClient {
 
     private fun completeOnce(
         provider: AiProvider, key: String, model: String, system: String, user: String,
-        jpeg: ByteArray?, audio: Pair<ByteArray, String>?,
+        jpeg: ByteArray?, audio: Pair<ByteArray, String>?, thinking: AiThinking,
     ): String {
         val image = jpeg?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
         val sound = audio?.let { Base64.encodeToString(it.first, Base64.NO_WRAP) to it.second }
-        val first = redirects[provider] ?: model
+        val modelKey = provider to model
+        val first = redirects[modelKey] ?: model
         return try {
-            withRetryOnTimeout(provider) { call(provider, key, first, system, user, image, sound) }
+            withRetryOnTimeout(provider) { call(provider, key, first, system, user, image, sound, thinking) }
         } catch (e: IOException) {
             // Modelo aposentado: tenta uma vez com o que o próprio provedor sugeriu.
             val msg = e.message.orEmpty()
             val suggested = SUGGESTED.find(msg)?.groupValues?.get(1)?.trimEnd('.')
             if (!msg.startsWith("HTTP 404") || suggested == null || suggested == first) throw e
-            redirects[provider] = suggested
-            withRetryOnTimeout(provider) { call(provider, key, suggested, system, user, image, sound) }
+            redirects[modelKey] = suggested
+            withRetryOnTimeout(provider) { call(provider, key, suggested, system, user, image, sound, thinking) }
         }
     }
 
@@ -150,11 +219,11 @@ object AiClient {
         }
     }
 
-    private fun call(provider: AiProvider, key: String, model: String, system: String, user: String, image: String?, sound: Pair<String, String>?): String =
+    private fun call(provider: AiProvider, key: String, model: String, system: String, user: String, image: String?, sound: Pair<String, String>?, thinking: AiThinking): String =
         when (provider) {
-            AiProvider.CLAUDE -> claude(key, model, system, user, image)
-            AiProvider.OPENAI -> openAi(key, model, system, user, image)
-            AiProvider.GEMINI -> gemini(key, model, system, user, image, sound)
+            AiProvider.CLAUDE -> claude(key, model, system, user, image, thinking)
+            AiProvider.OPENAI -> openAi(key, model, system, user, image, thinking)
+            AiProvider.GEMINI -> gemini(key, model, system, user, image, sound, thinking)
         }.trim()
 
     /** Transcrição pela OpenAI (o Gemini ouve o áudio direto no pedido). */
@@ -175,7 +244,7 @@ object AiClient {
         return res.optString("text").trim()
     }
 
-    private fun claude(key: String, model: String, system: String, user: String, image: String?): String {
+    private fun claude(key: String, model: String, system: String, user: String, image: String?, thinking: AiThinking): String {
         val content = JSONArray()
         if (image != null) {
             content.put(
@@ -195,9 +264,9 @@ object AiClient {
             "x-api-key" to key,
             "anthropic-version" to "2023-06-01",
         )
-        // Modelos 5.x: esforço baixo (tarefa curta) e fallback do servidor em caso de recusa.
-        if (Regex("^claude-(opus|sonnet|haiku|fable)-5").containsMatchIn(model)) {
-            body.put("output_config", JSONObject().put("effort", "low"))
+        if (supportsThinking(AiProvider.CLAUDE, model) && thinking.apiValue != null) {
+            body.put("thinking", JSONObject().put("type", "adaptive"))
+                .put("output_config", JSONObject().put("effort", thinking.apiValue))
         }
         if (Regex("^claude-(opus-5|sonnet-5-5|fable-5-1)").containsMatchIn(model)) {
             body.put("fallbacks", "default")
@@ -215,7 +284,7 @@ object AiClient {
         }
     }
 
-    private fun openAi(key: String, model: String, system: String, user: String, image: String?): String {
+    private fun openAi(key: String, model: String, system: String, user: String, image: String?, thinking: AiThinking): String {
         val content = JSONArray().put(JSONObject().put("type", "text").put("text", user))
         if (image != null) {
             content.put(
@@ -228,9 +297,12 @@ object AiClient {
             .put(
                 "messages",
                 JSONArray()
-                    .put(JSONObject().put("role", "system").put("content", system))
+                    .put(JSONObject().put("role", if (Regex("^o[0-9]+").containsMatchIn(model)) "developer" else "system").put("content", system))
                     .put(JSONObject().put("role", "user").put("content", content)),
             )
+        if (supportsThinking(AiProvider.OPENAI, model) && thinking.apiValue != null) {
+            body.put("reasoning_effort", thinking.apiValue)
+        }
         val res = Http.postJson(
             "https://api.openai.com/v1/chat/completions",
             mapOf("Authorization" to "Bearer $key"),
@@ -240,7 +312,7 @@ object AiClient {
         return res.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content")
     }
 
-    private fun gemini(key: String, model: String, system: String, user: String, image: String?, sound: Pair<String, String>? = null): String {
+    private fun gemini(key: String, model: String, system: String, user: String, image: String?, sound: Pair<String, String>?, thinking: AiThinking): String {
         val parts = JSONArray()
         if (image != null) {
             parts.put(JSONObject().put("inlineData", JSONObject().put("mimeType", "image/jpeg").put("data", image)))
@@ -255,20 +327,23 @@ object AiClient {
         val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
             URLEncoder.encode(model, "UTF-8") + ":generateContent"
         val headers = mapOf("x-goog-api-key" to key)
-        // Gemini 3+ pensa bastante por padrão; para tarefas curtas, pede raciocínio baixo (resposta bem mais rápida).
-        val thinkLow = Regex("^gemini-([3-9]|\\d{2,})").containsMatchIn(model)
-        val res = if (thinkLow) {
+        val supportsThinkingLevel = supportsThinking(AiProvider.GEMINI, model)
+        val level = thinking.apiValue?.takeIf { supportsThinkingLevel }
+        val res = if (level != null) {
             try {
                 Http.postJson(
                     url, headers,
                     JSONObject(body.toString()).put(
                         "generationConfig",
-                        JSONObject().put("thinkingConfig", JSONObject().put("thinkingLevel", "low")),
+                        JSONObject().put("thinkingConfig", JSONObject().put("thinkingLevel", level)),
                     ),
                 )
             } catch (e: IOException) {
                 // Modelo que não aceita o ajuste: manda de novo sem ele.
-                if (e.message?.startsWith("HTTP 400") == true) Http.postJson(url, headers, body) else throw e
+                val message = e.message.orEmpty()
+                if (message.startsWith("HTTP 400") && "thinking" in message.lowercase()) {
+                    Http.postJson(url, headers, body)
+                } else throw e
             }
         } else {
             Http.postJson(url, headers, body)

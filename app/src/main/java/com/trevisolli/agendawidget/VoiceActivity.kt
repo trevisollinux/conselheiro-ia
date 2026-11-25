@@ -59,6 +59,11 @@ import com.trevisolli.agendawidget.smart.AiProvider
 import com.trevisolli.agendawidget.smart.Assistant
 import com.trevisolli.agendawidget.smart.ChatMessage
 import com.trevisolli.agendawidget.smart.VoiceRecorder
+import com.trevisolli.agendawidget.smart.WakeAudio
+import com.trevisolli.agendawidget.smart.VoiceConversation
+import com.trevisolli.agendawidget.smart.SpokenReply
+import com.trevisolli.agendawidget.smart.GeminiVoice
+import kotlinx.coroutines.Job
 import com.trevisolli.agendawidget.ui.ConsigliereTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -67,6 +72,11 @@ import kotlinx.coroutines.async
 /** Gravador aberto pelo widget: já começa gravando; toque para enviar e veja o que foi criado. */
 class VoiceActivity : ComponentActivity() {
     companion object {
+        private const val EXTRA_CONVERSATION = "voice_conversation"
+
+        fun conversationIntent(context: Context) = Intent(context, VoiceActivity::class.java)
+            .putExtra(EXTRA_CONVERSATION, true)
+
         /** Reconhecimento do aparelho (o mesmo do teclado) ou, sem ele, áudio para a IA. */
         fun available(context: Context) = SpeechRecognizer.isRecognitionAvailable(context) || Assistant.canHear(context)
 
@@ -79,6 +89,11 @@ class VoiceActivity : ComponentActivity() {
             }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
+    private var conversation = false
+    private var spoken: SpokenReply? = null
+    private var replyJob: Job? = null
+    private var speaking by mutableStateOf(false)
+    private var speechFailed by mutableStateOf(false)
     private var recorder: VoiceRecorder? = null
     private var speech: SpeechRecognizer? = null
     private var phase by mutableStateOf("rec") // rec (gravando áudio), live (transcrevendo), think, done
@@ -95,6 +110,7 @@ class VoiceActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        conversation = intent.getBooleanExtra(EXTRA_CONVERSATION, false)
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             start()
         } else {
@@ -103,8 +119,22 @@ class VoiceActivity : ComponentActivity() {
         setContent { ConsigliereTheme { Screen() } }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        conversation = intent.getBooleanExtra(EXTRA_CONVERSATION, false)
+        if (work == null && ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) start()
+    }
+
     /** Primeiro tenta transcrever no aparelho (grátis, sem IA); se não houver, grava o áudio. */
     private fun start() {
+        replyJob?.cancel()
+        spoken?.stop()
+        speaking = false
+        speechFailed = false
+        stopLive()
+        recorder?.cancel()
+        recorder = null
         answer = null
         heard = ""
         seconds = 0
@@ -138,16 +168,18 @@ class VoiceActivity : ComponentActivity() {
         }
         sr.setRecognitionListener(object : RecognitionListener {
             override fun onPartialResults(b: Bundle?) {
+                if (speech !== sr || phase != "live") return
                 b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.takeIf { it.isNotBlank() }?.let { heard = it }
             }
 
             override fun onResults(b: Bundle?) {
+                if (speech !== sr || phase != "live") return
                 val text = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.takeIf { it.isNotBlank() } ?: heard
                 sendText(text)
             }
 
             override fun onError(error: Int) {
-                if (phase != "live") return
+                if (speech !== sr || phase != "live") return
                 stopLive()
                 when {
                     heard.isNotBlank() -> sendText(heard)
@@ -171,8 +203,8 @@ class VoiceActivity : ComponentActivity() {
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
-            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, WakeAudio.END_SILENCE_MS)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, WakeAudio.END_SILENCE_MS)
         return try {
             speech = sr
             phase = "live"
@@ -185,19 +217,31 @@ class VoiceActivity : ComponentActivity() {
     }
 
     private fun stopLive() {
-        speech?.let { runCatching { it.cancel() }; it.destroy() }
+        val recognizer = speech
         speech = null
+        recognizer?.let { runCatching { it.cancel() }; it.destroy() }
     }
 
     /** Texto transcrito no aparelho: vai para a IA se estiver no ar, senão para as regras. */
     private fun sendText(text: String) {
         if (phase != "live") return
         stopLive()
-        if (text.isBlank()) {
+        val request = VoiceConversation.withoutActivation(text)
+        if (request.isBlank() && conversation && text.isNotBlank()) {
+            phase = "done"
+            speak("Estou ouvindo.", customVoice = false) { if (it && !isFinishing) start() else finish() }
+            return
+        }
+        if (request.isBlank()) {
             finish()
             return
         }
-        think { Assistant.handleSpoken(it, text) }
+        if (conversation && VoiceConversation.isFarewell(request)) {
+            phase = "done"
+            speak(VoiceConversation.GOODBYE) { finish() }
+            return
+        }
+        think { Assistant.handleSpoken(it, request) }
     }
 
     private fun sendAudio() {
@@ -209,25 +253,76 @@ class VoiceActivity : ComponentActivity() {
             finish()
             return
         }
-        think { Assistant.handleAudio(it, audio, r.mime) }
+        if (!conversation) {
+            think { Assistant.handleAudio(it, audio, r.mime) }
+            return
+        }
+        val farewell = java.util.concurrent.atomic.AtomicBoolean()
+        think(shouldClose = { farewell.get() }) {
+            Assistant.hear(it, audio, r.mime, onFarewell = { farewell.set(true) })
+        }
     }
 
     private var work: kotlinx.coroutines.Deferred<ChatMessage>? = null
 
     /** Roda fora da tela: se a pessoa fechar antes, o pedido continua e o resultado chega por notificação. */
-    private fun think(block: suspend (android.content.Context) -> ChatMessage) {
+    private fun think(shouldClose: () -> Boolean = { false }, block: suspend (android.content.Context) -> ChatMessage) {
         phase = "think"
         val app = applicationContext
         val job = com.trevisolli.agendawidget.smart.Background.scope.async { block(app) }
         work = job
         lifecycleScope.launch {
-            answer = runCatching { job.await() }.getOrNull()
+            val result = runCatching { job.await() }.getOrNull()
+            answer = result
             phase = "done"
             work = null
+            if (result != null && (conversation || Settings(this@VoiceActivity).speakWidgetReplies) &&
+                lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) && !isFinishing
+            ) {
+                speak(result.text) { delivered ->
+                    if (shouldClose()) finish()
+                    else if (delivered && conversation && result.actions.isEmpty() && !isFinishing) start()
+                }
+            }
+        }
+    }
+
+    private fun speak(text: String, customVoice: Boolean = true, done: (Boolean) -> Unit) {
+        speaking = true
+        speechFailed = false
+        replyJob?.cancel()
+        replyJob = lifecycleScope.launch {
+            if (customVoice && GeminiVoice.isConfigured(this@VoiceActivity)) {
+                val delivered = GeminiVoice.speak(this@VoiceActivity, text) { !isFinishing }
+                speaking = false
+                speechFailed = !delivered
+                done(delivered)
+                return@launch
+            }
+            val voice = spoken ?: SpokenReply(this@VoiceActivity).also { spoken = it }
+            voice.speak(text) { delivered ->
+                speaking = false
+                speechFailed = !delivered
+                done(delivered)
+            }
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        replyJob?.cancel()
+        spoken?.stop()
+        speaking = false
+        if (phase == "live" || phase == "rec") {
+            stopLive()
+            recorder?.cancel()
+            recorder = null
+            if (!isChangingConfigurations) finish()
         }
     }
 
     override fun onDestroy() {
+        spoken?.close()
         work?.let { job ->
             val app = applicationContext
             job.invokeOnCompletion { e ->
@@ -243,17 +338,27 @@ class VoiceActivity : ComponentActivity() {
     private fun Screen() {
         val scope = rememberCoroutineScope()
 
-        // Cronômetro; para sozinho em 60 s.
         LaunchedEffect(phase) {
-            while (phase == "rec") {
-                delay(1000)
-                if (recorder != null) seconds++
-                if (seconds >= 60) sendAudio()
+            if (phase != "rec") return@LaunchedEffect
+            val audio = recorder ?: return@LaunchedEffect
+            val startedAt = android.os.SystemClock.elapsedRealtime()
+            var lastVoiceAt: Long? = null
+            while (recorder === audio) {
+                delay(100)
+                val now = android.os.SystemClock.elapsedRealtime()
+                val elapsed = now - startedAt
+                seconds = (elapsed / 1000).toInt()
+                if (conversation && audio.maxAmplitude() >= 700) lastVoiceAt = now
+                val finishedSpeaking = lastVoiceAt?.let { now - it >= WakeAudio.END_SILENCE_MS } == true
+                if (elapsed >= 60_000 || (elapsed >= 700 && finishedSpeaking)) {
+                    sendAudio()
+                    break
+                }
             }
         }
         // Resultado some sozinho depois de um tempo.
-        LaunchedEffect(phase, answer) {
-            if (phase == "done") {
+        LaunchedEffect(phase, answer, speaking) {
+            if (phase == "done" && !speaking && !conversation) {
                 // Com botão para confirmar (mensagem, ligação…), dá tempo de tocar.
                 delay(if (answer?.actions?.isNotEmpty() == true) 30_000 else if (answer?.undo?.isNotEmpty() == true) 15_000 else 6_000)
                 finish()
@@ -333,6 +438,17 @@ class VoiceActivity : ComponentActivity() {
                         else -> {
                             val a = answer
                             Text(a?.text ?: "", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.fillMaxWidth())
+                            if (speaking) Text("Falando…", style = MaterialTheme.typography.bodySmall)
+                            if (speechFailed) {
+                                Text(
+                                    if (GeminiVoice.isConfigured(this@VoiceActivity)) "Não consegui gerar o áudio da resposta. Toque em Ouvir novamente."
+                                    else "Voz em português indisponível. Ative português (Brasil) em Texto para fala no Android.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            if (a != null && !speaking && (conversation || Settings(this@VoiceActivity).speakWidgetReplies)) {
+                                TextButton(onClick = { speak(a.text) {} }) { Text("Ouvir novamente") }
+                            }
                             a?.actions?.forEach { qa ->
                                 androidx.compose.material3.Button(
                                     onClick = {

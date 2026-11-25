@@ -38,7 +38,12 @@ e faz os resumos.
 1. Abra **https://aistudio.google.com/apikey** com sua conta Google.
 2. **Create API key** (Criar chave de API). Copie a chave (começa com `AIza…`).
 3. No Consigliere: ⚙️ → Essencial → **Inteligência** → **Minha IA** → **Gemini** → cole a chave →
-   **Salvar e testar**. A mensagem de sucesso mostra os dois modelos usados (principal e leve).
+   escolha os modelos da lista e toque em **Salvar e testar**. O app consulta os modelos da sua chave e sugere um
+   principal para conversa e mídia e um leve para comandos, resumos e notificações. A lista também funciona com
+   ChatGPT e Claude. Cada provedor tem suas próprias configurações salvas.
+4. Nos modelos compatíveis, escolha o raciocínio do principal: **Automático**, **Baixo**, **Médio** ou **Alto**.
+   Para experimentar com um bilhete difícil, compare o mesmo bilhete no Flash e no Carbon. Raciocínio alto pode
+   demorar mais e usar mais tokens.
 
 ### 4.2 Plano pago (opcional, centavos por mês)
 
@@ -69,7 +74,8 @@ a chave dela depois. **Não use o QR de "Levar para outro aparelho"** para isso:
 1. ⚙️ → Avançado → **Ler mensagens** → ligue **Detectar compromissos nas notificações** → **Concordo**.
 2. Toque em **Abrir acesso a notificações** e ative o **Consigliere** na lista do Android.
 3. Grupos do WhatsApp ficam de fora; para incluir, ligue **Incluir grupos do WhatsApp**.
-4. **Ver últimas leituras** mostra cada mensagem lida e o que ele decidiu (útil quando algo não virou sugestão).
+4. **Ver últimas leituras** mostra o que o app decidiu para notificações e e-mails. No WhatsApp, pedidos e horários
+   enviados separadamente na mesma conversa podem virar uma única sugestão.
 
 Limites: só dá para ler o que vira notificação. **Conversa aberta na tela, conversa silenciada e mensagens que
 você envia não geram notificação.**
@@ -84,7 +90,9 @@ A senha de app é uma senha especial, só para o Consigliere, que não dá acess
 3. Em "Nome do app", digite **Consigliere** → **Criar**.
 4. Copie a senha de **16 letras** que aparece (os espaços não importam). Ela só é mostrada uma vez.
 5. No Consigliere: ⚙️ → Essencial → **E-mail** → seu endereço Gmail → cole a senha de app → **Conectar**.
-6. Pronto: ele olha os e-mails novos a cada atualização (no máximo a cada 10 min). **Verificar agora** força.
+6. O app pede uma verificação em segundo plano a cada 15 minutos. O Android pode adiar a execução conforme
+   bateria e conexão. **Verificar agora** permite ver quantos e-mails novos foram analisados. Uma cobrança clara
+   com valor ou chave Pix pode entrar em **Contas a pagar** mesmo sem vencimento. Use **Lembrar** para escolher a data.
 
 Se o Google disser que a opção "não está disponível para sua conta": conta de trabalho/escola ou "Proteção Avançada"
 ligada. Outlook e Yahoo também funcionam com a senha de app de cada provedor.
@@ -111,6 +119,25 @@ Para desligar: **Desconectar** no app e apague a senha em **myaccount.google.com
 - **Texto**: aba Conversa ou barra do widget.
 - **Voz**: 🎤 no widget, na barra ou na conversa. Usa o reconhecimento de voz do celular; se não houver, grava o
   áudio para a IA.
+- **Áudio no chat**: segure o microfone enquanto fala e solte para transcrever a gravação e responder no chat.
+  Arraste para cima para começar uma conversa falada ou para a esquerda para cancelar.
+- **Conversar por voz** na tela **Hoje** fala a resposta em português e volta a ouvir enquanto a tela da conversa
+  estiver aberta. Diga “pode parar” ou toque em **OK** para encerrar. Em **Configurações → Personalizar → Voz**,
+  você também pode ativar a resposta falada para o microfone do widget.
+- **Ativação por voz** em **Configurações → Personalizar**. Baixe o modelo local uma vez (48 MB) e ative
+  com o app aberto. Com a tela ligada ou apagada, diga “Consigliere” seguido da pergunta. Você também pode
+  dizer só “Consigliere” e esperar o bip. Depois da resposta, espere o bip para continuar sem repetir o nome.
+  Diga “tchau” para voltar à escuta da palavra de ativação. Bloqueado, o celular responde a perguntas gerais. Desbloqueie para consultar dados pessoais ou criar algo. Use
+  **Desativar** na notificação para parar a escuta. Depois de reiniciar o celular, ative de novo pelo app.
+  O reconhecimento da palavra usa [Vosk](https://alphacephei.com/vosk/models) (modelo pequeno de italiano, Apache 2.0).
+- Se a palavra de ativação parar de funcionar, confira o sinal do microfone e o horário da **Última ativação**
+  em **Ativação por voz**. Enquanto outro app estiver usando o microfone, o Android pode silenciar a escuta.
+- **Modo rápido com Gemini Live** em **Configurações → Personalizar → Ativação por voz**. Ligue a opção,
+  chame “Consigliere” e fale após o bip. O app envia e recebe áudio em tempo real usando a sua chave.
+  Usa a voz Aoede e consulta agenda, mensagens e previsão. O conteúdo pessoal exige desbloqueio.
+  Para usar a voz personalizada, desligue o modo rápido. A disponibilidade da API depende da sua conta Gemini.
+- **Voz personalizada do Gemini** em **Configurações → Personalizar**. Descreva a voz, toque em **Criar e ouvir prévia**
+  e depois em **Usar esta voz** se gostar do resultado. A síntese usa a sua chave e pode ter custo.
 - **Foto**: ➕ na conversa → **Tirar foto** ou **Escolher da galeria** (lista escrita à mão, convite, boleto…).
   Compartilhar uma imagem com o app também funciona (**Pedir ao Consigliere**).
 - Exemplos: "dentista quinta 15h", "lista de compras: leite, pão e ovos", "dar remédio todo dia às 8h",

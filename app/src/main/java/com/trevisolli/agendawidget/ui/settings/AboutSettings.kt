@@ -31,7 +31,7 @@ internal fun BatterySettings() {
 internal fun AboutSettings() {
     val context = LocalContext.current
     SettingsSection("Sobre") {
-        Text("Consigliere ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
+        Text("Consigliere ${BuildConfig.VERSION_NAME} (build ${BuildConfig.BUILD_NUMBER})", style = MaterialTheme.typography.bodySmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = {
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Support.PRIVACY_URL)))

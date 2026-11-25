@@ -3,6 +3,7 @@ package com.trevisolli.agendawidget.data
 import android.content.Context
 import android.util.Base64
 import com.trevisolli.agendawidget.smart.AiProvider
+import com.trevisolli.agendawidget.smart.AiThinking
 import org.json.JSONObject
 
 class Settings(context: Context) {
@@ -33,19 +34,46 @@ class Settings(context: Context) {
 
     var aiProvider: AiProvider
         get() = AiProvider.entries.firstOrNull { it.name == prefs.getString("ai_provider", null) } ?: AiProvider.CLAUDE
-        set(value) = prefs.edit().putString("ai_provider", value.name).apply()
+        set(value) {
+            // Migra as preferências da versão que guardava um único perfil antes de trocar de provedor.
+            if (!prefs.contains("ai_profile_migrated")) {
+                aiKey = aiKey
+                aiModel = aiModel
+                aiLightModel = aiLightModel
+                Secrets.put(prefs, "ai_key", "")
+            }
+            prefs.edit().putString("ai_provider", value.name).putBoolean("ai_profile_migrated", true).apply()
+        }
+
+    fun keyFor(provider: AiProvider): String =
+        Secrets.get(prefs, "ai_key_${provider.name}").ifBlank {
+            if (provider == aiProvider && !prefs.contains("ai_profile_migrated")) Secrets.get(prefs, "ai_key") else ""
+        }
 
     var aiKey: String
-        get() = Secrets.get(prefs, "ai_key")
-        set(value) = Secrets.put(prefs, "ai_key", value.trim())
+        get() = keyFor(aiProvider)
+        set(value) = Secrets.put(prefs, "ai_key_${aiProvider.name}", value.trim())
 
-    /** Vazio = modelo padrão do provedor. */
+    private fun aiPreference(name: String, provider: AiProvider): String =
+        prefs.getString("${name}_${provider.name}", null)
+            ?: if (provider == aiProvider && !prefs.contains("ai_profile_migrated")) prefs.getString(name, "").orEmpty() else ""
+
+    fun modelFor(provider: AiProvider) = aiPreference("ai_model", provider)
+    fun lightModelFor(provider: AiProvider) = aiPreference("ai_light_model", provider)
+    fun thinkingFor(provider: AiProvider) = AiThinking.fromName(aiPreference("ai_thinking", provider))
+
     var aiModel: String
-        get() = prefs.getString("ai_model", "").orEmpty()
-        set(value) = prefs.edit().putString("ai_model", value.trim()).apply()
+        get() = modelFor(aiProvider)
+        set(value) = prefs.edit().putString("ai_model_${aiProvider.name}", value.trim()).apply()
+
+    fun effectiveModelFor(provider: AiProvider): String = modelFor(provider).ifBlank { provider.defaultModel }
 
     val effectiveModel: String
-        get() = aiModel.ifBlank { aiProvider.defaultModel }
+        get() = effectiveModelFor(aiProvider)
+
+    var aiThinking: AiThinking
+        get() = thinkingFor(aiProvider)
+        set(value) = prefs.edit().putString("ai_thinking_${aiProvider.name}", value.name).apply()
 
     /** Pausada após um 429: nesse intervalo tudo usa as regras, sem erro na tela. */
     val aiReady: Boolean
@@ -53,8 +81,8 @@ class Settings(context: Context) {
 
     /** Modelo leve para o automático (resumo, notificações, briefings); vazio = escolha do app. */
     var aiLightModel: String
-        get() = prefs.getString("ai_light_model", "").orEmpty()
-        set(value) = prefs.edit().putString("ai_light_model", value.trim()).apply()
+        get() = lightModelFor(aiProvider)
+        set(value) = prefs.edit().putString("ai_light_model_${aiProvider.name}", value.trim()).apply()
 
     /** Flash-Lite descoberto na conta do Gemini, e quando foi procurado. */
     var geminiLiteAuto: String
@@ -65,14 +93,16 @@ class Settings(context: Context) {
         get() = prefs.getLong("gemini_lite_checked", 0)
         set(value) = prefs.edit().putLong("gemini_lite_checked", value).apply()
 
-    val lightModel: String
-        get() = aiLightModel.ifBlank {
-            when (aiProvider) {
-                com.trevisolli.agendawidget.smart.AiProvider.CLAUDE -> "claude-haiku-5-5"
-                com.trevisolli.agendawidget.smart.AiProvider.GEMINI -> geminiLiteAuto.ifBlank { effectiveModel }
-                com.trevisolli.agendawidget.smart.AiProvider.OPENAI -> effectiveModel
-            }
+    fun effectiveLightModelFor(provider: AiProvider): String = lightModelFor(provider).ifBlank {
+        when (provider) {
+            AiProvider.CLAUDE -> "claude-haiku-5-5"
+            AiProvider.GEMINI -> geminiLiteAuto.ifBlank { effectiveModelFor(provider) }
+            AiProvider.OPENAI -> effectiveModelFor(provider)
         }
+    }
+
+    val lightModel: String
+        get() = effectiveLightModelFor(aiProvider)
 
     val aiLightReady: Boolean
         get() = useAi && aiKey.isNotBlank() && com.trevisolli.agendawidget.smart.AiClient.pausedUntil(lightModel) == 0L
@@ -86,8 +116,10 @@ class Settings(context: Context) {
         get() = prefs.getLong("notion_last_scan", 0)
         set(value) = prefs.edit().putLong("notion_last_scan", value).apply()
 
+    fun hasSeen(key: String) = key in prefs.getStringSet("seen", emptySet()).orEmpty()
+
     /** Trechos de notas já analisados, para não sugerir de novo o que foi descartado. */
-    fun markSeen(key: String): Boolean {
+    fun markSeen(key: String): Boolean = synchronized(seenLock) {
         val seen = prefs.getStringSet("seen", emptySet()).orEmpty()
         if (key in seen) return false
         val next = if (seen.size > 2000) setOf(key) else seen + key
@@ -234,6 +266,14 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("notif_groups", false)
         set(value) = prefs.edit().putBoolean("notif_groups", value).apply()
 
+    var geminiLiveVoice: Boolean
+        get() = prefs.getBoolean("gemini_live_voice", false)
+        set(value) = prefs.edit().putBoolean("gemini_live_voice", value).apply()
+
+    var speakWidgetReplies: Boolean
+        get() = prefs.getBoolean("speak_widget_replies", false)
+        set(value) = prefs.edit().putBoolean("speak_widget_replies", value).apply()
+
     var detectNotifications: Boolean
         get() = prefs.getBoolean("detect_notifications", false)
         set(value) = prefs.edit().putBoolean("detect_notifications", value).apply()
@@ -259,6 +299,8 @@ class Settings(context: Context) {
             .put("provider", aiProvider.name)
             .put("aiKey", aiKey)
             .put("aiModel", aiModel)
+            .put("aiLightModel", aiLightModel)
+            .put("aiThinking", aiThinking.name)
             .put("detect", detectNotifications)
             .put("notion", notionToken)
             .put("name", userName)
@@ -282,6 +324,8 @@ class Settings(context: Context) {
         aiProvider = AiProvider.entries.firstOrNull { it.name == json.optString("provider") } ?: AiProvider.CLAUDE
         aiKey = json.optString("aiKey")
         aiModel = json.optString("aiModel")
+        aiLightModel = json.optString("aiLightModel")
+        aiThinking = AiThinking.fromName(json.optString("aiThinking"))
         detectNotifications = json.optBoolean("detect")
         notionToken = json.optString("notion")
         userName = json.optString("name")
@@ -294,6 +338,7 @@ class Settings(context: Context) {
     }
 
     private companion object {
+        val seenLock = Any()
         const val PREFIX = "consigliere1:"
     }
 }

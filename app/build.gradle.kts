@@ -12,8 +12,12 @@ android {
         applicationId = "com.trevisolli.agendawidget"
         minSdk = 26
         targetSdk = 35
-        versionCode = 49
-        versionName = "3.7"
+        // No GitHub Actions o versionCode sobe sozinho a cada build (1000 + número do build),
+        // então todo APK novo instala por cima mesmo que ninguém lembre de mudar a versão.
+        val ciBuild = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+        versionCode = ciBuild?.let { 1000 + it } ?: 51
+        versionName = "3.8"
+        buildConfigField("String", "BUILD_NUMBER", "\"${ciBuild ?: "local"}\"")
 
         // Só celulares reais (ARM): deixa o APK bem menor.
         ndk {
@@ -73,6 +77,8 @@ android {
 }
 
 dependencies {
+    implementation("com.alphacephei:vosk-android:0.3.75")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
     implementation("androidx.compose.material3:material3")
@@ -96,4 +102,5 @@ dependencies {
     implementation("com.sun.mail:android-activation:1.6.7")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

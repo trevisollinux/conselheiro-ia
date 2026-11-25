@@ -7,12 +7,14 @@ object LightModel {
     private const val WEEK = 7 * 24 * 3600_000L
 
     fun refresh(settings: Settings) {
-        if (!settings.useAi || settings.aiKey.isBlank() || settings.aiProvider != AiProvider.GEMINI) return
-        if (settings.aiLightModel.isNotBlank()) return
+        if (!settings.useAi || settings.aiProvider != AiProvider.GEMINI) return
+        val key = settings.keyFor(AiProvider.GEMINI)
+        if (key.isBlank() || settings.lightModelFor(AiProvider.GEMINI).isNotBlank()) return
         if (System.currentTimeMillis() - settings.geminiLiteCheckedAt < WEEK && settings.geminiLiteAuto.isNotBlank()) return
         // Sem rede: tenta de novo na próxima, mas não a cada atualização.
         settings.geminiLiteCheckedAt = System.currentTimeMillis() - WEEK + 3600_000L
-        val found = runCatching { AiClient.discoverGeminiLite(settings.aiKey) }.getOrNull() ?: return
+        val found = runCatching { AiClient.discoverGeminiLite(key) }.getOrNull() ?: return
+        if (settings.keyFor(AiProvider.GEMINI) != key) return
         settings.geminiLiteAuto = found
         settings.geminiLiteCheckedAt = System.currentTimeMillis()
     }
